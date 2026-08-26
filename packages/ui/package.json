@@ -10,7 +10,6 @@
   "scripts": {
     "build": "tsc --build",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src --max-warnings=0",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
@@ -21,7 +20,6 @@
   },
   "devDependencies": {
     "@types/react": "^19.0.2",
-    "eslint": "^9.17.0",
     "react": "^19.0.0",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

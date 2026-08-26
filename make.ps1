@@ -146,7 +146,8 @@ switch ($Target) {
         $srcDirs = @('packages/py-shared/src') + (Get-ChildItem 'services' -Directory |
             ForEach-Object { "services/$($_.Name)/src" })
         Invoke-Checked 'uv' (@('run', 'mypy') + $srcDirs)
-        & pnpm turbo run lint typecheck
+        & pnpm run lint
+        & pnpm turbo run typecheck
     }
 
     'fmt' {

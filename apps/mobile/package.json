@@ -9,7 +9,6 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "build": "expo export --platform all",
-    "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"
   },

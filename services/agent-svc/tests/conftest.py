@@ -11,7 +11,6 @@ from httpx import ASGITransport, AsyncClient
 
 from agent_svc.config import Settings
 from agent_svc.main import build_app
-from sarana_shared.testing.fixtures import *  # noqa: F403 - shared fixtures by design
 
 
 @pytest.fixture

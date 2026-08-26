@@ -168,9 +168,6 @@ importers:
       '@types/node':
         specifier: ^22.10.2
         version: 22.20.1
-      eslint:
-        specifier: ^9.17.0
-        version: 9.39.5(jiti@2.7.0)
       openapi-typescript:
         specifier: ^7.5.0
         version: 7.13.0(typescript@5.9.3)
@@ -193,9 +190,6 @@ importers:
       '@types/react':
         specifier: ^19.0.2
         version: 19.2.18
-      eslint:
-        specifier: ^9.17.0
-        version: 9.39.5(jiti@2.7.0)
       react:
         specifier: ^19.0.0
         version: 19.2.8

@@ -98,7 +98,8 @@ lint: ## ruff check + ruff format --check + mypy + eslint + tsc --noEmit
 	$(UV) run ruff check .
 	$(UV) run ruff format --check .
 	$(UV) run mypy packages/py-shared/src $(wildcard services/*/src)
-	pnpm turbo run lint typecheck
+	pnpm run lint
+	pnpm turbo run typecheck
 
 .PHONY: fmt
 fmt: ## Auto-fix formatting and import order

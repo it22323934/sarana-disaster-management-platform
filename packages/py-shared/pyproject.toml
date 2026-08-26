@@ -38,6 +38,11 @@ testing = [
     "httpx>=0.28",
 ]
 
+# Registers the shared fixtures as a pytest plugin, so every service picks them up
+# without a star-import - and pytest_addoption is called exactly once per session.
+[project.entry-points.pytest11]
+sarana_shared = "sarana_shared.testing.fixtures"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

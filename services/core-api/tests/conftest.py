@@ -11,7 +11,6 @@ from httpx import ASGITransport, AsyncClient
 
 from core_api.config import Settings
 from core_api.main import build_app
-from sarana_shared.testing.fixtures import *  # noqa: F403 - shared fixtures by design
 
 
 @pytest.fixture

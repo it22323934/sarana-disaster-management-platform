@@ -1,5 +1,5 @@
-"""Test configuration for the shared package."""
+"""Test configuration for the shared package.
 
-from __future__ import annotations
-
-from sarana_shared.testing.fixtures import *  # noqa: F403 - shared fixtures by design
+Fixtures come from the `sarana_shared.testing.fixtures` pytest plugin, registered
+through the package's pytest11 entry point, so nothing needs importing here.
+"""
