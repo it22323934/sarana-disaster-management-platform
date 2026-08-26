@@ -1,0 +1,40 @@
+[project]
+name = "sarana"
+version = "0.0.0"
+requires-python = ">=3.12,<3.13"
+description = "SARANA — AI-enabled, offline-first, multi-hazard disaster response and resilience platform for Sri Lanka."
+
+[tool.uv.workspace]
+members = [
+    "packages/py-shared",
+    "services/core-api",
+    "services/incident-svc",
+    "services/alerting-svc",
+    "services/ledger-svc",
+    "services/agent-svc",
+    "services/gov-mock",
+]
+
+[tool.uv]
+package = false  # this root project is a workspace coordinator only, not an installable package
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "testcontainers[postgres]>=4.9.0",
+    "pre-commit>=4.0.0",
+    "detect-secrets>=1.5.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["packages", "services"]
+# Every service has an identically-named tests/test_health.py etc. — importlib mode
+# identifies modules by file path, not by basename, so those don't collide when the
+# whole workspace is tested together (`make test`).
+addopts = "--import-mode=importlib"
+

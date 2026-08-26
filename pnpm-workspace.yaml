@@ -1,0 +1,7 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+# esbuild's postinstall just downloads its platform-specific binary — no arbitrary
+# script beyond that, and it's a direct dependency of vitest (test).
+allowBuilds:
+  esbuild: true

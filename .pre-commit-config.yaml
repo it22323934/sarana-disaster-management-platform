@@ -1,0 +1,30 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (changed files)
+        entry: uv run mypy
+        language: system
+        types: [python]
+        pass_filenames: true
+
+      - id: verify-i18n
+        name: i18n completeness check (si/ta/en)
+        entry: node tools/i18n/verify.mjs
+        language: system
+        pass_filenames: false
+        files: '(messages/.*\.json|packages/ts-shared/src/i18n/.*)$'
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: package-lock.json|pnpm-lock.yaml
