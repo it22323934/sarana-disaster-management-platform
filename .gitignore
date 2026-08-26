@@ -1,0 +1,43 @@
+# Claude Code local config — never pushed, per team instruction
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.uv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+
+# Node / JS
+node_modules/
+.turbo/
+.next/
+dist/
+build/
+*.tsbuildinfo
+.expo/
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
