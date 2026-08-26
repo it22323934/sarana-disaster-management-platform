@@ -129,6 +129,12 @@ def contains(scope_code: str, target_code: str) -> bool:
     `LK-11-0` never accidentally covers `LK-11-03`. Province scopes are not decidable
     from codes alone and must be expanded to their districts before calling this.
     """
+    # Validate the scope before comparing. A malformed scope code silently covering
+    # nothing would read as a permissions problem and send someone hunting in the wrong
+    # place; raising names the real fault.
+    level_of(scope_code)
+    level_of(target_code)
+
     if scope_code == "LK":
         return True
     if PROVINCE_CODE_PATTERN.match(scope_code):

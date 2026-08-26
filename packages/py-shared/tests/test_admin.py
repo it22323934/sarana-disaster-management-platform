@@ -35,10 +35,19 @@ def test_ancestors_are_derived_from_the_code() -> None:
     assert district_of(KANDY_GN) == "LK-11"
 
 
-def test_containment_is_segment_aware() -> None:
-    """A truncated code must not accidentally cover a longer one."""
+def test_containment_walks_down_the_hierarchy() -> None:
     assert contains("LK-11", KANDY_GN)
-    assert not contains("LK-11-0", "LK-11-03")
+    assert contains("LK-11-03", KANDY_GN)
+
+
+def test_a_truncated_scope_is_rejected_rather_than_silently_covering_nothing() -> None:
+    """A silent False here would read as a permissions problem.
+
+    Someone would go hunting through role assignments when the real fault is a
+    malformed code, so name it instead.
+    """
+    with pytest.raises(AdminCodeError, match="LK-11-0"):
+        contains("LK-11-0", "LK-11-03")
 
 
 def test_one_district_cannot_reach_another() -> None:

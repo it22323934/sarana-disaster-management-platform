@@ -2,6 +2,10 @@
 #
 # `make up` builds, starts, waits for every healthcheck, migrates and seeds.
 # Port map is documented in the Makefile (`make ports`) and in .env.example.
+#
+# Host-side ports are overridable through SARANA_HOST_PORT_* so a developer who
+# already runs Postgres or Redis for another project can bring this stack up without
+# stopping it. Container-side ports never change - service-to-service URLs are fixed.
 
 name: sarana
 
@@ -55,7 +59,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-sarana}
       # Speeds up the initial cluster creation; local data is disposable.
       POSTGRES_INITDB_ARGS: "--data-checksums"
-    ports: ["5432:5432"]
+    ports: ["${SARANA_HOST_PORT_POSTGRES:-5432}:5432"]
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -69,7 +73,7 @@ services:
     image: redis:7-alpine
     networks: [sarana]
     command: ["redis-server", "--appendonly", "yes"]
-    ports: ["6379:6379"]
+    ports: ["${SARANA_HOST_PORT_REDIS:-6379}:6379"]
     volumes:
       - redis-data:/data
     healthcheck:
@@ -86,8 +90,8 @@ services:
       MINIO_ROOT_USER: ${SARANA_S3_ACCESS_KEY_ID:-sarana_minio}
       MINIO_ROOT_PASSWORD: ${SARANA_S3_SECRET_ACCESS_KEY:-sarana_minio_local_only}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${SARANA_HOST_PORT_MINIO:-9000}:9000"
+      - "${SARANA_HOST_PORT_MINIO_CONSOLE:-9001}:9001"
     volumes:
       - minio-data:/data
     healthcheck:
@@ -96,8 +100,13 @@ services:
       timeout: 3s
       retries: 20
 
+  # One-shot bucket creation. Behind a profile so it is not part of the default `up`:
+  # `docker compose up --wait` treats a container that exits as a failed service, and a
+  # task that is supposed to finish would fail the whole stack. `make up` runs it with
+  # `compose run` once MinIO reports healthy.
   minio-init:
     image: minio/mc:latest
+    profiles: [init]
     networks: [sarana]
     depends_on:
       minio:
@@ -124,16 +133,16 @@ services:
     image: jaegertracing/jaeger:latest
     networks: [sarana]
     ports:
-      - "16686:16686"
-      - "4317:4317"
-      - "4318:4318"
+      - "${SARANA_HOST_PORT_JAEGER:-16686}:16686"
+      - "${SARANA_HOST_PORT_OTLP_GRPC:-4317}:4317"
+      - "${SARANA_HOST_PORT_OTLP_HTTP:-4318}:4318"
 
   mailpit:
     image: axllent/mailpit:latest
     networks: [sarana]
     ports:
-      - "8025:8025"
-      - "1025:1025"
+      - "${SARANA_HOST_PORT_MAILPIT:-8025}:8025"
+      - "${SARANA_HOST_PORT_SMTP:-1025}:1025"
     healthcheck:
       test: ["CMD", "/mailpit", "readyz"]
       interval: 10s
@@ -146,7 +155,7 @@ services:
       context: ../..
       dockerfile: services/core-api/Dockerfile
     image: sarana/core-api:dev
-    ports: ["8001:8001"]
+    ports: ["${SARANA_HOST_PORT_CORE_API:-8001}:8001"]
     volumes:
       - ./dev-keys:/run/secrets:ro
       # Hot reload: the source tree is mounted over the image copy.
@@ -178,7 +187,7 @@ services:
       context: ../..
       dockerfile: services/incident-svc/Dockerfile
     image: sarana/incident-svc:dev
-    ports: ["8002:8002"]
+    ports: ["${SARANA_HOST_PORT_INCIDENT_SVC:-8002}:8002"]
     volumes:
       - ./dev-keys:/run/secrets:ro
       # Hot reload: the source tree is mounted over the image copy.
@@ -210,7 +219,7 @@ services:
       context: ../..
       dockerfile: services/alerting-svc/Dockerfile
     image: sarana/alerting-svc:dev
-    ports: ["8003:8003"]
+    ports: ["${SARANA_HOST_PORT_ALERTING_SVC:-8003}:8003"]
     volumes:
       - ./dev-keys:/run/secrets:ro
       # Hot reload: the source tree is mounted over the image copy.
@@ -242,7 +251,7 @@ services:
       context: ../..
       dockerfile: services/ledger-svc/Dockerfile
     image: sarana/ledger-svc:dev
-    ports: ["8004:8004"]
+    ports: ["${SARANA_HOST_PORT_LEDGER_SVC:-8004}:8004"]
     volumes:
       - ./dev-keys:/run/secrets:ro
       # Hot reload: the source tree is mounted over the image copy.
@@ -274,7 +283,7 @@ services:
       context: ../..
       dockerfile: services/agent-svc/Dockerfile
     image: sarana/agent-svc:dev
-    ports: ["8005:8005"]
+    ports: ["${SARANA_HOST_PORT_AGENT_SVC:-8005}:8005"]
     volumes:
       - ./dev-keys:/run/secrets:ro
       # Hot reload: the source tree is mounted over the image copy.
@@ -306,7 +315,7 @@ services:
       context: ../..
       dockerfile: services/gov-mock/Dockerfile
     image: sarana/gov-mock:dev
-    ports: ["8006:8006"]
+    ports: ["${SARANA_HOST_PORT_GOV_MOCK:-8006}:8006"]
     volumes:
       - ./dev-keys:/run/secrets:ro
       # Hot reload: the source tree is mounted over the image copy.

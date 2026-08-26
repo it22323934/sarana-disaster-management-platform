@@ -11,15 +11,21 @@ describe('formatLKR', () => {
     expect(() => formatLKR(12.5)).toThrow(TypeError);
   });
 
-  it('keeps the sign outside the currency marker', () => {
-    expect(formatLKR(-50_000)).toBe('LKR -500.00');
+  it('puts the sign ahead of the currency marker, as a ledger reversal reads', () => {
+    expect(formatLKR(-50_000)).toBe('-LKR 500.00');
   });
 });
 
 describe('formatLKRCompact', () => {
   it('renders the Ditwah damage figure the way a dashboard tile would', () => {
-    // USD 4.1bn at roughly LKR 300 = LKR 1.23tn; compact tops out at bn.
-    expect(formatLKRCompact(123_000_000_000_000)).toBe('LKR 1230.0bn');
+    // USD 4.1bn of direct damage at roughly LKR 300 to the dollar.
+    expect(formatLKRCompact(123_000_000_000_000)).toBe('LKR 1.2tn');
+  });
+
+  it('steps down through the tiers', () => {
+    expect(formatLKRCompact(450_000_000_000)).toBe('LKR 4.5bn');
+    expect(formatLKRCompact(250_000_000)).toBe('LKR 2.5mn');
+    expect(formatLKRCompact(1_200_000)).toBe('LKR 12.0k');
   });
 });
 

@@ -55,6 +55,9 @@ export function formatLKRCompact(cents: LKRCents): string {
   const sign = cents < 0 ? '-' : '';
 
   const units: ReadonlyArray<readonly [number, string]> = [
+    // Ditwah caused USD 4.1bn of direct damage, roughly LKR 1.2tn. National totals
+    // reach the trillion tier, so it is not hypothetical headroom.
+    [1e12, 'tn'],
     [1e9, 'bn'],
     [1e6, 'mn'],
     [1e3, 'k'],

@@ -24,8 +24,10 @@ describe('covers', () => {
     expect(covers('LK-11', 'LK-12-03-045')).toBe(false);
   });
 
-  it('is segment-aware, so a truncated code does not match a longer one', () => {
-    expect(covers('LK-11-0', 'LK-11-03')).toBe(false);
+  it('rejects a truncated code rather than silently covering nothing', () => {
+    // A silent `false` here reads as a permissions problem and sends someone hunting
+    // in the wrong place. The malformed code is the real fault, so name it.
+    expect(() => covers('LK-11-0', 'LK-11-03')).toThrow(InvalidAdminCodeError);
   });
 
   it('treats national scope as covering everything', () => {

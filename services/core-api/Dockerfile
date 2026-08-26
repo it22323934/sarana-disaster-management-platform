@@ -4,12 +4,17 @@
 
 FROM --platform=$BUILDPLATFORM ghcr.io/astral-sh/uv:0.5-python3.12-bookworm-slim AS builder
 
-# Six service images build against one uplink, and the 30s default times out on the
-# larger wheels (cryptography, shapely) when several builds run at once.
+# UV_HTTP_TIMEOUT: six service images build against one uplink, and the 30s default
+# times out on the larger wheels (cryptography, shapely) when builds overlap.
+#
+# UV_PROJECT_ENVIRONMENT: build the virtualenv at the path it will finally live at.
+# Console scripts bake an absolute shebang, so a venv built elsewhere and copied into
+# place fails at container start with "exec .../uvicorn: no such file or directory".
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never \
-    UV_HTTP_TIMEOUT=180
+    UV_HTTP_TIMEOUT=180 \
+    UV_PROJECT_ENVIRONMENT=/app/.venv
 
 WORKDIR /build
 
@@ -36,7 +41,7 @@ ENV PATH="/app/.venv/bin:$PATH"     PYTHONUNBUFFERED=1     PYTHONDONTWRITEBYTECO
 
 WORKDIR /app
 
-COPY --from=builder --chown=sarana:sarana /build/.venv /app/.venv
+COPY --from=builder --chown=sarana:sarana /app/.venv /app/.venv
 COPY --from=builder --chown=sarana:sarana /build/services/core-api /app/services/core-api
 
 USER sarana

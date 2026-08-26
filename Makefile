@@ -45,9 +45,11 @@ bootstrap: .env keys ## Install Python + Node dependencies and git hooks
 	@echo "Bootstrap complete. Next: make up"
 
 .PHONY: up
-up: ## Start the stack, wait for health, migrate and seed
+up: .env keys ## Start the stack, wait for health, migrate and seed
 	$(COMPOSE) up -d --build --wait
-	@echo "All containers healthy. Applying migrations..."
+	@echo "All containers healthy. Creating object storage buckets..."
+	$(COMPOSE) run --rm minio-init
+	@echo "Applying migrations..."
 	$(MAKE) migrate
 	$(MAKE) seed
 	@echo ""
