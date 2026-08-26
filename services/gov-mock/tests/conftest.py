@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 import pytest_asyncio
+from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
 from gov_mock.config import Settings
@@ -28,9 +29,15 @@ def settings(postgres_url: str, tmp_path_factory: pytest.TempPathFactory) -> Set
 
 @pytest_asyncio.fixture
 async def client(settings: Settings) -> AsyncIterator[AsyncClient]:
-    """An httpx client wired straight to the ASGI app - no live server, no port."""
+    """An httpx client wired straight to the ASGI app - no live server, no port.
+
+    The lifespan is run for real. Without it the app never opens its engine or its bus
+    connection and never registers its readiness checks, so /readyz would report an
+    empty check set and pass a test that proves nothing.
+    """
     app = build_app(settings)
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://gov-mock"
-    ) as async_client:
-        yield async_client
+    async with LifespanManager(app):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://gov-mock"
+        ) as async_client:
+            yield async_client

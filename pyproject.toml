@@ -27,6 +27,11 @@ members = ["packages/py-shared", "services/*"]
 sarana-shared = { workspace = true }
 
 [tool.pytest.ini_options]
+# importlib mode derives a unique module name from each test file's path. Without it,
+# six services each holding a `tests/test_health.py` collide on module name and pytest
+# refuses to collect them in one run.
+importmode = "importlib"
+consider_namespace_packages = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["packages/py-shared/tests", "services"]

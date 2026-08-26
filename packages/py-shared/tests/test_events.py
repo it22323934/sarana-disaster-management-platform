@@ -59,9 +59,7 @@ def test_a_caused_event_keeps_the_chain_intact() -> None:
         (REPORT_RECEIVED, ("sarana.ledger.*", "sarana.incident.report.*"), True),
     ],
 )
-def test_subscription_matching(
-    event_type: str, patterns: tuple[str, ...], expected: bool
-) -> None:
+def test_subscription_matching(event_type: str, patterns: tuple[str, ...], expected: bool) -> None:
     assert matches(event_type, patterns) is expected
 
 
@@ -135,7 +133,7 @@ def test_registry_validates_a_payload_against_its_model() -> None:
 
 
 def test_an_unregistered_type_is_named_in_the_error() -> None:
-    with pytest.raises(UnknownEventType, match="sarana.incident.report.received"):
+    with pytest.raises(UnknownEventType, match=r"sarana\.incident\.report\.received"):
         parse_payload(an_event())
 
 

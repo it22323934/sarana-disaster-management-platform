@@ -30,9 +30,7 @@ def ds_officer(area: str) -> Principal:
 
 
 def test_the_two_human_gates_are_exactly_two() -> None:
-    assert HUMAN_GATE_SCOPES == frozenset(
-        {Scope.DISPATCH_COMMIT, Scope.DISBURSEMENT_RELEASE}
-    )
+    assert frozenset({Scope.DISPATCH_COMMIT, Scope.DISBURSEMENT_RELEASE}) == HUMAN_GATE_SCOPES
 
 
 def test_no_machine_role_holds_either_gate() -> None:

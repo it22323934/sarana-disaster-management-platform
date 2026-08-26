@@ -6,7 +6,9 @@ from sarana_shared.telemetry.logging import REDACTED, redact, redact_text, redac
 
 
 def test_legacy_nic_is_removed() -> None:
-    assert redact_text("applicant 912345678V filed a claim") == f"applicant {REDACTED} filed a claim"
+    swept = redact_text("applicant 912345678V filed a claim")
+
+    assert swept == f"applicant {REDACTED} filed a claim"
 
 
 def test_modern_twelve_digit_nic_is_removed() -> None:

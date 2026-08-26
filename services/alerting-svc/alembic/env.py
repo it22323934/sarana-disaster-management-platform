@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import os
 from logging.config import fileConfig
+from pathlib import Path
 from typing import Any
 
 from alembic import context
@@ -43,12 +44,31 @@ def include_object(
 
 
 def _database_url() -> str:
+    """Resolve the async DSN.
+
+    An explicit environment variable always wins - that is how CI and the containers
+    supply it. Falling back to the repository .env means `alembic upgrade head` also
+    works when a developer runs it directly from this directory, rather than only
+    through `make migrate`.
+    """
     url = os.environ.get("SARANA_DATABASE_URL")
-    if not url:
-        raise RuntimeError(
-            "SARANA_DATABASE_URL is not set. Alembic needs it to reach the database."
-        )
-    return url
+    if url:
+        return url
+
+    from dotenv import dotenv_values
+
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / ".env"
+        if candidate.exists():
+            url = dotenv_values(candidate).get("SARANA_DATABASE_URL")
+            if url:
+                return url
+            break
+
+    raise RuntimeError(
+        "SARANA_DATABASE_URL is not set and no .env in any parent directory defines it. "
+        "Alembic needs it to reach the database."
+    )
 
 
 def run_migrations_offline() -> None:

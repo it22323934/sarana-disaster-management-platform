@@ -44,9 +44,7 @@ def test_a_point_cannot_exist_without_an_accuracy() -> None:
 def test_swapped_coordinates_are_caught_and_named() -> None:
     """The most common inbound data error, and the easiest to detect."""
     with pytest.raises(ValidationError, match="swapped"):
-        GeoPoint(
-            lon=BATTICALOA_LAT, lat=BATTICALOA_LON, accuracy_m=10.0, source=PointSource.GPS
-        )
+        GeoPoint(lon=BATTICALOA_LAT, lat=BATTICALOA_LON, accuracy_m=10.0, source=PointSource.GPS)
 
 
 def test_a_point_outside_sri_lanka_is_a_data_error() -> None:
