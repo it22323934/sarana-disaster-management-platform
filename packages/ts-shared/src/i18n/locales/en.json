@@ -1,0 +1,13 @@
+{
+  "common": {
+    "loading": "Loading",
+    "error": "Something went wrong",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "offline": "Offline",
+    "online": "Online",
+    "simulatedData": "Simulated data"
+  }
+}
