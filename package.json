@@ -1,0 +1,25 @@
+{
+  "name": "sarana",
+  "private": true,
+  "version": "0.1.0",
+  "description": "SARANA - AI-enabled, offline-first, multi-hazard disaster response platform for Sri Lanka",
+  "packageManager": "pnpm@9.10.0",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "verify-i18n": "turbo run verify-i18n",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  }
+}

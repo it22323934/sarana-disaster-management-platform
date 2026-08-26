@@ -1,0 +1,42 @@
+{
+  "action": {
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "retry": "Retry",
+    "search": "Search",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "submit": "Submit",
+    "viewDetail": "View detail"
+  },
+  "common": {
+    "district": "District",
+    "dsDivision": "DS Division",
+    "gnDivision": "GN Division",
+    "loading": "Loading",
+    "noResults": "No results",
+    "province": "Province",
+    "simulatedData": "Simulated data",
+    "updatedAt": "Updated {time}"
+  },
+  "error": {
+    "forbidden": "This record is outside your assigned area.",
+    "offline": "You are offline. Your work is saved and will sync automatically.",
+    "reference": "Quote reference {correlationId} when reporting this.",
+    "unexpected": "Something went wrong.",
+    "unreachable": "Could not reach SARANA."
+  },
+  "gate": {
+    "dispatchTitle": "Confirm life-safety dispatch",
+    "disbursementTitle": "Release disbursement",
+    "requiresApproval": "This action requires your approval and is recorded against your name."
+  },
+  "status": {
+    "approved": "Approved",
+    "pending": "Pending",
+    "rejected": "Rejected",
+    "underReview": "Under review",
+    "verified": "Verified"
+  }
+}

@@ -1,0 +1,31 @@
+@import 'tailwindcss';
+
+/*
+ * The design system - colour tokens, the three-script type scale, the map shell - is
+ * built in a later step. What is here now is the minimum a page needs to render
+ * legibly in Sinhala, Tamil and English.
+ *
+ * Sinhala and Tamil glyphs are taller than Latin ones at the same point size, so the
+ * base line-height is deliberately looser than a Latin-only interface would use.
+ */
+
+@theme {
+  --font-sans:
+    'Noto Sans', 'Noto Sans Sinhala', 'Noto Sans Tamil', ui-sans-serif, system-ui,
+    sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', 'Source Code Pro', monospace;
+}
+
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  font-family: var(--font-sans);
+  line-height: 1.6;
+}
+
+:lang(si),
+:lang(ta) {
+  line-height: 1.85;
+}

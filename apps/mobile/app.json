@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "SARANA",
+    "slug": "sarana",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "sarana",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "plugins": ["expo-router", "expo-sqlite"],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "lk.sarana.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "SARANA uses your location to place your report in the right GN division so responders can reach you.",
+        "NSMicrophoneUsageDescription": "SARANA records a short voice note so you can report in Sinhala or Tamil without typing.",
+        "NSCameraUsageDescription": "SARANA attaches a photo to your report so responders can assess the situation before they arrive."
+      }
+    },
+    "android": {
+      "package": "lk.sarana.app",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "RECORD_AUDIO",
+        "CAMERA"
+      ]
+    },
+    "extra": {
+      "saranaApiUrl": "http://localhost:8001"
+    }
+  }
+}

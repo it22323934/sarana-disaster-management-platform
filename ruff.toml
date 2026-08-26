@@ -1,0 +1,56 @@
+line-length = 100
+target-version = "py312"
+
+exclude = [
+    ".venv",
+    "**/alembic/versions",
+    "node_modules",
+]
+
+[lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "DTZ",  # flake8-datetimez - no naive datetimes (see conventions: Time)
+    "T20",  # flake8-print - structured logging only
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific
+    "ASYNC",
+    "S",    # flake8-bandit - this codebase gets a security review
+    "BLE",  # flake8-blind-except - a bare `except Exception` needs a reason
+]
+ignore = [
+    "B008",  # FastAPI Depends() in defaults is the framework idiom
+    # The error hierarchy is named for the HTTP condition it represents
+    # (`raise NotFound(...)`, `raise Forbidden(...)`). The base class carries the
+    # `Error` suffix; repeating it on every subclass reads worse, not clearer.
+    "N818",
+]
+
+[lint.per-file-ignores]
+# assert is the point of a test; a hardcoded password in a fixture is not a secret.
+"**/tests/**" = ["S101", "S105", "S106"]
+# The shared test helpers are test code that happens to ship inside the package.
+"packages/py-shared/src/sarana_shared/testing/**" = ["S101"]
+"tools/sarana-verify/**" = ["T20"]  # a CLI's whole job is printing
+
+[lint.isort]
+known-first-party = [
+    "sarana_shared",
+    "core_api",
+    "incident_svc",
+    "alerting_svc",
+    "ledger_svc",
+    "agent_svc",
+    "gov_mock",
+]
+
+[format]
+quote-style = "double"
+indent-style = "space"
