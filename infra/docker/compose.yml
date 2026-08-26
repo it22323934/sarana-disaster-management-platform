@@ -1,0 +1,232 @@
+# Local development stack. `make up` from the repo root drives this.
+#
+# Port map (host:container) — keep this list in sync with reality, it's the map an
+# engineer reaches for first when something won't bind:
+#   5432  postgres (PostGIS + pgvector)
+#   6379  redis (Redis Streams — local event bus)
+#   9000  minio (S3 API)
+#   9001  minio (console)
+#   16686 jaeger (UI)
+#   4318  jaeger (OTLP HTTP receiver)
+#   8025  mailpit (web UI)
+#   1025  mailpit (SMTP)
+#   8001  core-api
+#   8002  incident-svc
+#   8003  alerting-svc
+#   8004  ledger-svc
+#   8005  agent-svc
+#   8006  gov-mock
+
+name: sarana
+
+networks:
+  sarana:
+    name: sarana
+
+volumes:
+  postgres-data:
+  minio-data:
+
+x-service-env: &service-env
+  SARANA_ENV: dev
+  SARANA_EVENT_BUS: redis_streams
+  SARANA_REDIS_URL: redis://redis:6379/0
+  SARANA_OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+
+services:
+  postgres:
+    build:
+      context: ../..
+      dockerfile: infra/docker/postgres.Dockerfile
+    networks: [sarana]
+    ports: ["5432:5432"]
+    environment:
+      POSTGRES_DB: sarana
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sarana"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    networks: [sarana]
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    networks: [sarana]
+    ports: ["9000:9000", "9001:9001"]
+    environment:
+      MINIO_ROOT_USER: sarana-dev
+      MINIO_ROOT_PASSWORD: sarana-dev-secret
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    networks: [sarana]
+    ports:
+      - "16686:16686" # UI
+      - "4318:4318" # OTLP HTTP receiver
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
+  mailpit:
+    image: axllent/mailpit:latest
+    networks: [sarana]
+    ports:
+      - "8025:8025" # web UI
+      - "1025:1025" # SMTP
+
+  core-api:
+    build:
+      context: ../..
+      dockerfile: services/core-api/Dockerfile
+      target: dev
+    networks: [sarana]
+    ports: ["8001:8001"]
+    environment:
+      <<: *service-env
+      SARANA_CORE_API_DATABASE_URL: postgresql+asyncpg://sarana_app:sarana_app@postgres:5432/sarana
+    volumes:
+      - ../../services/core-api/src:/app/services/core-api/src:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/healthz')"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  incident-svc:
+    build:
+      context: ../..
+      dockerfile: services/incident-svc/Dockerfile
+      target: dev
+    networks: [sarana]
+    ports: ["8002:8002"]
+    environment:
+      <<: *service-env
+      SARANA_INCIDENT_SVC_DATABASE_URL: postgresql+asyncpg://sarana_app:sarana_app@postgres:5432/sarana
+    volumes:
+      - ../../services/incident-svc/src:/app/services/incident-svc/src:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/healthz')"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  alerting-svc:
+    build:
+      context: ../..
+      dockerfile: services/alerting-svc/Dockerfile
+      target: dev
+    networks: [sarana]
+    ports: ["8003:8003"]
+    environment:
+      <<: *service-env
+      SARANA_ALERTING_SVC_DATABASE_URL: postgresql+asyncpg://sarana_app:sarana_app@postgres:5432/sarana
+    volumes:
+      - ../../services/alerting-svc/src:/app/services/alerting-svc/src:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      mailpit: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/healthz')"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  ledger-svc:
+    build:
+      context: ../..
+      dockerfile: services/ledger-svc/Dockerfile
+      target: dev
+    networks: [sarana]
+    ports: ["8004:8004"]
+    environment:
+      <<: *service-env
+      SARANA_LEDGER_SVC_DATABASE_URL: postgresql+asyncpg://sarana_app:sarana_app@postgres:5432/sarana
+      SARANA_S3_ENDPOINT_URL: http://minio:9000
+    volumes:
+      - ../../services/ledger-svc/src:/app/services/ledger-svc/src:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/healthz')"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  agent-svc:
+    build:
+      context: ../..
+      dockerfile: services/agent-svc/Dockerfile
+      target: dev
+    networks: [sarana]
+    ports: ["8005:8005"]
+    environment:
+      <<: *service-env
+      SARANA_AGENT_SVC_DATABASE_URL: postgresql+asyncpg://sarana_app:sarana_app@postgres:5432/sarana
+    volumes:
+      - ../../services/agent-svc/src:/app/services/agent-svc/src:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8005/healthz')"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  gov-mock:
+    build:
+      context: ../..
+      dockerfile: services/gov-mock/Dockerfile
+      target: dev
+    networks: [sarana]
+    ports: ["8006:8006"]
+    environment:
+      <<: *service-env
+      SARANA_GOV_MOCK_DATABASE_URL: postgresql+asyncpg://sarana_app:sarana_app@postgres:5432/sarana
+    volumes:
+      - ../../services/gov-mock/src:/app/services/gov-mock/src:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8006/healthz')"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
