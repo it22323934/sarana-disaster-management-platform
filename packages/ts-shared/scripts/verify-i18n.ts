@@ -59,7 +59,7 @@ function main(): number {
       }
     }
 
-    const label = relative(REPO_ROOT, directory).replaceAll('\', '/');
+    const label = relative(REPO_ROOT, directory).replaceAll('\\', '/');
     if (missingFiles.length > 0) {
       failed = true;
       process.stderr.write(`${label}: missing ${missingFiles.join(', ')}.json entirely\n`);
