@@ -29,10 +29,47 @@ LOCALISED_FIELD_SUFFIXES: tuple[str, ...] = (
     "summary",
 )
 
+# Fields that end in a localisable suffix but are not citizen-facing content, so the rule
+# must not apply to them. Two kinds:
+#
+#   - A person's own name. "Asiri Jayawardena" has no Sinhala and Tamil versions; demanding
+#     three would mean inventing two, which is worse than leaving it in one.
+#   - The name of a machine thing - an agent, a table, a file. Nobody reads these but us.
+#
+# Everything else ending in `name` stays covered, because a division name, a role label and
+# a hazard type genuinely do reach a citizen.
+NON_LOCALISED_FIELDS: frozenset[str] = frozenset(
+    {
+        # People
+        "full_name",
+        "first_name",
+        "last_name",
+        "given_name",
+        "family_name",
+        "head_name",
+        "contact_name",
+        "officer_name",
+        # Machines
+        "agent_name",
+        "bus_name",
+        "column_name",
+        "event_name",
+        "file_name",
+        "host_name",
+        "index_name",
+        "schema_name",
+        "service_name",
+        "stream_name",
+        "table_name",
+    }
+)
+
 SKIP_DIRS = {"node_modules", ".next", ".turbo", "dist", "build", ".venv", "__pycache__"}
 
 
 def _is_localised_field(key: str) -> bool:
+    if key in NON_LOCALISED_FIELDS:
+        return False
     return any(key == suffix or key.endswith(f"_{suffix}") for suffix in LOCALISED_FIELD_SUFFIXES)
 
 

@@ -68,6 +68,15 @@ async def load_entry(engine: AsyncEngine, root: Path, entry: SeedEntry) -> int:
     schema_name, _, table_name = entry.table.rpartition(".")
     metadata = MetaData(schema=schema_name or None)
 
+    # Only the columns the seed file actually supplies. Two reasons, both of which bite on
+    # the second `make seed` rather than the first:
+    #
+    #   - A column absent from the file would be updated to its default, silently wiping
+    #     whatever the application had written there since the last load.
+    #   - Generated columns (gn_division.centroid) cannot be assigned at all, so including
+    #     one turns every re-seed into an error.
+    supplied = {name for record in records for name in record}
+
     async with engine.begin() as connection:
         table = await connection.run_sync(
             lambda sync_conn: Table(table_name, metadata, autoload_with=sync_conn)
@@ -76,7 +85,9 @@ async def load_entry(engine: AsyncEngine, root: Path, entry: SeedEntry) -> int:
         updatable = {
             column.name: statement.excluded[column.name]
             for column in table.columns
-            if column.name not in entry.key and column.name != "created_at"
+            if column.name in supplied
+            and column.name not in entry.key
+            and column.name != "created_at"
         }
         statement = (
             statement.on_conflict_do_update(index_elements=entry.key, set_=updatable)
@@ -138,7 +149,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--database-url",
         default=None,
-        help="Async DSN. Defaults to SARANA_DATABASE_URL from the environment.",
+        help=(
+            "Async DSN. Defaults to SARANA_MIGRATION_DATABASE_URL, falling back to "
+            "SARANA_DATABASE_URL."
+        ),
     )
     args = parser.parse_args(argv)
 
@@ -146,9 +160,18 @@ def main(argv: list[str] | None = None) -> int:
     if database_url is None:
         import os
 
-        database_url = os.environ.get("SARANA_DATABASE_URL")
+        # Seeding writes reference data - divisions, roles, accounts - which the
+        # application role deliberately cannot insert. It runs as the owner, the same
+        # credential Alembic uses, so the grants that protect production stay in force
+        # rather than being loosened to make a local load work.
+        database_url = os.environ.get("SARANA_MIGRATION_DATABASE_URL") or os.environ.get(
+            "SARANA_DATABASE_URL"
+        )
     if not database_url:
-        sys.stderr.write("SARANA_DATABASE_URL is not set and --database-url was not given.\n")
+        sys.stderr.write(
+            "Neither SARANA_MIGRATION_DATABASE_URL nor SARANA_DATABASE_URL is set, "
+            "and --database-url was not given.\n"
+        )
         return 78
 
     return asyncio.run(run(args.path, database_url))

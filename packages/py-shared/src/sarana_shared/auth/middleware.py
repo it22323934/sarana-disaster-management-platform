@@ -47,6 +47,10 @@ ANONYMOUS_PATHS: Final[frozenset[str]] = frozenset(
         "/api/v1/auth/refresh",
         "/api/v1/auth/otp/request",
         "/api/v1/auth/otp/verify",
+        # Enum labels, not data about anyone. The sign-in screen needs its own language
+        # picker before there is a token to present, so requiring one here would mean a
+        # citizen could not read the page that asks them to log in.
+        "/api/v1/meta/reference",
     }
 )
 

@@ -1,0 +1,1002 @@
+[
+  {
+    "id": "8e20b77b-ab96-7e8e-9969-39e28dcee95e",
+    "code": "LK-11-01",
+    "district_id": "f2a2e19a-d20a-749d-85bc-95df1f94e8d5",
+    "name": {
+      "si": "කොළඹ 1",
+      "ta": "கொழும்பு 1",
+      "en": "Colombo 1"
+    }
+  },
+  {
+    "id": "c062bd72-5cbc-7e88-8ea3-2ce42eccd4e8",
+    "code": "LK-11-02",
+    "district_id": "f2a2e19a-d20a-749d-85bc-95df1f94e8d5",
+    "name": {
+      "si": "කොළඹ 2",
+      "ta": "கொழும்பு 2",
+      "en": "Colombo 2"
+    }
+  },
+  {
+    "id": "3c5ed117-d756-73bd-9c86-ce47a7245580",
+    "code": "LK-11-03",
+    "district_id": "f2a2e19a-d20a-749d-85bc-95df1f94e8d5",
+    "name": {
+      "si": "කොළඹ 3",
+      "ta": "கொழும்பு 3",
+      "en": "Colombo 3"
+    }
+  },
+  {
+    "id": "a81cd746-1a5a-774a-bfc7-14f3f3d4cd1e",
+    "code": "LK-11-04",
+    "district_id": "f2a2e19a-d20a-749d-85bc-95df1f94e8d5",
+    "name": {
+      "si": "කොළඹ 4",
+      "ta": "கொழும்பு 4",
+      "en": "Colombo 4"
+    }
+  },
+  {
+    "id": "5c5a60f5-2b37-7069-b6a6-8b1a26cb96b7",
+    "code": "LK-12-01",
+    "district_id": "4f007050-90f4-7b81-b06a-f41e01cee808",
+    "name": {
+      "si": "ගම්පහ 1",
+      "ta": "கம்பஹா 1",
+      "en": "Gampaha 1"
+    }
+  },
+  {
+    "id": "b3d00cb0-d5c9-7f9e-9abe-dd480ab31a7f",
+    "code": "LK-12-02",
+    "district_id": "4f007050-90f4-7b81-b06a-f41e01cee808",
+    "name": {
+      "si": "ගම්පහ 2",
+      "ta": "கம்பஹா 2",
+      "en": "Gampaha 2"
+    }
+  },
+  {
+    "id": "c0d6ae10-606b-7045-aefa-ef6fd2675b85",
+    "code": "LK-12-03",
+    "district_id": "4f007050-90f4-7b81-b06a-f41e01cee808",
+    "name": {
+      "si": "ගම්පහ 3",
+      "ta": "கம்பஹா 3",
+      "en": "Gampaha 3"
+    }
+  },
+  {
+    "id": "3938c868-e4ea-7d15-ade0-3396c8d74aa3",
+    "code": "LK-12-04",
+    "district_id": "4f007050-90f4-7b81-b06a-f41e01cee808",
+    "name": {
+      "si": "ගම්පහ 4",
+      "ta": "கம்பஹா 4",
+      "en": "Gampaha 4"
+    }
+  },
+  {
+    "id": "00dfbc84-0817-79bc-ab4a-9375b3fe310f",
+    "code": "LK-13-01",
+    "district_id": "33bc363d-8b77-73e4-887b-c9de1ab6c50f",
+    "name": {
+      "si": "කළුතර 1",
+      "ta": "களுத்துறை 1",
+      "en": "Kalutara 1"
+    }
+  },
+  {
+    "id": "5791a361-db03-7a76-a3ab-2aa346bba6b7",
+    "code": "LK-13-02",
+    "district_id": "33bc363d-8b77-73e4-887b-c9de1ab6c50f",
+    "name": {
+      "si": "කළුතර 2",
+      "ta": "களுத்துறை 2",
+      "en": "Kalutara 2"
+    }
+  },
+  {
+    "id": "eb2de133-989d-7976-aa2e-1e43db5d5553",
+    "code": "LK-13-03",
+    "district_id": "33bc363d-8b77-73e4-887b-c9de1ab6c50f",
+    "name": {
+      "si": "කළුතර 3",
+      "ta": "களுத்துறை 3",
+      "en": "Kalutara 3"
+    }
+  },
+  {
+    "id": "90cdc5bf-324f-7313-a1a6-677faeddfcba",
+    "code": "LK-13-04",
+    "district_id": "33bc363d-8b77-73e4-887b-c9de1ab6c50f",
+    "name": {
+      "si": "කළුතර 4",
+      "ta": "களுத்துறை 4",
+      "en": "Kalutara 4"
+    }
+  },
+  {
+    "id": "4c4740d0-72d9-78fd-b298-6e626c568f83",
+    "code": "LK-21-01",
+    "district_id": "f0094cf2-51db-7ff8-91e8-3ebcbc2d5d26",
+    "name": {
+      "si": "මහනුවර 1",
+      "ta": "கண்டி 1",
+      "en": "Kandy 1"
+    }
+  },
+  {
+    "id": "c92bee6e-4511-7467-9244-c959538f0b9d",
+    "code": "LK-21-02",
+    "district_id": "f0094cf2-51db-7ff8-91e8-3ebcbc2d5d26",
+    "name": {
+      "si": "මහනුවර 2",
+      "ta": "கண்டி 2",
+      "en": "Kandy 2"
+    }
+  },
+  {
+    "id": "22999c51-af20-721c-a37f-b036c87a3713",
+    "code": "LK-21-03",
+    "district_id": "f0094cf2-51db-7ff8-91e8-3ebcbc2d5d26",
+    "name": {
+      "si": "මහනුවර 3",
+      "ta": "கண்டி 3",
+      "en": "Kandy 3"
+    }
+  },
+  {
+    "id": "b7a3ede3-8a21-7f90-acaa-ee853b2203e5",
+    "code": "LK-21-04",
+    "district_id": "f0094cf2-51db-7ff8-91e8-3ebcbc2d5d26",
+    "name": {
+      "si": "මහනුවර 4",
+      "ta": "கண்டி 4",
+      "en": "Kandy 4"
+    }
+  },
+  {
+    "id": "3ca452ba-6f8d-7605-98c0-47dc23dfa981",
+    "code": "LK-22-01",
+    "district_id": "42edf04a-cbbd-7879-9bb8-f14d5f03a825",
+    "name": {
+      "si": "මාතලේ 1",
+      "ta": "மாத்தளை 1",
+      "en": "Matale 1"
+    }
+  },
+  {
+    "id": "1aa0b917-42bc-79e1-98cd-8437482af4ef",
+    "code": "LK-22-02",
+    "district_id": "42edf04a-cbbd-7879-9bb8-f14d5f03a825",
+    "name": {
+      "si": "මාතලේ 2",
+      "ta": "மாத்தளை 2",
+      "en": "Matale 2"
+    }
+  },
+  {
+    "id": "365ac338-7949-70cf-93fe-d2ca745f82ff",
+    "code": "LK-22-03",
+    "district_id": "42edf04a-cbbd-7879-9bb8-f14d5f03a825",
+    "name": {
+      "si": "මාතලේ 3",
+      "ta": "மாத்தளை 3",
+      "en": "Matale 3"
+    }
+  },
+  {
+    "id": "14d5b230-2f0e-72c5-a9c0-412c3d4e574c",
+    "code": "LK-22-04",
+    "district_id": "42edf04a-cbbd-7879-9bb8-f14d5f03a825",
+    "name": {
+      "si": "මාතලේ 4",
+      "ta": "மாத்தளை 4",
+      "en": "Matale 4"
+    }
+  },
+  {
+    "id": "1f364948-c823-726c-a3e5-f3a56fbf6c4c",
+    "code": "LK-23-01",
+    "district_id": "332ca1fd-35f4-7284-84fa-014c678f5283",
+    "name": {
+      "si": "නුවරඑළිය 1",
+      "ta": "நுவரெலியா 1",
+      "en": "Nuwara Eliya 1"
+    }
+  },
+  {
+    "id": "932370c3-e109-77b8-b34c-2817eebe2026",
+    "code": "LK-23-02",
+    "district_id": "332ca1fd-35f4-7284-84fa-014c678f5283",
+    "name": {
+      "si": "නුවරඑළිය 2",
+      "ta": "நுவரெலியா 2",
+      "en": "Nuwara Eliya 2"
+    }
+  },
+  {
+    "id": "8bc0bfb7-ca26-7239-bd90-92892148cd67",
+    "code": "LK-23-03",
+    "district_id": "332ca1fd-35f4-7284-84fa-014c678f5283",
+    "name": {
+      "si": "නුවරඑළිය 3",
+      "ta": "நுவரெலியா 3",
+      "en": "Nuwara Eliya 3"
+    }
+  },
+  {
+    "id": "3853b3f9-3af5-756c-8e06-fadc24b8c51e",
+    "code": "LK-23-04",
+    "district_id": "332ca1fd-35f4-7284-84fa-014c678f5283",
+    "name": {
+      "si": "නුවරඑළිය 4",
+      "ta": "நுவரெலியா 4",
+      "en": "Nuwara Eliya 4"
+    }
+  },
+  {
+    "id": "836c7a3d-d523-74bc-b42a-528f3595ef57",
+    "code": "LK-31-01",
+    "district_id": "9b651e37-1738-7eb5-8d64-c025ee8cdccb",
+    "name": {
+      "si": "ගාල්ල 1",
+      "ta": "காலி 1",
+      "en": "Galle 1"
+    }
+  },
+  {
+    "id": "c5823902-33a6-73cc-a520-e50434b48eca",
+    "code": "LK-31-02",
+    "district_id": "9b651e37-1738-7eb5-8d64-c025ee8cdccb",
+    "name": {
+      "si": "ගාල්ල 2",
+      "ta": "காலி 2",
+      "en": "Galle 2"
+    }
+  },
+  {
+    "id": "59d7a349-fe0e-7f27-a909-f87306a7916b",
+    "code": "LK-31-03",
+    "district_id": "9b651e37-1738-7eb5-8d64-c025ee8cdccb",
+    "name": {
+      "si": "ගාල්ල 3",
+      "ta": "காலி 3",
+      "en": "Galle 3"
+    }
+  },
+  {
+    "id": "5fe071da-fef9-755a-a141-26aca6aa5b20",
+    "code": "LK-31-04",
+    "district_id": "9b651e37-1738-7eb5-8d64-c025ee8cdccb",
+    "name": {
+      "si": "ගාල්ල 4",
+      "ta": "காலி 4",
+      "en": "Galle 4"
+    }
+  },
+  {
+    "id": "185485b9-9b69-7a2f-becb-910989d9978d",
+    "code": "LK-32-01",
+    "district_id": "2ce2559c-df84-780a-bd06-93bb73821e33",
+    "name": {
+      "si": "මාතර 1",
+      "ta": "மாத்தறை 1",
+      "en": "Matara 1"
+    }
+  },
+  {
+    "id": "893e4eb5-888f-7882-9d09-b0da26994600",
+    "code": "LK-32-02",
+    "district_id": "2ce2559c-df84-780a-bd06-93bb73821e33",
+    "name": {
+      "si": "මාතර 2",
+      "ta": "மாத்தறை 2",
+      "en": "Matara 2"
+    }
+  },
+  {
+    "id": "73c647e7-1aec-7ed9-9727-5f1569505bfb",
+    "code": "LK-32-03",
+    "district_id": "2ce2559c-df84-780a-bd06-93bb73821e33",
+    "name": {
+      "si": "මාතර 3",
+      "ta": "மாத்தறை 3",
+      "en": "Matara 3"
+    }
+  },
+  {
+    "id": "461cc25f-7acd-72d8-8ca3-7d29243cc057",
+    "code": "LK-32-04",
+    "district_id": "2ce2559c-df84-780a-bd06-93bb73821e33",
+    "name": {
+      "si": "මාතර 4",
+      "ta": "மாத்தறை 4",
+      "en": "Matara 4"
+    }
+  },
+  {
+    "id": "68be9a45-2ccb-7846-bfca-422198380312",
+    "code": "LK-33-01",
+    "district_id": "2ddf6a41-f270-793d-a630-66b394a6790d",
+    "name": {
+      "si": "හම්බන්තොට 1",
+      "ta": "அம்பாந்தோட்டை 1",
+      "en": "Hambantota 1"
+    }
+  },
+  {
+    "id": "9ecc0abc-9a3e-7a57-9a94-40844d611f0d",
+    "code": "LK-33-02",
+    "district_id": "2ddf6a41-f270-793d-a630-66b394a6790d",
+    "name": {
+      "si": "හම්බන්තොට 2",
+      "ta": "அம்பாந்தோட்டை 2",
+      "en": "Hambantota 2"
+    }
+  },
+  {
+    "id": "19abd679-345b-7990-aeb3-21a0cd1c5111",
+    "code": "LK-33-03",
+    "district_id": "2ddf6a41-f270-793d-a630-66b394a6790d",
+    "name": {
+      "si": "හම්බන්තොට 3",
+      "ta": "அம்பாந்தோட்டை 3",
+      "en": "Hambantota 3"
+    }
+  },
+  {
+    "id": "1939d0c1-4e77-70b2-83fe-c53276e38f5c",
+    "code": "LK-33-04",
+    "district_id": "2ddf6a41-f270-793d-a630-66b394a6790d",
+    "name": {
+      "si": "හම්බන්තොට 4",
+      "ta": "அம்பாந்தோட்டை 4",
+      "en": "Hambantota 4"
+    }
+  },
+  {
+    "id": "6bb89e08-e60c-795f-93e6-7ac6a5988eca",
+    "code": "LK-41-01",
+    "district_id": "72a233e6-2b3f-7be6-9880-468b241639b1",
+    "name": {
+      "si": "යාපනය 1",
+      "ta": "யாழ்ப்பாணம் 1",
+      "en": "Jaffna 1"
+    }
+  },
+  {
+    "id": "800df202-63eb-7fe0-937d-48ab84cc2c32",
+    "code": "LK-41-02",
+    "district_id": "72a233e6-2b3f-7be6-9880-468b241639b1",
+    "name": {
+      "si": "යාපනය 2",
+      "ta": "யாழ்ப்பாணம் 2",
+      "en": "Jaffna 2"
+    }
+  },
+  {
+    "id": "77977541-b64f-75b8-a755-cdeea2fc0002",
+    "code": "LK-41-03",
+    "district_id": "72a233e6-2b3f-7be6-9880-468b241639b1",
+    "name": {
+      "si": "යාපනය 3",
+      "ta": "யாழ்ப்பாணம் 3",
+      "en": "Jaffna 3"
+    }
+  },
+  {
+    "id": "bc35aad4-7190-7585-bf74-8662ae6b6134",
+    "code": "LK-41-04",
+    "district_id": "72a233e6-2b3f-7be6-9880-468b241639b1",
+    "name": {
+      "si": "යාපනය 4",
+      "ta": "யாழ்ப்பாணம் 4",
+      "en": "Jaffna 4"
+    }
+  },
+  {
+    "id": "68acca2a-b3c3-71de-b7ce-21bef5de056f",
+    "code": "LK-42-01",
+    "district_id": "c30936f9-c263-76ce-98fd-78b03347167f",
+    "name": {
+      "si": "කිලිනොච්චිය 1",
+      "ta": "கிளிநொச்சி 1",
+      "en": "Kilinochchi 1"
+    }
+  },
+  {
+    "id": "1ffbd575-241e-7333-98b8-a0c3aad9b2d3",
+    "code": "LK-42-02",
+    "district_id": "c30936f9-c263-76ce-98fd-78b03347167f",
+    "name": {
+      "si": "කිලිනොච්චිය 2",
+      "ta": "கிளிநொச்சி 2",
+      "en": "Kilinochchi 2"
+    }
+  },
+  {
+    "id": "196eab49-ef4a-7491-b9fc-68fca7641f12",
+    "code": "LK-42-03",
+    "district_id": "c30936f9-c263-76ce-98fd-78b03347167f",
+    "name": {
+      "si": "කිලිනොච්චිය 3",
+      "ta": "கிளிநொச்சி 3",
+      "en": "Kilinochchi 3"
+    }
+  },
+  {
+    "id": "08b9371b-54f0-7eef-b0cc-2d1a54c674c0",
+    "code": "LK-42-04",
+    "district_id": "c30936f9-c263-76ce-98fd-78b03347167f",
+    "name": {
+      "si": "කිලිනොච්චිය 4",
+      "ta": "கிளிநொச்சி 4",
+      "en": "Kilinochchi 4"
+    }
+  },
+  {
+    "id": "d0f3d80b-8b6d-7c5f-9b2e-ac002ba611d3",
+    "code": "LK-43-01",
+    "district_id": "8c7164b5-205d-7486-b5b5-86986996c785",
+    "name": {
+      "si": "මන්නාරම 1",
+      "ta": "மன்னார் 1",
+      "en": "Mannar 1"
+    }
+  },
+  {
+    "id": "316b80b1-364b-7892-ab5d-e670b85f3e6e",
+    "code": "LK-43-02",
+    "district_id": "8c7164b5-205d-7486-b5b5-86986996c785",
+    "name": {
+      "si": "මන්නාරම 2",
+      "ta": "மன்னார் 2",
+      "en": "Mannar 2"
+    }
+  },
+  {
+    "id": "f031106e-72df-70c5-85f5-ebe209dd648d",
+    "code": "LK-43-03",
+    "district_id": "8c7164b5-205d-7486-b5b5-86986996c785",
+    "name": {
+      "si": "මන්නාරම 3",
+      "ta": "மன்னார் 3",
+      "en": "Mannar 3"
+    }
+  },
+  {
+    "id": "44d7e842-4f2b-777b-95a3-cfc8efe13486",
+    "code": "LK-43-04",
+    "district_id": "8c7164b5-205d-7486-b5b5-86986996c785",
+    "name": {
+      "si": "මන්නාරම 4",
+      "ta": "மன்னார் 4",
+      "en": "Mannar 4"
+    }
+  },
+  {
+    "id": "0527f9c1-066e-7236-80bc-5fe51ba3895a",
+    "code": "LK-44-01",
+    "district_id": "6c0b58e4-dd55-764d-87e2-5531ecb84ab1",
+    "name": {
+      "si": "වවුනියාව 1",
+      "ta": "வவுனியா 1",
+      "en": "Vavuniya 1"
+    }
+  },
+  {
+    "id": "21d05b31-4764-7fb7-8c0e-ee8508c2b012",
+    "code": "LK-44-02",
+    "district_id": "6c0b58e4-dd55-764d-87e2-5531ecb84ab1",
+    "name": {
+      "si": "වවුනියාව 2",
+      "ta": "வவுனியா 2",
+      "en": "Vavuniya 2"
+    }
+  },
+  {
+    "id": "88217f61-2f41-7947-9933-367822652428",
+    "code": "LK-44-03",
+    "district_id": "6c0b58e4-dd55-764d-87e2-5531ecb84ab1",
+    "name": {
+      "si": "වවුනියාව 3",
+      "ta": "வவுனியா 3",
+      "en": "Vavuniya 3"
+    }
+  },
+  {
+    "id": "83348949-5c36-766b-8080-f530f53d511e",
+    "code": "LK-44-04",
+    "district_id": "6c0b58e4-dd55-764d-87e2-5531ecb84ab1",
+    "name": {
+      "si": "වවුනියාව 4",
+      "ta": "வவுனியா 4",
+      "en": "Vavuniya 4"
+    }
+  },
+  {
+    "id": "8c245e82-10a8-788f-ad79-b6fe329c7699",
+    "code": "LK-45-01",
+    "district_id": "50ad9011-1d48-7760-820b-a7e61f020bf7",
+    "name": {
+      "si": "මුලතිව් 1",
+      "ta": "முல்லைத்தீவு 1",
+      "en": "Mullaitivu 1"
+    }
+  },
+  {
+    "id": "02f54525-7fb4-7f0f-972a-8b57430a8ca9",
+    "code": "LK-45-02",
+    "district_id": "50ad9011-1d48-7760-820b-a7e61f020bf7",
+    "name": {
+      "si": "මුලතිව් 2",
+      "ta": "முல்லைத்தீவு 2",
+      "en": "Mullaitivu 2"
+    }
+  },
+  {
+    "id": "5dc53fed-fbee-7033-a395-fe1beded1891",
+    "code": "LK-45-03",
+    "district_id": "50ad9011-1d48-7760-820b-a7e61f020bf7",
+    "name": {
+      "si": "මුලතිව් 3",
+      "ta": "முல்லைத்தீவு 3",
+      "en": "Mullaitivu 3"
+    }
+  },
+  {
+    "id": "153b50b3-b7c3-7105-b5c2-0bade99e4af3",
+    "code": "LK-45-04",
+    "district_id": "50ad9011-1d48-7760-820b-a7e61f020bf7",
+    "name": {
+      "si": "මුලතිව් 4",
+      "ta": "முல்லைத்தீவு 4",
+      "en": "Mullaitivu 4"
+    }
+  },
+  {
+    "id": "0b048126-81c1-7a16-a3d5-c147e7404ebf",
+    "code": "LK-51-01",
+    "district_id": "ddd6dfbb-a375-7240-96cc-53d977afcfd2",
+    "name": {
+      "si": "මඩකලපුව 1",
+      "ta": "மட்டக்களப்பு 1",
+      "en": "Batticaloa 1"
+    }
+  },
+  {
+    "id": "5cc307ff-e298-778e-838e-5317407f46f0",
+    "code": "LK-51-02",
+    "district_id": "ddd6dfbb-a375-7240-96cc-53d977afcfd2",
+    "name": {
+      "si": "මඩකලපුව 2",
+      "ta": "மட்டக்களப்பு 2",
+      "en": "Batticaloa 2"
+    }
+  },
+  {
+    "id": "0e7ddd34-6001-78d7-8522-7135aadb5071",
+    "code": "LK-51-03",
+    "district_id": "ddd6dfbb-a375-7240-96cc-53d977afcfd2",
+    "name": {
+      "si": "මඩකලපුව 3",
+      "ta": "மட்டக்களப்பு 3",
+      "en": "Batticaloa 3"
+    }
+  },
+  {
+    "id": "1d694c71-0609-7f36-b3c0-379c45bc772b",
+    "code": "LK-51-04",
+    "district_id": "ddd6dfbb-a375-7240-96cc-53d977afcfd2",
+    "name": {
+      "si": "මඩකලපුව 4",
+      "ta": "மட்டக்களப்பு 4",
+      "en": "Batticaloa 4"
+    }
+  },
+  {
+    "id": "99ef547f-1181-711e-b705-b7ea77d9e0ae",
+    "code": "LK-52-01",
+    "district_id": "09845a4a-de49-72de-9a3f-6737571d34a2",
+    "name": {
+      "si": "අම්පාර 1",
+      "ta": "அம்பாறை 1",
+      "en": "Ampara 1"
+    }
+  },
+  {
+    "id": "8a782b6a-1d6d-74ac-a6c6-3ca017b858af",
+    "code": "LK-52-02",
+    "district_id": "09845a4a-de49-72de-9a3f-6737571d34a2",
+    "name": {
+      "si": "අම්පාර 2",
+      "ta": "அம்பாறை 2",
+      "en": "Ampara 2"
+    }
+  },
+  {
+    "id": "76a591c5-900a-7174-86f1-f0dec97855a2",
+    "code": "LK-52-03",
+    "district_id": "09845a4a-de49-72de-9a3f-6737571d34a2",
+    "name": {
+      "si": "අම්පාර 3",
+      "ta": "அம்பாறை 3",
+      "en": "Ampara 3"
+    }
+  },
+  {
+    "id": "a93449d3-aff8-7fa2-bffa-c830b4018753",
+    "code": "LK-52-04",
+    "district_id": "09845a4a-de49-72de-9a3f-6737571d34a2",
+    "name": {
+      "si": "අම්පාර 4",
+      "ta": "அம்பாறை 4",
+      "en": "Ampara 4"
+    }
+  },
+  {
+    "id": "653260e3-5098-79a6-b5b2-fde8af54e0d2",
+    "code": "LK-53-01",
+    "district_id": "592f204a-fe56-7042-9a4d-83248846d542",
+    "name": {
+      "si": "ත්‍රිකුණාමලය 1",
+      "ta": "திருகோணமலை 1",
+      "en": "Trincomalee 1"
+    }
+  },
+  {
+    "id": "8a17f46f-7699-71f6-a938-9773f47f3b0f",
+    "code": "LK-53-02",
+    "district_id": "592f204a-fe56-7042-9a4d-83248846d542",
+    "name": {
+      "si": "ත්‍රිකුණාමලය 2",
+      "ta": "திருகோணமலை 2",
+      "en": "Trincomalee 2"
+    }
+  },
+  {
+    "id": "db74b139-6246-7ed4-b19e-7b502fee365a",
+    "code": "LK-53-03",
+    "district_id": "592f204a-fe56-7042-9a4d-83248846d542",
+    "name": {
+      "si": "ත්‍රිකුණාමලය 3",
+      "ta": "திருகோணமலை 3",
+      "en": "Trincomalee 3"
+    }
+  },
+  {
+    "id": "27dbcdf3-718c-7089-8f14-f50a01f951b6",
+    "code": "LK-53-04",
+    "district_id": "592f204a-fe56-7042-9a4d-83248846d542",
+    "name": {
+      "si": "ත්‍රිකුණාමලය 4",
+      "ta": "திருகோணமலை 4",
+      "en": "Trincomalee 4"
+    }
+  },
+  {
+    "id": "c28764e6-fd66-72a6-8220-2b124a03a6fd",
+    "code": "LK-61-01",
+    "district_id": "be81fd0d-6e70-72b9-ac68-30c532b4c771",
+    "name": {
+      "si": "කුරුණෑගල 1",
+      "ta": "குருணாகல் 1",
+      "en": "Kurunegala 1"
+    }
+  },
+  {
+    "id": "ff7a1563-4570-740e-9261-f2d641c73adb",
+    "code": "LK-61-02",
+    "district_id": "be81fd0d-6e70-72b9-ac68-30c532b4c771",
+    "name": {
+      "si": "කුරුණෑගල 2",
+      "ta": "குருணாகல் 2",
+      "en": "Kurunegala 2"
+    }
+  },
+  {
+    "id": "035895e6-4780-745c-bceb-8492d1d8073f",
+    "code": "LK-61-03",
+    "district_id": "be81fd0d-6e70-72b9-ac68-30c532b4c771",
+    "name": {
+      "si": "කුරුණෑගල 3",
+      "ta": "குருணாகல் 3",
+      "en": "Kurunegala 3"
+    }
+  },
+  {
+    "id": "d31b126d-46d9-7e8b-bbfd-b372f56e7ce6",
+    "code": "LK-61-04",
+    "district_id": "be81fd0d-6e70-72b9-ac68-30c532b4c771",
+    "name": {
+      "si": "කුරුණෑගල 4",
+      "ta": "குருணாகல் 4",
+      "en": "Kurunegala 4"
+    }
+  },
+  {
+    "id": "ee514f41-444a-7799-8531-e40c1ee9ffca",
+    "code": "LK-62-01",
+    "district_id": "b1dd9623-5136-71eb-ad34-752cda03b5c1",
+    "name": {
+      "si": "පුත්තලම 1",
+      "ta": "புத்தளம் 1",
+      "en": "Puttalam 1"
+    }
+  },
+  {
+    "id": "1ff9ab76-3c79-7719-9e7c-678b10248dd2",
+    "code": "LK-62-02",
+    "district_id": "b1dd9623-5136-71eb-ad34-752cda03b5c1",
+    "name": {
+      "si": "පුත්තලම 2",
+      "ta": "புத்தளம் 2",
+      "en": "Puttalam 2"
+    }
+  },
+  {
+    "id": "6a6a0593-96c4-7566-a6eb-720b275bbd36",
+    "code": "LK-62-03",
+    "district_id": "b1dd9623-5136-71eb-ad34-752cda03b5c1",
+    "name": {
+      "si": "පුත්තලම 3",
+      "ta": "புத்தளம் 3",
+      "en": "Puttalam 3"
+    }
+  },
+  {
+    "id": "f644a4e1-3489-7ee6-bdde-6d429bc0529e",
+    "code": "LK-62-04",
+    "district_id": "b1dd9623-5136-71eb-ad34-752cda03b5c1",
+    "name": {
+      "si": "පුත්තලම 4",
+      "ta": "புத்தளம் 4",
+      "en": "Puttalam 4"
+    }
+  },
+  {
+    "id": "6ca2baf8-300d-734f-96d9-3e6c480c70b0",
+    "code": "LK-71-01",
+    "district_id": "727c5240-bd56-7423-83f8-6d8fe9513a25",
+    "name": {
+      "si": "අනුරාධපුර 1",
+      "ta": "அனுராதபுரம் 1",
+      "en": "Anuradhapura 1"
+    }
+  },
+  {
+    "id": "f9860e2d-a39e-7f34-9fbb-da6c02ba3382",
+    "code": "LK-71-02",
+    "district_id": "727c5240-bd56-7423-83f8-6d8fe9513a25",
+    "name": {
+      "si": "අනුරාධපුර 2",
+      "ta": "அனுராதபுரம் 2",
+      "en": "Anuradhapura 2"
+    }
+  },
+  {
+    "id": "fd011a62-2948-7219-a74d-44f939fb3b79",
+    "code": "LK-71-03",
+    "district_id": "727c5240-bd56-7423-83f8-6d8fe9513a25",
+    "name": {
+      "si": "අනුරාධපුර 3",
+      "ta": "அனுராதபுரம் 3",
+      "en": "Anuradhapura 3"
+    }
+  },
+  {
+    "id": "15a14618-56c0-7211-8904-5ebd15615458",
+    "code": "LK-71-04",
+    "district_id": "727c5240-bd56-7423-83f8-6d8fe9513a25",
+    "name": {
+      "si": "අනුරාධපුර 4",
+      "ta": "அனுராதபுரம் 4",
+      "en": "Anuradhapura 4"
+    }
+  },
+  {
+    "id": "92d75112-1b03-7583-8ebf-f950210c41cd",
+    "code": "LK-72-01",
+    "district_id": "d2f81de2-fb4d-78a7-8303-fe2c9f61f740",
+    "name": {
+      "si": "පොළොන්නරුව 1",
+      "ta": "பொலன்னறுவை 1",
+      "en": "Polonnaruwa 1"
+    }
+  },
+  {
+    "id": "66bb8bcb-bd9f-7364-9a72-a7bd1427f444",
+    "code": "LK-72-02",
+    "district_id": "d2f81de2-fb4d-78a7-8303-fe2c9f61f740",
+    "name": {
+      "si": "පොළොන්නරුව 2",
+      "ta": "பொலன்னறுவை 2",
+      "en": "Polonnaruwa 2"
+    }
+  },
+  {
+    "id": "6f90246b-2015-74aa-a697-2fbf198273d6",
+    "code": "LK-72-03",
+    "district_id": "d2f81de2-fb4d-78a7-8303-fe2c9f61f740",
+    "name": {
+      "si": "පොළොන්නරුව 3",
+      "ta": "பொலன்னறுவை 3",
+      "en": "Polonnaruwa 3"
+    }
+  },
+  {
+    "id": "148b053f-e9e4-711e-bd3e-2d1ec0738035",
+    "code": "LK-72-04",
+    "district_id": "d2f81de2-fb4d-78a7-8303-fe2c9f61f740",
+    "name": {
+      "si": "පොළොන්නරුව 4",
+      "ta": "பொலன்னறுவை 4",
+      "en": "Polonnaruwa 4"
+    }
+  },
+  {
+    "id": "8ae49e7d-67d2-7999-9b86-4ae8e7bcf72c",
+    "code": "LK-81-01",
+    "district_id": "da7a12ea-0965-777e-9d96-5090e905691b",
+    "name": {
+      "si": "බදුල්ල 1",
+      "ta": "பதுளை 1",
+      "en": "Badulla 1"
+    }
+  },
+  {
+    "id": "294bde4d-cf35-7d9d-bfdf-385e8effc0fc",
+    "code": "LK-81-02",
+    "district_id": "da7a12ea-0965-777e-9d96-5090e905691b",
+    "name": {
+      "si": "බදුල්ල 2",
+      "ta": "பதுளை 2",
+      "en": "Badulla 2"
+    }
+  },
+  {
+    "id": "148342df-f08a-7b27-bd2d-879a99046826",
+    "code": "LK-81-03",
+    "district_id": "da7a12ea-0965-777e-9d96-5090e905691b",
+    "name": {
+      "si": "බදුල්ල 3",
+      "ta": "பதுளை 3",
+      "en": "Badulla 3"
+    }
+  },
+  {
+    "id": "7807246e-ee78-705a-b356-00b465d9a5ca",
+    "code": "LK-81-04",
+    "district_id": "da7a12ea-0965-777e-9d96-5090e905691b",
+    "name": {
+      "si": "බදුල්ල 4",
+      "ta": "பதுளை 4",
+      "en": "Badulla 4"
+    }
+  },
+  {
+    "id": "0507bdfd-6695-7804-a2d0-2cc47e3be5c3",
+    "code": "LK-82-01",
+    "district_id": "7f32a63f-27b4-7760-9b28-d22ba76d0804",
+    "name": {
+      "si": "මොණරාගල 1",
+      "ta": "மொணராகலை 1",
+      "en": "Moneragala 1"
+    }
+  },
+  {
+    "id": "fe7e6a0e-900a-7367-b104-518bd141f53d",
+    "code": "LK-82-02",
+    "district_id": "7f32a63f-27b4-7760-9b28-d22ba76d0804",
+    "name": {
+      "si": "මොණරාගල 2",
+      "ta": "மொணராகலை 2",
+      "en": "Moneragala 2"
+    }
+  },
+  {
+    "id": "33b99ffe-0756-74ae-bc36-73fec3fb6c75",
+    "code": "LK-82-03",
+    "district_id": "7f32a63f-27b4-7760-9b28-d22ba76d0804",
+    "name": {
+      "si": "මොණරාගල 3",
+      "ta": "மொணராகலை 3",
+      "en": "Moneragala 3"
+    }
+  },
+  {
+    "id": "987f3a80-a530-7c62-ba9a-299baef7a4e6",
+    "code": "LK-82-04",
+    "district_id": "7f32a63f-27b4-7760-9b28-d22ba76d0804",
+    "name": {
+      "si": "මොණරාගල 4",
+      "ta": "மொணராகலை 4",
+      "en": "Moneragala 4"
+    }
+  },
+  {
+    "id": "fb3e66cf-241b-7d8b-ae25-4474677e7264",
+    "code": "LK-91-01",
+    "district_id": "d452f572-27f2-7b89-b3ea-329daa674a19",
+    "name": {
+      "si": "රත්නපුර 1",
+      "ta": "இரத்தினபுரி 1",
+      "en": "Ratnapura 1"
+    }
+  },
+  {
+    "id": "0367e303-2674-7214-86e4-b6d2a1f5b25c",
+    "code": "LK-91-02",
+    "district_id": "d452f572-27f2-7b89-b3ea-329daa674a19",
+    "name": {
+      "si": "රත්නපුර 2",
+      "ta": "இரத்தினபுரி 2",
+      "en": "Ratnapura 2"
+    }
+  },
+  {
+    "id": "0628403f-dd87-79c4-a66f-330d29f3854b",
+    "code": "LK-91-03",
+    "district_id": "d452f572-27f2-7b89-b3ea-329daa674a19",
+    "name": {
+      "si": "රත්නපුර 3",
+      "ta": "இரத்தினபுரி 3",
+      "en": "Ratnapura 3"
+    }
+  },
+  {
+    "id": "5f570d11-562e-77e0-9908-27388fcc4916",
+    "code": "LK-91-04",
+    "district_id": "d452f572-27f2-7b89-b3ea-329daa674a19",
+    "name": {
+      "si": "රත්නපුර 4",
+      "ta": "இரத்தினபுரி 4",
+      "en": "Ratnapura 4"
+    }
+  },
+  {
+    "id": "d960864f-9c55-7d6e-bb77-333c3d4445b4",
+    "code": "LK-92-01",
+    "district_id": "1a396522-6786-702b-a5af-5275c0b0a6df",
+    "name": {
+      "si": "කෑගල්ල 1",
+      "ta": "கேகாலை 1",
+      "en": "Kegalle 1"
+    }
+  },
+  {
+    "id": "f1e648ef-2c03-7929-ba61-652d3d0fe31f",
+    "code": "LK-92-02",
+    "district_id": "1a396522-6786-702b-a5af-5275c0b0a6df",
+    "name": {
+      "si": "කෑගල්ල 2",
+      "ta": "கேகாலை 2",
+      "en": "Kegalle 2"
+    }
+  },
+  {
+    "id": "b902a8bc-ca01-724c-9ac4-b8296d2c3fdf",
+    "code": "LK-92-03",
+    "district_id": "1a396522-6786-702b-a5af-5275c0b0a6df",
+    "name": {
+      "si": "කෑගල්ල 3",
+      "ta": "கேகாலை 3",
+      "en": "Kegalle 3"
+    }
+  },
+  {
+    "id": "6967de0a-4218-7956-aac0-45688c3a89e4",
+    "code": "LK-92-04",
+    "district_id": "1a396522-6786-702b-a5af-5275c0b0a6df",
+    "name": {
+      "si": "කෑගල්ල 4",
+      "ta": "கேகாலை 4",
+      "en": "Kegalle 4"
+    }
+  }
+]

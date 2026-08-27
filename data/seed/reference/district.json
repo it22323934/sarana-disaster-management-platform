@@ -1,0 +1,252 @@
+[
+  {
+    "id": "f2a2e19a-d20a-749d-85bc-95df1f94e8d5",
+    "code": "LK-11",
+    "province_id": "1edf0c9d-5599-7b34-b35f-72f7252c4e22",
+    "name": {
+      "si": "කොළඹ",
+      "ta": "கொழும்பு",
+      "en": "Colombo"
+    }
+  },
+  {
+    "id": "4f007050-90f4-7b81-b06a-f41e01cee808",
+    "code": "LK-12",
+    "province_id": "1edf0c9d-5599-7b34-b35f-72f7252c4e22",
+    "name": {
+      "si": "ගම්පහ",
+      "ta": "கம்பஹா",
+      "en": "Gampaha"
+    }
+  },
+  {
+    "id": "33bc363d-8b77-73e4-887b-c9de1ab6c50f",
+    "code": "LK-13",
+    "province_id": "1edf0c9d-5599-7b34-b35f-72f7252c4e22",
+    "name": {
+      "si": "කළුතර",
+      "ta": "களுத்துறை",
+      "en": "Kalutara"
+    }
+  },
+  {
+    "id": "f0094cf2-51db-7ff8-91e8-3ebcbc2d5d26",
+    "code": "LK-21",
+    "province_id": "79986afb-92b4-7370-9edc-c76358c8c7c3",
+    "name": {
+      "si": "මහනුවර",
+      "ta": "கண்டி",
+      "en": "Kandy"
+    }
+  },
+  {
+    "id": "42edf04a-cbbd-7879-9bb8-f14d5f03a825",
+    "code": "LK-22",
+    "province_id": "79986afb-92b4-7370-9edc-c76358c8c7c3",
+    "name": {
+      "si": "මාතලේ",
+      "ta": "மாத்தளை",
+      "en": "Matale"
+    }
+  },
+  {
+    "id": "332ca1fd-35f4-7284-84fa-014c678f5283",
+    "code": "LK-23",
+    "province_id": "79986afb-92b4-7370-9edc-c76358c8c7c3",
+    "name": {
+      "si": "නුවරඑළිය",
+      "ta": "நுவரெலியா",
+      "en": "Nuwara Eliya"
+    }
+  },
+  {
+    "id": "9b651e37-1738-7eb5-8d64-c025ee8cdccb",
+    "code": "LK-31",
+    "province_id": "71e3a253-b281-782d-8693-490ff782a748",
+    "name": {
+      "si": "ගාල්ල",
+      "ta": "காலி",
+      "en": "Galle"
+    }
+  },
+  {
+    "id": "2ce2559c-df84-780a-bd06-93bb73821e33",
+    "code": "LK-32",
+    "province_id": "71e3a253-b281-782d-8693-490ff782a748",
+    "name": {
+      "si": "මාතර",
+      "ta": "மாத்தறை",
+      "en": "Matara"
+    }
+  },
+  {
+    "id": "2ddf6a41-f270-793d-a630-66b394a6790d",
+    "code": "LK-33",
+    "province_id": "71e3a253-b281-782d-8693-490ff782a748",
+    "name": {
+      "si": "හම්බන්තොට",
+      "ta": "அம்பாந்தோட்டை",
+      "en": "Hambantota"
+    }
+  },
+  {
+    "id": "72a233e6-2b3f-7be6-9880-468b241639b1",
+    "code": "LK-41",
+    "province_id": "c2bda2e6-baaf-72eb-b4ac-2ce5f53c0a8d",
+    "name": {
+      "si": "යාපනය",
+      "ta": "யாழ்ப்பாணம்",
+      "en": "Jaffna"
+    }
+  },
+  {
+    "id": "c30936f9-c263-76ce-98fd-78b03347167f",
+    "code": "LK-42",
+    "province_id": "c2bda2e6-baaf-72eb-b4ac-2ce5f53c0a8d",
+    "name": {
+      "si": "කිලිනොච්චිය",
+      "ta": "கிளிநொச்சி",
+      "en": "Kilinochchi"
+    }
+  },
+  {
+    "id": "8c7164b5-205d-7486-b5b5-86986996c785",
+    "code": "LK-43",
+    "province_id": "c2bda2e6-baaf-72eb-b4ac-2ce5f53c0a8d",
+    "name": {
+      "si": "මන්නාරම",
+      "ta": "மன்னார்",
+      "en": "Mannar"
+    }
+  },
+  {
+    "id": "6c0b58e4-dd55-764d-87e2-5531ecb84ab1",
+    "code": "LK-44",
+    "province_id": "c2bda2e6-baaf-72eb-b4ac-2ce5f53c0a8d",
+    "name": {
+      "si": "වවුනියාව",
+      "ta": "வவுனியா",
+      "en": "Vavuniya"
+    }
+  },
+  {
+    "id": "50ad9011-1d48-7760-820b-a7e61f020bf7",
+    "code": "LK-45",
+    "province_id": "c2bda2e6-baaf-72eb-b4ac-2ce5f53c0a8d",
+    "name": {
+      "si": "මුලතිව්",
+      "ta": "முல்லைத்தீவு",
+      "en": "Mullaitivu"
+    }
+  },
+  {
+    "id": "ddd6dfbb-a375-7240-96cc-53d977afcfd2",
+    "code": "LK-51",
+    "province_id": "1df5cd59-047b-7331-9c77-b4d84fa04d0b",
+    "name": {
+      "si": "මඩකලපුව",
+      "ta": "மட்டக்களப்பு",
+      "en": "Batticaloa"
+    }
+  },
+  {
+    "id": "09845a4a-de49-72de-9a3f-6737571d34a2",
+    "code": "LK-52",
+    "province_id": "1df5cd59-047b-7331-9c77-b4d84fa04d0b",
+    "name": {
+      "si": "අම්පාර",
+      "ta": "அம்பாறை",
+      "en": "Ampara"
+    }
+  },
+  {
+    "id": "592f204a-fe56-7042-9a4d-83248846d542",
+    "code": "LK-53",
+    "province_id": "1df5cd59-047b-7331-9c77-b4d84fa04d0b",
+    "name": {
+      "si": "ත්‍රිකුණාමලය",
+      "ta": "திருகோணமலை",
+      "en": "Trincomalee"
+    }
+  },
+  {
+    "id": "be81fd0d-6e70-72b9-ac68-30c532b4c771",
+    "code": "LK-61",
+    "province_id": "34dfd023-d354-7fd5-b199-35bdc38bb069",
+    "name": {
+      "si": "කුරුණෑගල",
+      "ta": "குருணாகல்",
+      "en": "Kurunegala"
+    }
+  },
+  {
+    "id": "b1dd9623-5136-71eb-ad34-752cda03b5c1",
+    "code": "LK-62",
+    "province_id": "34dfd023-d354-7fd5-b199-35bdc38bb069",
+    "name": {
+      "si": "පුත්තලම",
+      "ta": "புத்தளம்",
+      "en": "Puttalam"
+    }
+  },
+  {
+    "id": "727c5240-bd56-7423-83f8-6d8fe9513a25",
+    "code": "LK-71",
+    "province_id": "0ce9605e-1f47-7786-81e6-26304b660b40",
+    "name": {
+      "si": "අනුරාධපුර",
+      "ta": "அனுராதபுரம்",
+      "en": "Anuradhapura"
+    }
+  },
+  {
+    "id": "d2f81de2-fb4d-78a7-8303-fe2c9f61f740",
+    "code": "LK-72",
+    "province_id": "0ce9605e-1f47-7786-81e6-26304b660b40",
+    "name": {
+      "si": "පොළොන්නරුව",
+      "ta": "பொலன்னறுவை",
+      "en": "Polonnaruwa"
+    }
+  },
+  {
+    "id": "da7a12ea-0965-777e-9d96-5090e905691b",
+    "code": "LK-81",
+    "province_id": "09bd6af6-2f92-7242-ab3a-597e78494899",
+    "name": {
+      "si": "බදුල්ල",
+      "ta": "பதுளை",
+      "en": "Badulla"
+    }
+  },
+  {
+    "id": "7f32a63f-27b4-7760-9b28-d22ba76d0804",
+    "code": "LK-82",
+    "province_id": "09bd6af6-2f92-7242-ab3a-597e78494899",
+    "name": {
+      "si": "මොණරාගල",
+      "ta": "மொணராகலை",
+      "en": "Moneragala"
+    }
+  },
+  {
+    "id": "d452f572-27f2-7b89-b3ea-329daa674a19",
+    "code": "LK-91",
+    "province_id": "952aaaa2-0ee8-71d4-af7d-d704bd52a96b",
+    "name": {
+      "si": "රත්නපුර",
+      "ta": "இரத்தினபுரி",
+      "en": "Ratnapura"
+    }
+  },
+  {
+    "id": "1a396522-6786-702b-a5af-5275c0b0a6df",
+    "code": "LK-92",
+    "province_id": "952aaaa2-0ee8-71d4-af7d-d704bd52a96b",
+    "name": {
+      "si": "කෑගල්ල",
+      "ta": "கேகாலை",
+      "en": "Kegalle"
+    }
+  }
+]

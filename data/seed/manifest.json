@@ -1,0 +1,62 @@
+{
+  "order": [
+    {
+      "file": "reference/province.json",
+      "table": "admin.province",
+      "key": [
+        "code"
+      ]
+    },
+    {
+      "file": "reference/district.json",
+      "table": "admin.district",
+      "key": [
+        "code"
+      ]
+    },
+    {
+      "file": "reference/ds_division.json",
+      "table": "admin.ds_division",
+      "key": [
+        "code"
+      ]
+    },
+    {
+      "file": "reference/gn_division.json",
+      "table": "admin.gn_division",
+      "key": [
+        "code"
+      ]
+    },
+    {
+      "file": "reference/role.json",
+      "table": "admin.role",
+      "key": [
+        "code"
+      ]
+    },
+    {
+      "file": "scenario/app_user.json",
+      "table": "admin.app_user",
+      "key": [
+        "email"
+      ]
+    },
+    {
+      "file": "scenario/user_role.json",
+      "table": "admin.user_role",
+      "key": [
+        "user_id",
+        "role_id",
+        "scope_code"
+      ]
+    },
+    {
+      "file": "scenario/household.json",
+      "table": "admin.household",
+      "key": [
+        "reference_code"
+      ]
+    }
+  ]
+}

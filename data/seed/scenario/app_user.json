@@ -1,0 +1,51 @@
+[
+  {
+    "id": "4c5d089e-fef7-7d1c-b4ae-f1d6fc2f4b94",
+    "email": "operator@sarana.lk",
+    "password_hash": "$argon2id$v=19$m=65536,t=8,p=4$GlIGYcJJUz0Itmwv3Bvokw$PwudPjK++4oaLzsxWL0KydjpotdZCF/dGRtyO6P3ZDw",
+    "full_name": "DMC Operator",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "c995ef8e-9121-78ca-b9b6-e3149184eda6",
+    "email": "dispatcher@sarana.lk",
+    "password_hash": "$argon2id$v=19$m=65536,t=8,p=4$GlIGYcJJUz0Itmwv3Bvokw$PwudPjK++4oaLzsxWL0KydjpotdZCF/dGRtyO6P3ZDw",
+    "full_name": "Dispatch Officer",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "190bbcd7-571d-7808-b007-f2f966f0af52",
+    "email": "gn.kandy@sarana.lk",
+    "password_hash": "$argon2id$v=19$m=65536,t=8,p=4$GlIGYcJJUz0Itmwv3Bvokw$PwudPjK++4oaLzsxWL0KydjpotdZCF/dGRtyO6P3ZDw",
+    "full_name": "GN Officer - Kandy",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "02e2d717-d055-7b76-b96a-bc1034f0136e",
+    "email": "ds.kandy@sarana.lk",
+    "password_hash": "$argon2id$v=19$m=65536,t=8,p=4$GlIGYcJJUz0Itmwv3Bvokw$PwudPjK++4oaLzsxWL0KydjpotdZCF/dGRtyO6P3ZDw",
+    "full_name": "DS Approver - Kandy",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "95b434df-da10-7bbf-a919-68f1e6baa08f",
+    "email": "district.kandy@sarana.lk",
+    "password_hash": "$argon2id$v=19$m=65536,t=8,p=4$GlIGYcJJUz0Itmwv3Bvokw$PwudPjK++4oaLzsxWL0KydjpotdZCF/dGRtyO6P3ZDw",
+    "full_name": "District Approver - Kandy",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "73b1414c-ac9e-72f1-986b-9bf823894c7f",
+    "email": "auditor@sarana.lk",
+    "password_hash": "$argon2id$v=19$m=65536,t=8,p=4$GlIGYcJJUz0Itmwv3Bvokw$PwudPjK++4oaLzsxWL0KydjpotdZCF/dGRtyO6P3ZDw",
+    "full_name": "Auditor",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "12c21a94-2dc4-720e-b0c3-65d561840f10",
+    "email": "admin@sarana.lk",
+    "password_hash": "$argon2id$v=19$m=65536,t=8,p=4$GlIGYcJJUz0Itmwv3Bvokw$PwudPjK++4oaLzsxWL0KydjpotdZCF/dGRtyO6P3ZDw",
+    "full_name": "System Administrator",
+    "status": "ACTIVE"
+  }
+]

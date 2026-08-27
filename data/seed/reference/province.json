@@ -1,0 +1,83 @@
+[
+  {
+    "id": "1edf0c9d-5599-7b34-b35f-72f7252c4e22",
+    "code": "LK-P01",
+    "name": {
+      "si": "බස්නාහිර",
+      "ta": "மேற்கு",
+      "en": "Western"
+    }
+  },
+  {
+    "id": "79986afb-92b4-7370-9edc-c76358c8c7c3",
+    "code": "LK-P02",
+    "name": {
+      "si": "මධ්‍යම",
+      "ta": "மத்திய",
+      "en": "Central"
+    }
+  },
+  {
+    "id": "71e3a253-b281-782d-8693-490ff782a748",
+    "code": "LK-P03",
+    "name": {
+      "si": "දකුණු",
+      "ta": "தெற்கு",
+      "en": "Southern"
+    }
+  },
+  {
+    "id": "c2bda2e6-baaf-72eb-b4ac-2ce5f53c0a8d",
+    "code": "LK-P04",
+    "name": {
+      "si": "උතුරු",
+      "ta": "வடக்கு",
+      "en": "Northern"
+    }
+  },
+  {
+    "id": "1df5cd59-047b-7331-9c77-b4d84fa04d0b",
+    "code": "LK-P05",
+    "name": {
+      "si": "නැගෙනහිර",
+      "ta": "கிழக்கு",
+      "en": "Eastern"
+    }
+  },
+  {
+    "id": "34dfd023-d354-7fd5-b199-35bdc38bb069",
+    "code": "LK-P06",
+    "name": {
+      "si": "වයඹ",
+      "ta": "வட மேற்கு",
+      "en": "North Western"
+    }
+  },
+  {
+    "id": "0ce9605e-1f47-7786-81e6-26304b660b40",
+    "code": "LK-P07",
+    "name": {
+      "si": "උතුරු මැද",
+      "ta": "வட மத்திய",
+      "en": "North Central"
+    }
+  },
+  {
+    "id": "09bd6af6-2f92-7242-ab3a-597e78494899",
+    "code": "LK-P08",
+    "name": {
+      "si": "ඌව",
+      "ta": "ஊவா",
+      "en": "Uva"
+    }
+  },
+  {
+    "id": "952aaaa2-0ee8-71d4-af7d-d704bd52a96b",
+    "code": "LK-P09",
+    "name": {
+      "si": "සබරගමුව",
+      "ta": "சப்ரகமுவ",
+      "en": "Sabaragamuwa"
+    }
+  }
+]
