@@ -44,6 +44,22 @@ def upgrade() -> None:
         op.execute(f'GRANT USAGE ON SCHEMA "{schema}" TO sarana_app')
         op.execute(f'GRANT USAGE, CREATE ON SCHEMA "{schema}" TO sarana_migrator')
 
+    # The auditor is read-only structurally, not by an application flag: there is no
+    # INSERT for the role to lose. Granted here, per owned schema, so no service's
+    # migration chain depends on another having already created its schema.
+    for schema in OWNED_SCHEMAS:
+        op.execute(f'GRANT USAGE ON SCHEMA "{schema}" TO sarana_auditor')
+        op.execute(f'GRANT SELECT ON ALL TABLES IN SCHEMA "{schema}" TO sarana_auditor')
+        op.execute(
+            f'REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA "{schema}" '
+            "FROM sarana_auditor"
+        )
+        # Tables this chain creates after this migration inherit the same shape.
+        op.execute(
+            f'ALTER DEFAULT PRIVILEGES IN SCHEMA "{schema}" '
+            "GRANT SELECT ON TABLES TO sarana_auditor"
+        )
+
     # Helper functions are called from CHECK constraints and RLS policies in every
     # schema, so the application role must be able to execute them.
     op.execute("GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO sarana_app")

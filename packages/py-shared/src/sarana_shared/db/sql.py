@@ -237,6 +237,13 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sarana_migrator') THEN
         CREATE ROLE sarana_migrator NOLOGIN;
     END IF;
+
+    -- Read-only across every schema. Created here rather than in one service's
+    -- migration so that every chain can grant to it without depending on another
+    -- service having migrated first.
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sarana_auditor') THEN
+        CREATE ROLE sarana_auditor NOLOGIN;
+    END IF;
 END
 $do$;
 
@@ -247,6 +254,10 @@ COMMENT ON ROLE sarana_app IS
 COMMENT ON ROLE sarana_migrator IS
 'Schema owner. Runs Alembic. Separate from sarana_app so a compromised service cannot '
 'drop a constraint that a non-negotiable depends on.';
+
+COMMENT ON ROLE sarana_auditor IS
+'Read-only across every schema. Holds SELECT and nothing else, so an auditor session '
+'cannot write however the application behaves.';
 """
 
 

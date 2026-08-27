@@ -33,15 +33,6 @@ READ_WRITE_TABLES: tuple[str, ...] = (
 # exactly what an attacker who reached the database would want to do.
 APPEND_ONLY_TABLES: tuple[str, ...] = ("login_attempt", "security_event")
 
-AUDITOR_READABLE_SCHEMAS: tuple[str, ...] = (
-    "admin",
-    "aid",
-    "incident",
-    "alerting",
-    "hazard",
-    "resilience",
-    "audit",
-)
 
 
 def upgrade() -> None:
@@ -170,44 +161,23 @@ def upgrade() -> None:
         op.execute(f"GRANT SELECT, INSERT ON admin.{table} TO sarana_app")
         op.execute(f"REVOKE UPDATE, DELETE ON admin.{table} FROM sarana_app")
 
-    # --- the auditor is read-only structurally, not by an application flag ------------
-    # An auditor whose read-only-ness is a boolean in the application is read-only until
-    # someone writes a handler that forgets to check it. This is a database grant: there
-    # is no INSERT for the role to lose.
+    # The auditor's role, its comment and its per-schema grants live in each service's
+    # prerequisites migration, next to the CREATE SCHEMA they apply to. Granting them
+    # here made this chain depend on ledger-svc, incident-svc, alerting-svc and agent-svc
+    # having already migrated, which is exactly the ordering dependency the prerequisites
+    # migrations are written to avoid: on a fresh database core-api migrates first and
+    # this failed on `GRANT USAGE ON SCHEMA "aid"`.
+    op.execute("GRANT SELECT ON ALL TABLES IN SCHEMA admin TO sarana_auditor")
     op.execute(
-        "DO $do$ BEGIN "
-        "IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sarana_auditor') THEN "
-        "CREATE ROLE sarana_auditor NOLOGIN; END IF; END $do$"
+        "REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA admin "
+        "FROM sarana_auditor"
     )
-    op.execute(
-        "COMMENT ON ROLE sarana_auditor IS "
-        "'Read-only across every schema. Holds SELECT and nothing else, so an auditor "
-        "session cannot write however the application behaves.'"
-    )
-    for schema in AUDITOR_READABLE_SCHEMAS:
-        op.execute(f'GRANT USAGE ON SCHEMA "{schema}" TO sarana_auditor')
-        op.execute(f'GRANT SELECT ON ALL TABLES IN SCHEMA "{schema}" TO sarana_auditor')
-        op.execute(
-            f'REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA "{schema}" '
-            "FROM sarana_auditor"
-        )
-        # Tables created after this migration inherit the same shape.
-        op.execute(
-            f'ALTER DEFAULT PRIVILEGES IN SCHEMA "{schema}" '
-            "GRANT SELECT ON TABLES TO sarana_auditor"
-        )
 
     op.execute("GRANT USAGE ON ALL SEQUENCES IN SCHEMA admin TO sarana_app")
 
 
 def downgrade() -> None:
-    for schema in AUDITOR_READABLE_SCHEMAS:
-        op.execute(
-            f'ALTER DEFAULT PRIVILEGES IN SCHEMA "{schema}" '
-            "REVOKE SELECT ON TABLES FROM sarana_auditor"
-        )
-        op.execute(f'REVOKE ALL ON ALL TABLES IN SCHEMA "{schema}" FROM sarana_auditor')
-        op.execute(f'REVOKE USAGE ON SCHEMA "{schema}" FROM sarana_auditor')
+    op.execute("REVOKE ALL ON ALL TABLES IN SCHEMA admin FROM sarana_auditor")
 
     for table in APPEND_ONLY_TABLES:
         op.execute(f"DROP TRIGGER IF EXISTS append_only ON admin.{table}")
