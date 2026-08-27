@@ -58,7 +58,9 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         # Resolving a coordinate to a division is the one core-api call on the intake
         # path. The client caches and degrades: a report that cannot be placed is kept
         # unplaced rather than refused.
-        app.state.core_api = CoreApiClient(resolved.core_api_url)
+        app.state.core_api = CoreApiClient(
+            resolved.core_api_url, service_token=resolved.core_api_service_token
+        )
 
         # Assisted triage is off until the agent runtime exists (build file 12). The queue
         # endpoint reports this verbatim, so a dispatcher is never left believing an

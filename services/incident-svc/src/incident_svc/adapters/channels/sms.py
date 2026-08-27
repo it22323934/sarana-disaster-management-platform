@@ -26,17 +26,20 @@ _STRUCTURED: Final = re.compile(
 
 # Words that signal an incident type in free text. Sinhala and Tamil included because a
 # keyword match that only worked in English would work for the smallest group of users.
+#
+# **Order is significant: most urgent first.** A message matches on the first entry that
+# hits, and real messages describe several things at once. "trapped on the roof, water
+# rising" is a person trapped, not a flood report - the flood is why they are trapped, and
+# routing it as a flood puts a rescue behind a sandbag delivery.
 _KEYWORDS: Final[dict[str, tuple[str, ...]]] = {
-    "FLOOD": ("flood", "water", "ගංවතුර", "වතුර", "வெள்ளம்", "தண்ணீர்"),
+    "TRAPPED": ("trapped", "stuck", "drowning", "සිරවී", "අතරමං", "சிக்கி"),
+    "MEDICAL": ("injured", "bleeding", "sick", "තුවාල", "රෝගී", "காயம்", "நோய்"),
+    "STRUCTURAL_COLLAPSE": ("collapse", "fell", "කඩා", "இடிந்து"),
     "LANDSLIDE": ("landslide", "slip", "නායයෑම", "නාය", "நிலச்சரிவு"),
-    "TRAPPED": ("trapped", "stuck", "සිරවී", "අතරමං", "சிக்கி"),
-    "MEDICAL_EMERGENCY": ("injured", "bleeding", "sick", "තුවාල", "රෝගී", "காயம்", "நோய்"),
-    "FIRE": ("fire", "burning", "ගිනි", "தீ"),
-    "DROWNING": ("drowning", "දියේ", "மூழ்கு"),
+    "FLOOD": ("flood", "water", "ගංවතුර", "වතුර", "வெள்ளம்", "தண்ணீர்"),
     "MISSING_PERSON": ("missing", "lost", "නැති", "காணவில்லை"),
-    "SHELTER_NEEDED": ("shelter", "නවාතැන", "தங்குமிடம்"),
-    "FOOD_WATER_NEEDED": ("food", "hungry", "ආහාර", "உணவு"),
     "EVACUATION_NEEDED": ("evacuate", "rescue", "ඉවත්", "மீட்பு"),
+    "SUPPLIES_NEEDED": ("food", "hungry", "shelter", "ආහාර", "නවාතැන", "உணவு", "தங்குமிடம்"),
 }
 
 # Very rough script detection, enough to record which language the message arrived in so a

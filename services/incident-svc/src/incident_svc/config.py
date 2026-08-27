@@ -44,6 +44,17 @@ class Settings(SharedSettings):
         default="http://core-api:8001", validation_alias="SARANA_INCIDENT_CORE_API_URL"
     )
 
+    # This service calls core-api as a machine, not on behalf of the reporter. A citizen
+    # holds `incident:write` and deliberately not `admin:read`, so forwarding their token
+    # would fail for exactly the people who report the most.
+    #
+    # In a deployment this comes from the secret store. Locally `make service-token`
+    # mints one. Absent, reports are still accepted and simply arrive unplaced, which is
+    # the documented degraded behaviour rather than a new failure mode.
+    core_api_service_token: str | None = Field(
+        default=None, validation_alias="SARANA_INCIDENT_SERVICE_TOKEN"
+    )
+
 
 def get_settings() -> Settings:
     """Load settings, exiting 78 (EX_CONFIG) if the environment is incomplete."""

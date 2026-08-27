@@ -35,21 +35,22 @@ PEOPLE_SATURATION: Final = 50
 # does not outrank a serious older one, short enough that nothing waits a whole shift.
 AGE_SATURATION_MINUTES: Final = 120
 
-# Incident type weights. Ordered by how quickly the situation kills someone unattended.
+# Incident type weights, ordered by how quickly the situation kills someone unattended.
+#
+# The keys are exactly `incident.incident`'s CHECK vocabulary. A weight for a type the
+# database rejects would be dead code; a type with no weight would silently drop to the
+# mid-table default, which is the quieter and worse failure. A test asserts the two lists
+# match.
 INCIDENT_TYPE_WEIGHTS: Final[dict[str, float]] = {
-    "MEDICAL_EMERGENCY": 1.00,
+    "MEDICAL": 1.00,
     "TRAPPED": 1.00,
-    "DROWNING": 1.00,
-    "BUILDING_COLLAPSE": 0.95,
+    "STRUCTURAL_COLLAPSE": 0.95,
     "LANDSLIDE": 0.90,
     "FLOOD": 0.75,
-    "FIRE": 0.90,
     "MISSING_PERSON": 0.70,
     "EVACUATION_NEEDED": 0.65,
-    "STRANDED": 0.60,
-    "INFRASTRUCTURE_DAMAGE": 0.35,
-    "SHELTER_NEEDED": 0.45,
-    "FOOD_WATER_NEEDED": 0.40,
+    "SUPPLIES_NEEDED": 0.40,
+    "INFRASTRUCTURE": 0.35,
     "OTHER": 0.30,
 }
 

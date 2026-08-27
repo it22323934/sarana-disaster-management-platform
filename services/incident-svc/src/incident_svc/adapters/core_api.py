@@ -45,10 +45,12 @@ class CoreApiClient:
         self,
         base_url: str,
         *,
+        service_token: str | None = None,
         client: httpx.AsyncClient | None = None,
         cache_size: int = 20_000,
     ) -> None:
         self._base_url = base_url.rstrip("/")
+        self._service_token = service_token
         self._client = client or httpx.AsyncClient(
             timeout=httpx.Timeout(READ_TIMEOUT, connect=CONNECT_TIMEOUT)
         )
@@ -76,7 +78,9 @@ class CoreApiClient:
         if key in self._cache:
             return self._cache[key]
 
-        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        # The service credential, unless a caller supplies something more specific.
+        bearer = token or self._service_token
+        headers = {"Authorization": f"Bearer {bearer}"} if bearer else {}
         try:
             response = await self._client.get(
                 f"{self._base_url}/api/v1/admin/resolve",
@@ -96,6 +100,15 @@ class CoreApiClient:
         if response.status_code == 404:
             # A real answer: this point is in no division. Worth caching.
             self._remember(key, None)
+            return None
+        if response.status_code in (401, 403):
+            # Named separately from any other failure: this one is a misconfiguration that
+            # silently unplaces every report, and it should not look like a bad coordinate.
+            _log.error(
+                "core_api_resolve_unauthorised",
+                status=response.status_code,
+                hint="SARANA_INCIDENT_SERVICE_TOKEN is missing, expired, or lacks admin:read",
+            )
             return None
         if response.status_code >= 400:
             _log.warning("core_api_resolve_failed", status=response.status_code)

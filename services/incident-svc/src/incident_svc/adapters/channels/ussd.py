@@ -43,7 +43,7 @@ MENU_TYPES: Final[tuple[str, ...]] = (
     "FLOOD",
     "LANDSLIDE",
     "TRAPPED",
-    "MEDICAL_EMERGENCY",
+    "MEDICAL",
     "EVACUATION_NEEDED",
 )
 
