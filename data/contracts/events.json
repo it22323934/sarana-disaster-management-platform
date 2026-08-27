@@ -1,0 +1,1448 @@
+{
+  "envelope": {
+    "additionalProperties": false,
+    "description": "A published domain event.\n\nImmutable once constructed. The payload is a JSON-serialisable dict; the concrete\nPydantic model for a given type lives in the registry and is applied on read, so a\nconsumer that does not know a type can still forward, archive or replay it.",
+    "properties": {
+      "causation_id": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "event_id of the event that directly caused this one",
+        "title": "Causation Id"
+      },
+      "correlation_id": {
+        "format": "uuid",
+        "title": "Correlation Id",
+        "type": "string"
+      },
+      "event_id": {
+        "format": "uuid",
+        "title": "Event Id",
+        "type": "string"
+      },
+      "event_type": {
+        "description": "sarana.{domain}.{noun}.{verb}",
+        "title": "Event Type",
+        "type": "string"
+      },
+      "occurred_at": {
+        "format": "date-time",
+        "title": "Occurred At",
+        "type": "string"
+      },
+      "payload": {
+        "additionalProperties": true,
+        "title": "Payload",
+        "type": "object"
+      },
+      "producer": {
+        "description": "Service or agent that published this event",
+        "title": "Producer",
+        "type": "string"
+      },
+      "replay_of": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Replay Of"
+      },
+      "replayed_at": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Replayed At"
+      },
+      "schema_version": {
+        "default": 1,
+        "minimum": 1,
+        "title": "Schema Version",
+        "type": "integer"
+      },
+      "subject": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Primary entity this event is about, e.g. an incident ref",
+        "title": "Subject"
+      },
+      "trace_context": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "title": "Trace Context",
+        "type": "object"
+      }
+    },
+    "required": [
+      "event_type",
+      "producer"
+    ],
+    "title": "EventEnvelope",
+    "type": "object"
+  },
+  "events": {
+    "sarana.aid.anomaly.disposed/v1": {
+      "additionalProperties": false,
+      "description": "A human closed a flag.\n\n`disposition` includes FALSE_POSITIVE because the false-positive rate is a tracked\nmetric reported alongside the detection rate, and it can only be computed if the\noutcome is recorded.",
+      "properties": {
+        "disposed_at": {
+          "format": "date-time",
+          "title": "Disposed At",
+          "type": "string"
+        },
+        "disposition": {
+          "title": "Disposition",
+          "type": "string"
+        },
+        "flag_id": {
+          "format": "uuid",
+          "title": "Flag Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "flag_id",
+        "disposition",
+        "disposed_at"
+      ],
+      "title": "AidAnomalyDisposed",
+      "type": "object"
+    },
+    "sarana.aid.anomaly.flagged/v1": {
+      "additionalProperties": false,
+      "description": "A pattern warranting review. Never public, and it names no one (ADR-009).\n\nThe rationale is deliberately absent from the event. Flags are private, and an event\nlog is the least private place in the platform.",
+      "properties": {
+        "detector": {
+          "title": "Detector",
+          "type": "string"
+        },
+        "detector_version": {
+          "title": "Detector Version",
+          "type": "string"
+        },
+        "flag_id": {
+          "format": "uuid",
+          "title": "Flag Id",
+          "type": "string"
+        },
+        "score": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Score",
+          "type": "number"
+        },
+        "subject_id": {
+          "format": "uuid",
+          "title": "Subject Id",
+          "type": "string"
+        },
+        "subject_type": {
+          "title": "Subject Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "flag_id",
+        "subject_type",
+        "subject_id",
+        "detector",
+        "detector_version",
+        "score"
+      ],
+      "title": "AidAnomalyFlagged",
+      "type": "object"
+    },
+    "sarana.aid.approval.recorded/v1": {
+      "additionalProperties": false,
+      "description": "One approval decision at one level.",
+      "properties": {
+        "approval_id": {
+          "format": "uuid",
+          "title": "Approval Id",
+          "type": "string"
+        },
+        "approver_id": {
+          "format": "uuid",
+          "title": "Approver Id",
+          "type": "string"
+        },
+        "decision": {
+          "title": "Decision",
+          "type": "string"
+        },
+        "entitlement_id": {
+          "format": "uuid",
+          "title": "Entitlement Id",
+          "type": "string"
+        },
+        "entry_hash": {
+          "description": "Position in the hash chain, for verification",
+          "title": "Entry Hash",
+          "type": "string"
+        },
+        "level": {
+          "title": "Level",
+          "type": "string"
+        }
+      },
+      "required": [
+        "approval_id",
+        "entitlement_id",
+        "level",
+        "approver_id",
+        "decision",
+        "entry_hash"
+      ],
+      "title": "AidApprovalRecorded",
+      "type": "object"
+    },
+    "sarana.aid.assessment.submitted/v1": {
+      "additionalProperties": false,
+      "description": "A GN officer submitted a damage assessment, possibly after days offline.",
+      "properties": {
+        "assessment_id": {
+          "format": "uuid",
+          "title": "Assessment Id",
+          "type": "string"
+        },
+        "category": {
+          "title": "Category",
+          "type": "string"
+        },
+        "client_operation_id": {
+          "title": "Client Operation Id",
+          "type": "string"
+        },
+        "cost_estimate_lkr_cents": {
+          "minimum": 0,
+          "title": "Cost Estimate Lkr Cents",
+          "type": "integer"
+        },
+        "gn_division_code": {
+          "title": "Gn Division Code",
+          "type": "string"
+        },
+        "hazard_event_id": {
+          "format": "uuid",
+          "title": "Hazard Event Id",
+          "type": "string"
+        },
+        "public_ref": {
+          "title": "Public Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "assessment_id",
+        "public_ref",
+        "gn_division_code",
+        "hazard_event_id",
+        "category",
+        "cost_estimate_lkr_cents",
+        "client_operation_id"
+      ],
+      "title": "AidAssessmentSubmitted",
+      "type": "object"
+    },
+    "sarana.aid.disbursement.citizen_confirmed/v1": {
+      "additionalProperties": false,
+      "description": "The household said the money arrived.\n\nA ledger recording only what the state believes it paid is not evidence that anyone\nwas paid. This closes the loop from the other end.",
+      "properties": {
+        "channel": {
+          "title": "Channel",
+          "type": "string"
+        },
+        "confirmed_at": {
+          "format": "date-time",
+          "title": "Confirmed At",
+          "type": "string"
+        },
+        "disbursement_id": {
+          "format": "uuid",
+          "title": "Disbursement Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "disbursement_id",
+        "confirmed_at",
+        "channel"
+      ],
+      "title": "AidDisbursementCitizenConfirmed",
+      "type": "object"
+    },
+    "sarana.aid.disbursement.released/v1": {
+      "additionalProperties": false,
+      "description": "Money was released. Side-effecting: this moved funds on a payment rail.\n\nA replay must never reach the consumer that talks to the bank. That is the single\nclearest reason the refusal mechanism exists.",
+      "properties": {
+        "amount_lkr_cents": {
+          "exclusiveMinimum": 0,
+          "title": "Amount Lkr Cents",
+          "type": "integer"
+        },
+        "disbursement_id": {
+          "format": "uuid",
+          "title": "Disbursement Id",
+          "type": "string"
+        },
+        "entitlement_id": {
+          "format": "uuid",
+          "title": "Entitlement Id",
+          "type": "string"
+        },
+        "entry_hash": {
+          "title": "Entry Hash",
+          "type": "string"
+        },
+        "payment_rail": {
+          "title": "Payment Rail",
+          "type": "string"
+        },
+        "released_at": {
+          "format": "date-time",
+          "title": "Released At",
+          "type": "string"
+        },
+        "released_by": {
+          "format": "uuid",
+          "title": "Released By",
+          "type": "string"
+        },
+        "seq": {
+          "description": "Position in the ledger, for the daily Merkle root",
+          "title": "Seq",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "disbursement_id",
+        "entitlement_id",
+        "amount_lkr_cents",
+        "released_by",
+        "released_at",
+        "payment_rail",
+        "seq",
+        "entry_hash"
+      ],
+      "title": "AidDisbursementReleased",
+      "type": "object"
+    },
+    "sarana.aid.entitlement.calculated/v1": {
+      "additionalProperties": false,
+      "description": "What an assessment is worth, and under which schedule.\n\n`cost_schedule_version` travels with the amount so a consumer never has to guess\nwhich schedule produced a figure it is comparing against.",
+      "properties": {
+        "assessment_id": {
+          "format": "uuid",
+          "title": "Assessment Id",
+          "type": "string"
+        },
+        "calculated_lkr_cents": {
+          "minimum": 0,
+          "title": "Calculated Lkr Cents",
+          "type": "integer"
+        },
+        "cost_schedule_version": {
+          "title": "Cost Schedule Version",
+          "type": "string"
+        },
+        "entitlement_id": {
+          "format": "uuid",
+          "title": "Entitlement Id",
+          "type": "string"
+        },
+        "requires_district_approval": {
+          "title": "Requires District Approval",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "entitlement_id",
+        "assessment_id",
+        "calculated_lkr_cents",
+        "cost_schedule_version",
+        "requires_district_approval"
+      ],
+      "title": "AidEntitlementCalculated",
+      "type": "object"
+    },
+    "sarana.aid.grievance.raised/v1": {
+      "additionalProperties": false,
+      "description": "A citizen is disputing something that affects their household (ADR-008).",
+      "properties": {
+        "assigned_ds_division_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Assigned Ds Division Code"
+        },
+        "channel": {
+          "title": "Channel",
+          "type": "string"
+        },
+        "grievance_id": {
+          "format": "uuid",
+          "title": "Grievance Id",
+          "type": "string"
+        },
+        "public_ref": {
+          "title": "Public Ref",
+          "type": "string"
+        },
+        "sla_due_at": {
+          "format": "date-time",
+          "title": "Sla Due At",
+          "type": "string"
+        },
+        "subject_type": {
+          "title": "Subject Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "grievance_id",
+        "public_ref",
+        "subject_type",
+        "channel",
+        "sla_due_at"
+      ],
+      "title": "AidGrievanceRaised",
+      "type": "object"
+    },
+    "sarana.aid.grievance.resolved/v1": {
+      "additionalProperties": false,
+      "description": "A grievance was closed, within its SLA or not.\n\n`within_sla` is on the event because resolution time appears on the public dashboard,\nand a mechanism whose performance is not published is a mechanism on paper only.",
+      "properties": {
+        "grievance_id": {
+          "format": "uuid",
+          "title": "Grievance Id",
+          "type": "string"
+        },
+        "resolved_at": {
+          "format": "date-time",
+          "title": "Resolved At",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "within_sla": {
+          "title": "Within Sla",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "grievance_id",
+        "status",
+        "resolved_at",
+        "within_sla"
+      ],
+      "title": "AidGrievanceResolved",
+      "type": "object"
+    },
+    "sarana.alert.delivery.confirmed/v1": {
+      "additionalProperties": false,
+      "description": "Proof one message arrived.\n\n`language` is on the event because per-language delivery rate is the metric that\nwould have caught the Ditwah failure, and a metric nobody can compute is not a metric.",
+      "properties": {
+        "channel": {
+          "title": "Channel",
+          "type": "string"
+        },
+        "dispatch_id": {
+          "format": "uuid",
+          "title": "Dispatch Id",
+          "type": "string"
+        },
+        "language": {
+          "title": "Language",
+          "type": "string"
+        },
+        "receipt_id": {
+          "format": "uuid",
+          "title": "Receipt Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dispatch_id",
+        "receipt_id",
+        "channel",
+        "language"
+      ],
+      "title": "AlertDeliveryConfirmed",
+      "type": "object"
+    },
+    "sarana.alert.delivery.failed/v1": {
+      "additionalProperties": false,
+      "description": "A message did not arrive. The recipient is never named on the event.",
+      "properties": {
+        "channel": {
+          "title": "Channel",
+          "type": "string"
+        },
+        "dispatch_id": {
+          "format": "uuid",
+          "title": "Dispatch Id",
+          "type": "string"
+        },
+        "failure_reason": {
+          "title": "Failure Reason",
+          "type": "string"
+        },
+        "language": {
+          "title": "Language",
+          "type": "string"
+        },
+        "receipt_id": {
+          "format": "uuid",
+          "title": "Receipt Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dispatch_id",
+        "receipt_id",
+        "channel",
+        "language",
+        "failure_reason"
+      ],
+      "title": "AlertDeliveryFailed",
+      "type": "object"
+    },
+    "sarana.alert.dispatched/v1": {
+      "additionalProperties": false,
+      "description": "The alert has gone out over one channel. Side-effecting: this sent real messages.",
+      "properties": {
+        "alert_id": {
+          "format": "uuid",
+          "title": "Alert Id",
+          "type": "string"
+        },
+        "channel": {
+          "title": "Channel",
+          "type": "string"
+        },
+        "dispatch_id": {
+          "format": "uuid",
+          "title": "Dispatch Id",
+          "type": "string"
+        },
+        "target_count": {
+          "minimum": 0,
+          "title": "Target Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "alert_id",
+        "dispatch_id",
+        "channel",
+        "target_count"
+      ],
+      "title": "AlertDispatched",
+      "type": "object"
+    },
+    "sarana.alert.drafted/v1": {
+      "additionalProperties": false,
+      "description": "An alert exists in draft. Whether it needs a human depends on its template.",
+      "properties": {
+        "alert_id": {
+          "format": "uuid",
+          "title": "Alert Id",
+          "type": "string"
+        },
+        "area_gn_division_codes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Area Gn Division Codes",
+          "type": "array"
+        },
+        "certainty": {
+          "title": "Certainty",
+          "type": "string"
+        },
+        "hazard_event_id": {
+          "format": "uuid",
+          "title": "Hazard Event Id",
+          "type": "string"
+        },
+        "requires_human_signoff": {
+          "title": "Requires Human Signoff",
+          "type": "boolean"
+        },
+        "severity": {
+          "title": "Severity",
+          "type": "string"
+        },
+        "template_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Template Id"
+        },
+        "urgency": {
+          "title": "Urgency",
+          "type": "string"
+        }
+      },
+      "required": [
+        "alert_id",
+        "hazard_event_id",
+        "severity",
+        "urgency",
+        "certainty",
+        "area_gn_division_codes",
+        "requires_human_signoff"
+      ],
+      "title": "AlertDrafted",
+      "type": "object"
+    },
+    "sarana.alert.signoff.granted/v1": {
+      "additionalProperties": false,
+      "description": "A named human approved the alert text.",
+      "properties": {
+        "alert_id": {
+          "format": "uuid",
+          "title": "Alert Id",
+          "type": "string"
+        },
+        "signed_off_at": {
+          "format": "date-time",
+          "title": "Signed Off At",
+          "type": "string"
+        },
+        "signed_off_by": {
+          "format": "uuid",
+          "title": "Signed Off By",
+          "type": "string"
+        }
+      },
+      "required": [
+        "alert_id",
+        "signed_off_by",
+        "signed_off_at"
+      ],
+      "title": "AlertSignoffGranted",
+      "type": "object"
+    },
+    "sarana.alert.signoff.requested/v1": {
+      "additionalProperties": false,
+      "description": "A free-text alert is waiting for a person.",
+      "properties": {
+        "alert_id": {
+          "format": "uuid",
+          "title": "Alert Id",
+          "type": "string"
+        },
+        "requested_at": {
+          "format": "date-time",
+          "title": "Requested At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "alert_id",
+        "requested_at"
+      ],
+      "title": "AlertSignoffRequested",
+      "type": "object"
+    },
+    "sarana.audit.entry.written/v1": {
+      "additionalProperties": false,
+      "description": "Something was recorded in the append-only action log.\n\nCarries the position in the chain, not the content. The content is in the audit log,\nwhich has its own access control for a reason.",
+      "properties": {
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "actor_type": {
+          "title": "Actor Type",
+          "type": "string"
+        },
+        "entry_hash": {
+          "title": "Entry Hash",
+          "type": "string"
+        },
+        "entry_id": {
+          "format": "uuid",
+          "title": "Entry Id",
+          "type": "string"
+        },
+        "seq": {
+          "title": "Seq",
+          "type": "integer"
+        },
+        "subject_type": {
+          "title": "Subject Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "entry_id",
+        "seq",
+        "actor_type",
+        "action",
+        "subject_type",
+        "entry_hash"
+      ],
+      "title": "AuditEntryWritten",
+      "type": "object"
+    },
+    "sarana.dispatch.plan.proposed/v1": {
+      "additionalProperties": false,
+      "description": "An agent has proposed sending people somewhere. Nothing has been sent yet.",
+      "properties": {
+        "estimated_duration_min": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimated Duration Min"
+        },
+        "incident_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Incident Ids",
+          "type": "array"
+        },
+        "plan_id": {
+          "format": "uuid",
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "proposed_by_agent": {
+          "title": "Proposed By Agent",
+          "type": "string"
+        },
+        "responder_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Responder Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "plan_id",
+        "incident_ids",
+        "responder_ids",
+        "proposed_by_agent"
+      ],
+      "title": "DispatchPlanProposed",
+      "type": "object"
+    },
+    "sarana.dispatch.released/v1": {
+      "additionalProperties": false,
+      "description": "Responders are being sent. Side-effecting: crews are moving on this.",
+      "properties": {
+        "incident_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Incident Ids",
+          "type": "array"
+        },
+        "plan_id": {
+          "format": "uuid",
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "released_at": {
+          "format": "date-time",
+          "title": "Released At",
+          "type": "string"
+        },
+        "responder_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Responder Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "plan_id",
+        "incident_ids",
+        "responder_ids",
+        "released_at"
+      ],
+      "title": "DispatchReleased",
+      "type": "object"
+    },
+    "sarana.dispatch.signoff.granted/v1": {
+      "additionalProperties": false,
+      "description": "A named human committed the plan, having re-proved their second factor.",
+      "properties": {
+        "plan_id": {
+          "format": "uuid",
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "signed_off_at": {
+          "format": "date-time",
+          "title": "Signed Off At",
+          "type": "string"
+        },
+        "signed_off_by": {
+          "format": "uuid",
+          "title": "Signed Off By",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan_id",
+        "signed_off_by",
+        "signed_off_at"
+      ],
+      "title": "DispatchSignoffGranted",
+      "type": "object"
+    },
+    "sarana.dispatch.signoff.rejected/v1": {
+      "additionalProperties": false,
+      "description": "A human refused the plan, and said why.",
+      "properties": {
+        "plan_id": {
+          "format": "uuid",
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "rejected_at": {
+          "format": "date-time",
+          "title": "Rejected At",
+          "type": "string"
+        },
+        "rejected_by": {
+          "format": "uuid",
+          "title": "Rejected By",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan_id",
+        "rejected_by",
+        "rejected_at",
+        "reason"
+      ],
+      "title": "DispatchSignoffRejected",
+      "type": "object"
+    },
+    "sarana.dispatch.signoff.requested/v1": {
+      "additionalProperties": false,
+      "description": "The plan is waiting at the first mandatory human gate.",
+      "properties": {
+        "langgraph_thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Langgraph Thread Id"
+        },
+        "plan_id": {
+          "format": "uuid",
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "requested_at": {
+          "format": "date-time",
+          "title": "Requested At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan_id",
+        "requested_at"
+      ],
+      "title": "DispatchSignoffRequested",
+      "type": "object"
+    },
+    "sarana.forecast.impact.generated/v1": {
+      "additionalProperties": false,
+      "description": "A per-GN-division impact forecast, with the drivers that produced it.\n\n`drivers` travels on the event, not just in the database. A consumer deciding whether\nto pre-position supplies needs to know what moved the score, and making it fetch that\nseparately means it usually will not.",
+      "properties": {
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "drivers": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Drivers",
+          "type": "object"
+        },
+        "expected_households_affected": {
+          "minimum": 0,
+          "title": "Expected Households Affected",
+          "type": "integer"
+        },
+        "forecast_id": {
+          "format": "uuid",
+          "title": "Forecast Id",
+          "type": "string"
+        },
+        "gn_division_code": {
+          "title": "Gn Division Code",
+          "type": "string"
+        },
+        "hazard_event_id": {
+          "format": "uuid",
+          "title": "Hazard Event Id",
+          "type": "string"
+        },
+        "impact_class": {
+          "maximum": 4,
+          "minimum": 0,
+          "title": "Impact Class",
+          "type": "integer"
+        },
+        "lead_time_hours": {
+          "minimum": 0,
+          "title": "Lead Time Hours",
+          "type": "integer"
+        },
+        "method": {
+          "title": "Method",
+          "type": "string"
+        }
+      },
+      "required": [
+        "forecast_id",
+        "hazard_event_id",
+        "gn_division_code",
+        "impact_class",
+        "confidence",
+        "lead_time_hours",
+        "method",
+        "drivers",
+        "expected_households_affected"
+      ],
+      "title": "ImpactForecastGenerated",
+      "type": "object"
+    },
+    "sarana.forecast.trigger.fired/v1": {
+      "additionalProperties": false,
+      "description": "A pre-agreed condition was met and something was done about it.",
+      "properties": {
+        "action_taken": {
+          "title": "Action Taken",
+          "type": "string"
+        },
+        "forecast_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Forecast Id"
+        },
+        "gn_division_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gn Division Code"
+        },
+        "hazard_event_id": {
+          "format": "uuid",
+          "title": "Hazard Event Id",
+          "type": "string"
+        },
+        "trigger_id": {
+          "format": "uuid",
+          "title": "Trigger Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "trigger_id",
+        "hazard_event_id",
+        "action_taken"
+      ],
+      "title": "AnticipatoryTriggerFired",
+      "type": "object"
+    },
+    "sarana.hazard.event.declared/v1": {
+      "additionalProperties": false,
+      "description": "A hazard has been declared and the disaster clock has an anchor.",
+      "properties": {
+        "declared_at": {
+          "format": "date-time",
+          "title": "Declared At",
+          "type": "string"
+        },
+        "hazard_event_id": {
+          "format": "uuid",
+          "title": "Hazard Event Id",
+          "type": "string"
+        },
+        "hazard_type": {
+          "title": "Hazard Type",
+          "type": "string"
+        },
+        "landfall_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Landfall At"
+        },
+        "source": {
+          "description": "Which mocked government feed declared it",
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "hazard_event_id",
+        "hazard_type",
+        "source",
+        "declared_at"
+      ],
+      "title": "HazardEventDeclared",
+      "type": "object"
+    },
+    "sarana.hazard.reading.ingested/v1": {
+      "additionalProperties": false,
+      "description": "One raw observation arrived from one feed.",
+      "properties": {
+        "hazard_event_id": {
+          "format": "uuid",
+          "title": "Hazard Event Id",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "reading_id": {
+          "format": "uuid",
+          "title": "Reading Id",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "hazard_event_id",
+        "reading_id",
+        "source",
+        "observed_at"
+      ],
+      "title": "HazardReadingIngested",
+      "type": "object"
+    },
+    "sarana.incident.duplicate.linked/v1": {
+      "additionalProperties": false,
+      "description": "Two reports were judged to be about the same thing.\n\n`similarity` and `linked_by` travel with it because merging two genuinely separate\nemergencies is a life-safety failure and the decision has to be reviewable.",
+      "properties": {
+        "incident_id": {
+          "format": "uuid",
+          "title": "Incident Id",
+          "type": "string"
+        },
+        "linked_by": {
+          "title": "Linked By",
+          "type": "string"
+        },
+        "report_id": {
+          "format": "uuid",
+          "title": "Report Id",
+          "type": "string"
+        },
+        "similarity": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Similarity",
+          "type": "number"
+        }
+      },
+      "required": [
+        "incident_id",
+        "report_id",
+        "similarity",
+        "linked_by"
+      ],
+      "title": "IncidentDuplicateLinked",
+      "type": "object"
+    },
+    "sarana.incident.report.flagged_for_review/v1": {
+      "additionalProperties": false,
+      "description": "Low confidence sent this to a person. It never auto-publishes.\n\nADR-007: Sinhala and Tamil are low-resource languages and accuracy on them is\nmaterially worse than English. This event is the visible half of that design decision.",
+      "properties": {
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "report_id": {
+          "format": "uuid",
+          "title": "Report Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "report_id",
+        "reason",
+        "confidence"
+      ],
+      "title": "IncidentReportFlaggedForReview",
+      "type": "object"
+    },
+    "sarana.incident.report.received/v1": {
+      "additionalProperties": false,
+      "description": "A citizen report arrived. The report text is not on the event.\n\nWhoever needs the content reads it from the database behind an access check. Putting\nit here would copy every citizen's words into the event log, the archive, and every\nreplay of that window.",
+      "properties": {
+        "channel": {
+          "title": "Channel",
+          "type": "string"
+        },
+        "gn_division_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gn Division Code"
+        },
+        "has_audio": {
+          "default": false,
+          "title": "Has Audio",
+          "type": "boolean"
+        },
+        "has_images": {
+          "default": false,
+          "title": "Has Images",
+          "type": "boolean"
+        },
+        "received_at": {
+          "format": "date-time",
+          "title": "Received At",
+          "type": "string"
+        },
+        "report_id": {
+          "format": "uuid",
+          "title": "Report Id",
+          "type": "string"
+        },
+        "reported_language": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reported Language"
+        }
+      },
+      "required": [
+        "report_id",
+        "channel",
+        "received_at"
+      ],
+      "title": "IncidentReportReceived",
+      "type": "object"
+    },
+    "sarana.incident.report.transcribed/v1": {
+      "additionalProperties": false,
+      "description": "Speech became text, with the confidence that decides what happens next.",
+      "properties": {
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "detected_language": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detected Language"
+        },
+        "needs_human_review": {
+          "title": "Needs Human Review",
+          "type": "boolean"
+        },
+        "report_id": {
+          "format": "uuid",
+          "title": "Report Id",
+          "type": "string"
+        },
+        "transcription_id": {
+          "format": "uuid",
+          "title": "Transcription Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "report_id",
+        "transcription_id",
+        "confidence",
+        "needs_human_review"
+      ],
+      "title": "IncidentReportTranscribed",
+      "type": "object"
+    },
+    "sarana.incident.resolved/v1": {
+      "additionalProperties": false,
+      "description": "The situation is over. Feeds the Learn loop.",
+      "properties": {
+        "incident_id": {
+          "format": "uuid",
+          "title": "Incident Id",
+          "type": "string"
+        },
+        "outcome": {
+          "title": "Outcome",
+          "type": "string"
+        },
+        "resolved_at": {
+          "format": "date-time",
+          "title": "Resolved At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "incident_id",
+        "resolved_at",
+        "outcome"
+      ],
+      "title": "IncidentResolved",
+      "type": "object"
+    },
+    "sarana.incident.triaged/v1": {
+      "additionalProperties": false,
+      "description": "A priority score, with the factors that produced it.",
+      "properties": {
+        "factors": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Factors",
+          "type": "object"
+        },
+        "incident_id": {
+          "format": "uuid",
+          "title": "Incident Id",
+          "type": "string"
+        },
+        "model_version": {
+          "title": "Model Version",
+          "type": "string"
+        },
+        "rank_in_queue": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rank In Queue"
+        },
+        "score": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "incident_id",
+        "score",
+        "model_version",
+        "factors"
+      ],
+      "title": "IncidentTriaged",
+      "type": "object"
+    },
+    "sarana.incident.verified/v1": {
+      "additionalProperties": false,
+      "description": "A report became a verified incident.",
+      "properties": {
+        "gn_division_code": {
+          "title": "Gn Division Code",
+          "type": "string"
+        },
+        "incident_id": {
+          "format": "uuid",
+          "title": "Incident Id",
+          "type": "string"
+        },
+        "incident_type": {
+          "title": "Incident Type",
+          "type": "string"
+        },
+        "people_at_risk": {
+          "minimum": 0,
+          "title": "People At Risk",
+          "type": "integer"
+        },
+        "public_ref": {
+          "title": "Public Ref",
+          "type": "string"
+        },
+        "severity": {
+          "maximum": 5,
+          "minimum": 1,
+          "title": "Severity",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "incident_id",
+        "public_ref",
+        "gn_division_code",
+        "incident_type",
+        "severity",
+        "people_at_risk"
+      ],
+      "title": "IncidentVerified",
+      "type": "object"
+    },
+    "sarana.resilience.observation.appended/v1": {
+      "additionalProperties": false,
+      "description": "An agent appended a fact to the Resilience Graph (ADR-012).",
+      "properties": {
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "entity_id": {
+          "format": "uuid",
+          "title": "Entity Id",
+          "type": "string"
+        },
+        "entity_type": {
+          "title": "Entity Type",
+          "type": "string"
+        },
+        "observation_id": {
+          "format": "uuid",
+          "title": "Observation Id",
+          "type": "string"
+        },
+        "observation_type": {
+          "title": "Observation Type",
+          "type": "string"
+        },
+        "source_agent": {
+          "title": "Source Agent",
+          "type": "string"
+        }
+      },
+      "required": [
+        "observation_id",
+        "entity_id",
+        "entity_type",
+        "observation_type",
+        "source_agent",
+        "confidence"
+      ],
+      "title": "ResilienceObservationAppended",
+      "type": "object"
+    }
+  }
+}

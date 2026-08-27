@@ -19,7 +19,8 @@
 param(
     [Parameter(Position = 0)]
     [ValidateSet('help', 'bootstrap', 'keys', 'up', 'down', 'reset', 'migrate', 'seed',
-        'dev', 'test', 'lint', 'fmt', 'openapi', 'verify-i18n', 'logs', 'ports', 'health')]
+        'dev', 'test', 'lint', 'fmt', 'openapi', 'verify-i18n', 'verify-events',
+        'downgrade', 'logs', 'ports', 'health')]
     [string]$Target = 'help',
 
     [string]$Service
@@ -81,6 +82,8 @@ switch ($Target) {
         Write-Output '  fmt          auto-fix formatting and import order'
         Write-Output '  openapi      regenerate the merged spec and the TS client'
         Write-Output '  verify-i18n  fail if any locale key is missing in si, ta or en'
+        Write-Output '  verify-events fail if an event contract change breaks a consumer'
+        Write-Output '  downgrade    DESTRUCTIVE - roll every service back to empty'
         Write-Output '  logs         tail logs; add -Service <name> for one service'
         Write-Output '  ports        print the local port map'
         Write-Output '  health       curl /healthz on all six services'
@@ -120,6 +123,17 @@ switch ($Target) {
         & $PSCommandPath 'up'
     }
 
+    'downgrade' {
+        $reply = Read-Host "This drops every SARANA table. Type downgrade to confirm"
+        if ($reply -ne 'downgrade') { Write-Output 'Aborted.'; exit 1 }
+        foreach ($svc in @('agent-svc', 'alerting-svc', 'ledger-svc', 'incident-svc', 'core-api')) {
+            Write-Output "--> rolling back $svc"
+            Push-Location "services/$svc"
+            try { Invoke-Checked 'uv' @('run', 'alembic', 'downgrade', 'base') }
+            finally { Pop-Location }
+        }
+    }
+
     'migrate' {
         foreach ($svc in $DataServices) {
             Write-Output "--> migrating $svc"
@@ -146,6 +160,7 @@ switch ($Target) {
         $srcDirs = @('packages/py-shared/src') + (Get-ChildItem 'services' -Directory |
             ForEach-Object { "services/$($_.Name)/src" })
         Invoke-Checked 'uv' (@('run', 'mypy') + $srcDirs)
+        Invoke-Checked 'uv' @('run', 'python', 'tools/hooks/check_event_schemas.py')
         & pnpm run lint
         & pnpm turbo run typecheck
     }
@@ -160,6 +175,10 @@ switch ($Target) {
         Invoke-Checked 'uv' @('run', 'python', '-m', 'sarana_shared.openapi.merge',
             '--out', 'packages/ts-shared/openapi.json')
         & pnpm --filter '@sarana/ts-shared' run 'generate:api'
+    }
+
+    'verify-events' {
+        Invoke-Checked 'uv' @('run', 'python', 'tools/hooks/check_event_schemas.py')
     }
 
     'verify-i18n' {

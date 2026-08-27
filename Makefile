@@ -105,6 +105,7 @@ lint: ## ruff check + ruff format --check + mypy + eslint + tsc --noEmit
 	$(UV) run ruff check .
 	$(UV) run ruff format --check .
 	$(UV) run mypy packages/py-shared/src $(wildcard services/*/src)
+	$(UV) run python tools/hooks/check_event_schemas.py
 	pnpm run lint
 	pnpm turbo run typecheck
 
@@ -118,6 +119,10 @@ fmt: ## Auto-fix formatting and import order
 openapi: ## Regenerate the merged OpenAPI spec and the TypeScript client
 	$(UV) run python -m sarana_shared.openapi.merge --out packages/ts-shared/openapi.json
 	pnpm --filter @sarana/ts-shared run generate:api
+
+.PHONY: verify-events
+verify-events: ## Fail if an event contract change would break a running consumer
+	$(UV) run python tools/hooks/check_event_schemas.py
 
 .PHONY: verify-i18n
 verify-i18n: ## Fail if any locale key is missing in si, ta or en

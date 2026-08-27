@@ -17,7 +17,7 @@ from gov_mock import SERVICE_DESCRIPTION, __version__
 from gov_mock.api.v1.router import router as v1_router
 from gov_mock.config import Settings, get_settings
 from sarana_shared.db.session import check_connection, create_engine, create_session_factory
-from sarana_shared.events.bus import RedisStreamsEventBus
+from sarana_shared.events.factory import build_event_bus
 from sarana_shared.service.app import create_service_app
 from sarana_shared.service.health import HealthRegistry
 
@@ -36,7 +36,13 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI, health: HealthRegistry) -> AsyncIterator[None]:
         engine = create_engine(resolved.database(application_name=SERVICE_NAME))
         redis = Redis.from_url(resolved.redis_url)
-        bus = RedisStreamsEventBus(redis, prefix=resolved.event_stream_prefix)
+        bus = build_event_bus(
+            kind=resolved.event_bus,
+            redis_url=resolved.redis_url,
+            stream_prefix=resolved.event_stream_prefix,
+            bus_name=resolved.event_bus_name,
+            region=resolved.aws_region,
+        )
 
         app.state.engine = engine
         app.state.session_factory = create_session_factory(engine)
@@ -49,6 +55,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
             yield
         finally:
             await bus.close()
+            await redis.aclose()
             await engine.dispose()
 
     app, _health = create_service_app(

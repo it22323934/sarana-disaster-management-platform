@@ -8,7 +8,8 @@ A fourth, MSK, is the documented Phase 2 seam (ADR-003). The port in `bus.py` is
 so it can be added without touching a caller.
 """
 
+from sarana_shared.events.impl.eventbridge import EventBridgeEventBus
 from sarana_shared.events.impl.in_memory import InMemoryEventBus
 from sarana_shared.events.impl.redis_streams import RedisStreamsEventBus
 
-__all__ = ["InMemoryEventBus", "RedisStreamsEventBus"]
+__all__ = ["EventBridgeEventBus", "InMemoryEventBus", "RedisStreamsEventBus"]

@@ -53,3 +53,12 @@ repos:
         language: system
         pass_filenames: false
         files: ^(packages/ts-shared/src/i18n/|data/seed/|.*locales?/).*\.(json|ya?ml)$
+
+      # Event contracts outlive the code that wrote them: an envelope in the outbox
+      # during a deploy is read by the new version, and a replay reads weeks-old events.
+      - id: sarana-event-contracts
+        name: event contract compatibility
+        entry: python tools/hooks/check_event_schemas.py
+        language: system
+        pass_filenames: false
+        files: ^packages/py-shared/src/sarana_shared/events/.*\.py$

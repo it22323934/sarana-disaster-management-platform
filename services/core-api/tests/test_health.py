@@ -44,9 +44,23 @@ async def test_metrics_are_exposed_in_prometheus_format(client: AsyncClient) -> 
 
 async def test_correlation_id_is_echoed_back(client: AsyncClient) -> None:
     """An inbound correlation ID survives the request so a caller can quote it."""
+    chain = "01a04200-1111-7111-8111-111111111111"
+
+    response = await client.get("/healthz", headers={"X-Correlation-Id": chain})
+
+    assert response.headers["X-Correlation-Id"] == chain
+
+
+async def test_an_arbitrary_correlation_header_is_replaced(client: AsyncClient) -> None:
+    """Only a UUID is honoured.
+
+    The correlation ID reaches every log line, every event payload and every audit entry
+    the request produces. Forwarding whatever a caller put in a header would let them
+    choose what appears beside their own actions.
+    """
     response = await client.get("/healthz", headers={"X-Correlation-Id": "chain-123"})
 
-    assert response.headers["X-Correlation-Id"] == "chain-123"
+    assert response.headers["X-Correlation-Id"] != "chain-123"
 
 
 async def test_unknown_route_returns_problem_details(client: AsyncClient) -> None:

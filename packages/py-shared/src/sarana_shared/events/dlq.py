@@ -50,10 +50,11 @@ def backoff_for(attempt: int, *, rng: random.Random | None = None) -> timedelta:
     """
     if attempt < 1:
         return timedelta(0)
-    base = BASE_BACKOFF * (2 ** (attempt - 1))
+    base: timedelta = BASE_BACKOFF * (2 ** (attempt - 1))
     source = rng or random.SystemRandom()
-    jitter = base * JITTER_FRACTION * (source.random() * 2 - 1)
-    return max(timedelta(0), base + jitter)
+    jitter: timedelta = base * (JITTER_FRACTION * (source.random() * 2 - 1))
+    delayed: timedelta = base + jitter
+    return delayed if delayed > timedelta(0) else timedelta(0)
 
 
 class DeadLetter(Base):

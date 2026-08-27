@@ -64,7 +64,7 @@ def app() -> FastAPI:
 
 @pytest.fixture
 async def client(app: FastAPI):  # type: ignore[no-untyped-def]  # httpx fixture
-    set_correlation_id("test-correlation-0000")
+    set_correlation_id("01a04200-0000-7000-8000-000000000000")
     # Starlette sends the 500 response and then re-raises so the server can log it.
     # A real deployment has uvicorn at the top of the stack absorbing that; in-process
     # the exception would otherwise surface here instead of the response under test.

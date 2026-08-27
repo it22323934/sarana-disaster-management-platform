@@ -18,10 +18,13 @@ from core_api.api.v1.jwks import build_jwks_router
 from core_api.api.v1.router import router as v1_router
 from core_api.config import Settings, get_settings
 from core_api.domain.auth.password import PasswordHasherService
+from core_api.repo import OutboxEvent
 from sarana_shared.auth.middleware import AuthenticationMiddleware
 from sarana_shared.auth.tokens import TokenService
 from sarana_shared.db.session import check_connection, create_engine, create_session_factory
-from sarana_shared.events.bus import RedisStreamsEventBus
+from sarana_shared.events.factory import build_event_bus
+from sarana_shared.events.outbox import OutboxPublisher, OutboxWorker
+from sarana_shared.events.replay import ReplayCoordinator
 from sarana_shared.service.app import create_service_app
 from sarana_shared.service.health import HealthRegistry
 
@@ -40,11 +43,31 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI, health: HealthRegistry) -> AsyncIterator[None]:
         engine = create_engine(resolved.database(application_name=SERVICE_NAME))
         redis = Redis.from_url(resolved.redis_url)
-        bus = RedisStreamsEventBus(redis, prefix=resolved.event_stream_prefix)
+        bus = build_event_bus(
+            kind=resolved.event_bus,
+            redis_url=resolved.redis_url,
+            stream_prefix=resolved.event_stream_prefix,
+            bus_name=resolved.event_bus_name,
+            region=resolved.aws_region,
+        )
 
         app.state.engine = engine
         app.state.session_factory = create_session_factory(engine)
         app.state.event_bus = bus
+
+        # Drains this service's outbox onto the bus. The outbox is the source of truth;
+        # this is only the transport, so a worker that dies loses nothing - the rows are
+        # still there for the next process to pick up.
+        publisher = OutboxPublisher(app.state.session_factory, bus, OutboxEvent)
+        worker = OutboxWorker(publisher)
+        worker.start()
+        app.state.outbox_publisher = publisher
+        app.state.outbox_worker = worker
+
+        # One replay at a time, per process. The constraint is the safety feature:
+        # an operator starting a replay during an incident should have to notice
+        # that one is already running rather than quietly stacking a second.
+        app.state.replay_coordinator = ReplayCoordinator(bus=bus)
 
         # core-api is the only token issuer: it is the only service configured with a
         # private key. Everything else verifies against the JWKS this service publishes.
@@ -59,7 +82,9 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            await worker.stop()
             await bus.close()
+            await redis.aclose()
             await engine.dispose()
 
     app, _health = create_service_app(

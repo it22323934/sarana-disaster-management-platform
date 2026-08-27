@@ -22,6 +22,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sarana_shared.auth.tokens import TokenSettings
 from sarana_shared.crypto.keyed import FieldCipher, KeyedHasher
 from sarana_shared.db.session import DatabaseSettings
+from sarana_shared.events.bus import BusKind
 
 ENV_FILE: Final = ".env"
 
@@ -61,6 +62,13 @@ class SharedSettings(BaseSettings):
 
     redis_url: str = Field(default="redis://localhost:6379/0")
     event_stream_prefix: str = Field(default="sarana")
+
+    # Which EventBus implementation to build. `redis` locally and in CI, `eventbridge` on
+    # AWS, `memory` for unit tests. ADR-003 keeps the port open for an `msk` in Phase 2.
+    event_bus: BusKind = Field(default=BusKind.REDIS)
+    # EventBridge only. Ignored by the other implementations.
+    event_bus_name: str = Field(default="sarana")
+    aws_region: str = Field(default="ap-south-1")
 
     jwt_public_key_path: Path
     jwt_private_key_path: Path | None = Field(default=None)

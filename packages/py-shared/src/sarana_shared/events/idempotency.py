@@ -15,11 +15,11 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
-from typing import Final
+from typing import Any, Final, cast
 from uuid import UUID
 
 import structlog
-from sqlalchemy import DateTime, Index, String, Text, func, select
+from sqlalchemy import CursorResult, DateTime, Index, String, Text, func, select, update
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -134,7 +134,7 @@ async def once(
     outcome = await handler(session, envelope)
     if outcome is not None:
         await session.execute(
-            ProcessedEvent.__table__.update()
+            update(ProcessedEvent)
             .where(
                 ProcessedEvent.consumer_group == group,
                 ProcessedEvent.event_id == envelope.event_id,
@@ -154,7 +154,10 @@ async def prune(session: AsyncSession, *, older_than: timedelta = RETENTION) -> 
 
     from sarana_shared.domain.time import utc_now
 
-    result = await session.execute(
-        delete(ProcessedEvent).where(ProcessedEvent.processed_at < utc_now() - older_than)
+    result = cast(
+        "CursorResult[Any]",
+        await session.execute(
+            delete(ProcessedEvent).where(ProcessedEvent.processed_at < utc_now() - older_than)
+        ),
     )
     return int(result.rowcount or 0)

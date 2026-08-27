@@ -130,9 +130,7 @@ def _field_types(schema: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def check_compatibility(
-    previous: dict[str, Any], current: dict[str, Any]
-) -> list[Incompatibility]:
+def check_compatibility(previous: dict[str, Any], current: dict[str, Any]) -> list[Incompatibility]:
     """Compare two exported catalogues and report breaking changes.
 
     Three things break a consumer that is already running:

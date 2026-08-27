@@ -123,9 +123,23 @@ def get_correlation_id() -> str | None:
 def set_correlation_id(value: str) -> None:
     """Bind a correlation ID to the current context.
 
-    Called by the inbound HTTP middleware and by the event-bus consumer loop, so that
-    every log line and every event published downstream carries the same chain ID.
+    Called by the inbound HTTP middleware and by the event-bus consumer loop, so every
+    log line and every event published downstream carries the same chain ID.
+
+    Raises:
+        ValueError: if the value is not a UUID. The event envelope types this field as a
+            UUID, so a non-UUID bound here would not fail until something tried to
+            publish - turning a caller's mistake into a lost event somewhere else
+            entirely. `parse_correlation_id` is the forgiving version, for untrusted
+            input like an inbound header.
     """
+    try:
+        UUID(value)
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise ValueError(
+            f"correlation id must be a UUID, got {value!r}. Use parse_correlation_id() "
+            "for values that come from outside the platform."
+        ) from exc
     _correlation_id.set(value)
 
 

@@ -38,6 +38,9 @@ OUTBOX_SCHEMA = "outbox"
 # an operator. It is never deleted - a stuck event is evidence, not noise.
 MAX_PUBLISH_ATTEMPTS = 10
 
+# Models already built, keyed by service module. See `make_outbox_model`.
+_BUILT: dict[str, type[OutboxEventBase]] = {}
+
 
 class OutboxEventBase(Base):
     """The columns every service's outbox table carries.
@@ -65,9 +68,7 @@ class OutboxEventBase(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    published_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -100,6 +101,13 @@ def make_outbox_model(service_module: str) -> type[OutboxEventBase]:
     """
     table_name = f"{service_module}_event"
 
+    # Idempotent. A second call for the same service returns the class the first one
+    # built rather than trying to map the table twice - which SQLAlchemy rejects with an
+    # error that names the table but not the two callers.
+    existing = _BUILT.get(service_module)
+    if existing is not None:
+        return existing
+
     model = type(
         f"{''.join(part.title() for part in service_module.split('_'))}OutboxEvent",
         (OutboxEventBase,),
@@ -118,7 +126,9 @@ def make_outbox_model(service_module: str) -> type[OutboxEventBase]:
             ),
         },
     )
-    return cast("type[OutboxEventBase]", model)
+    built = cast("type[OutboxEventBase]", model)
+    _BUILT[service_module] = built
+    return built
 
 
 def enqueue(

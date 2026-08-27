@@ -35,7 +35,10 @@ ignore = [
 
 [lint.per-file-ignores]
 # assert is the point of a test; a hardcoded password in a fixture is not a secret.
-"**/tests/**" = ["S101", "S105", "S106"]
+# F811: pytest resolves a fixture by parameter name, so a conftest that re-exports
+# a fixture and then consumes it necessarily shadows the imported name.
+"**/tests/**" = ["S101", "S105", "S106", "F811"]
+"**/conftest.py" = ["S101", "F811"]
 # The shared test helpers are test code that happens to ship inside the package.
 "packages/py-shared/src/sarana_shared/testing/**" = ["S101"]
 # The schema suite builds SQL from module-level literal constants to exercise the

@@ -10,6 +10,7 @@ from sarana_shared.domain.ids import (
     ensure_correlation_id,
     get_correlation_id,
     reset_correlation_id,
+    set_correlation_id,
     short_code,
     uuid7,
     uuid7_timestamp,
@@ -82,3 +83,35 @@ def test_correlation_id_is_minted_once_and_reused() -> None:
 
     assert ensure_correlation_id() == first
     assert get_correlation_id() == first
+
+
+def test_a_non_uuid_correlation_id_is_refused_at_the_setter() -> None:
+    """The envelope types this field as a UUID, so the invariant holds at the boundary.
+
+    Binding a non-UUID here would not fail until something tried to publish an event,
+    turning a caller's mistake into a lost event somewhere else entirely.
+    """
+    with pytest.raises(ValueError, match="must be a UUID"):
+        set_correlation_id("chain-abc-123")
+
+
+@pytest.mark.parametrize(
+    ("header", "honoured"),
+    [
+        ("01a04200-0000-7000-8000-000000000000", True),
+        ("  01a04200-0000-7000-8000-000000000000  ", True),
+        ("chain-abc-123", False),
+        ('x", "level": "error', False),
+        ("", False),
+        (None, False),
+    ],
+)
+def test_only_a_uuid_is_accepted_from_outside(header: str | None, honoured: bool) -> None:
+    """`parse_correlation_id` is the forgiving version, for untrusted input.
+
+    The correlation ID reaches every log line, every event payload and every audit entry
+    a request produces, so an inbound header is validated rather than forwarded.
+    """
+    from sarana_shared.domain.ids import parse_correlation_id
+
+    assert (parse_correlation_id(header) is not None) is honoured

@@ -27,7 +27,7 @@ from sarana_shared.db.session import (
     create_session_factory,
 )
 from sarana_shared.domain.ids import reset_correlation_id, set_correlation_id
-from sarana_shared.events.bus import InMemoryEventBus
+from sarana_shared.events.impl.in_memory import InMemoryEventBus
 
 # The compose stack builds this image; tests reuse it so the extensions match production.
 POSTGRES_IMAGE = os.environ.get("SARANA_TEST_POSTGRES_IMAGE", "sarana/postgres:16-3.4-pgvector")
@@ -141,9 +141,10 @@ def correlation() -> Iterator[str]:
     """Bind a fixed correlation ID for the test and clear it afterwards.
 
     Autouse, so an assertion on a log line or an event envelope has a stable value to
-    compare against rather than a fresh UUID per call.
+    compare against rather than a fresh UUID per call. It is a real UUID because the
+    event envelope types the field as one.
     """
-    value = "test-correlation-0000"
+    value = "01a04200-0000-7000-8000-000000000000"
     set_correlation_id(value)
     yield value
     reset_correlation_id()
