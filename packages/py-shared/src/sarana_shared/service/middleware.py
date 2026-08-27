@@ -19,6 +19,7 @@ from starlette.types import ASGIApp
 
 from sarana_shared.domain.ids import (
     new_correlation_id,
+    parse_correlation_id,
     reset_correlation_id,
     set_correlation_id,
 )
@@ -42,8 +43,11 @@ class CorrelationMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        incoming = request.headers.get(CORRELATION_HEADER)
-        correlation_id = incoming.strip() if incoming and incoming.strip() else new_correlation_id()
+        # An inbound ID is honoured only if it is a UUID. Forwarding arbitrary header
+        # text would put a caller's choice of string into every log line, every event
+        # payload and every audit entry the request produces.
+        incoming = parse_correlation_id(request.headers.get(CORRELATION_HEADER))
+        correlation_id = incoming or new_correlation_id()
 
         set_correlation_id(correlation_id)
         structlog.contextvars.bind_contextvars(correlation_id=correlation_id)

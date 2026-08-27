@@ -31,7 +31,7 @@ from incident_svc.repo.reports import (
     ReportEmbedding,
     ReportTranscription,
 )
-from sarana_shared.db.outbox import make_outbox_model
+from sarana_shared.events.outbox import make_outbox_model
 
 # incident-svc's own outbox table: outbox.incident_svc_event.
 OutboxEvent = make_outbox_model("incident_svc")

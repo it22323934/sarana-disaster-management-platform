@@ -14,7 +14,7 @@ from agent_svc.repo.hazard import (
     HazardFeedReading,
     ImpactForecast,
 )
-from sarana_shared.db.outbox import make_outbox_model
+from sarana_shared.events.outbox import make_outbox_model
 
 # agent-svc's own outbox table: outbox.agent_svc_event.
 OutboxEvent = make_outbox_model("agent_svc")

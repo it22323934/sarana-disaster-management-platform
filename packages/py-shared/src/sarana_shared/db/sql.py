@@ -309,6 +309,76 @@ REQUIRED_EXTENSIONS: Final[tuple[str, ...]] = (
 )
 
 
+# The two tables every service shares in the `outbox` schema. Created idempotently by
+# every service's event-backbone migration, so whichever migrates first creates them and
+# the rest are no-ops - the same no-ordering property as the shared functions above.
+#
+# They are shared rather than per-service because they are keyed by consumer group, and a
+# consumer group is not owned by the service that happens to publish to it.
+PROCESSED_EVENT_TABLE: Final = """
+CREATE TABLE IF NOT EXISTS outbox.processed_event (
+    consumer_group  varchar(64)  NOT NULL,
+    event_id        uuid         NOT NULL,
+    event_type      varchar(200) NOT NULL,
+    correlation_id  uuid         NOT NULL,
+    processed_at    timestamptz  NOT NULL DEFAULT now(),
+    outcome         text,
+    CONSTRAINT pk_processed_event PRIMARY KEY (consumer_group, event_id)
+);
+"""
+
+PROCESSED_EVENT_INDEX: Final = """
+CREATE INDEX IF NOT EXISTS ix_processed_event_processed_at
+    ON outbox.processed_event (processed_at);
+"""
+
+PROCESSED_EVENT_COMMENT: Final = """
+COMMENT ON TABLE outbox.processed_event IS
+'One (consumer group, event) pair already handled. A handler inserts here in the same '
+'transaction as its own writes, so a redelivery finds the row and does nothing. This is '
+'what turns at-least-once delivery into exactly-once side effects.';
+"""
+
+DEAD_LETTER_TABLE: Final = """
+CREATE TABLE IF NOT EXISTS outbox.dead_letter (
+    id              uuid         NOT NULL,
+    consumer_group  varchar(64)  NOT NULL,
+    event_id        uuid         NOT NULL,
+    event_type      varchar(200) NOT NULL,
+    correlation_id  uuid         NOT NULL,
+    envelope        jsonb        NOT NULL,
+    failures        jsonb        NOT NULL DEFAULT '[]'::jsonb,
+    attempts        integer      NOT NULL DEFAULT 0,
+    created_at      timestamptz  NOT NULL DEFAULT now(),
+    redriven_at     timestamptz,
+    redriven_by     varchar(64),
+    resolution_note text,
+    CONSTRAINT pk_dead_letter PRIMARY KEY (id)
+);
+"""
+
+DEAD_LETTER_INDEXES: Final = """
+CREATE INDEX IF NOT EXISTS ix_dead_letter_unresolved
+    ON outbox.dead_letter (created_at, consumer_group);
+"""
+
+DEAD_LETTER_COMMENT: Final = """
+COMMENT ON TABLE outbox.dead_letter IS
+'Envelopes no consumer could handle, with every failure traceback. A non-empty DLQ raises '
+'an alarm: a silent one is the failure mode that kills trust in an event system, because '
+'the dashboard looks healthy while the work quietly did not happen.';
+"""
+
+SHARED_EVENT_TABLES: Final[tuple[str, ...]] = (
+    PROCESSED_EVENT_TABLE,
+    PROCESSED_EVENT_INDEX,
+    PROCESSED_EVENT_COMMENT,
+    DEAD_LETTER_TABLE,
+    DEAD_LETTER_INDEXES,
+    DEAD_LETTER_COMMENT,
+)
+
+
 def localised_check(column: str) -> str:
     """SQL for a CHECK constraint requiring si, ta and en on a localised column."""
     return f"public.all_locales_present({column})"

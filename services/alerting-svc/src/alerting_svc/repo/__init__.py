@@ -13,7 +13,7 @@ from alerting_svc.repo.base import (
     HAZARD_TYPES,
     TEMPLATE_STATUSES,
 )
-from sarana_shared.db.outbox import make_outbox_model
+from sarana_shared.events.outbox import make_outbox_model
 
 # alerting-svc's own outbox table: outbox.alerting_svc_event.
 OutboxEvent = make_outbox_model("alerting_svc")

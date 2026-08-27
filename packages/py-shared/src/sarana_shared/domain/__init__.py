@@ -29,8 +29,10 @@ from sarana_shared.domain.geo import (
 )
 from sarana_shared.domain.ids import (
     ensure_correlation_id,
+    ensure_correlation_uuid,
     get_correlation_id,
     new_correlation_id,
+    parse_correlation_id,
     set_correlation_id,
     short_code,
     uuid7,
@@ -95,6 +97,7 @@ __all__ = [
     "district_of",
     "ds_of",
     "ensure_correlation_id",
+    "ensure_correlation_uuid",
     "ensure_utc",
     "format_colombo",
     "format_lkr",
@@ -106,6 +109,7 @@ __all__ = [
     "new_correlation_id",
     "parent_code",
     "parse_accept_language",
+    "parse_correlation_id",
     "parse_relative",
     "rupees_to_cents",
     "set_correlation_id",

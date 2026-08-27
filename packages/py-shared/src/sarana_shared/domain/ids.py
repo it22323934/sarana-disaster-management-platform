@@ -141,3 +141,30 @@ def ensure_correlation_id() -> str:
 def reset_correlation_id() -> None:
     """Clear the correlation ID. Used by test fixtures between cases."""
     _correlation_id.set(None)
+
+
+def ensure_correlation_uuid() -> UUID:
+    """The current correlation ID as a UUID, minting and binding one if absent.
+
+    The envelope types this field as a UUID rather than free text on purpose. A
+    correlation ID travels through logs, event payloads and audit entries, and anything
+    an inbound caller can put in a header ends up in all three - so it has to be a shape
+    we control rather than a string we forward.
+    """
+    return UUID(ensure_correlation_id())
+
+
+def parse_correlation_id(value: str | None) -> str | None:
+    """Accept an inbound correlation ID only if it is a UUID.
+
+    Returning None means "mint a fresh one". Honouring an arbitrary header value would
+    let a caller choose what appears in the audit trail beside their own actions, and
+    would put unvalidated text into every log line the request produces.
+    """
+    if not value:
+        return None
+    candidate = value.strip()
+    try:
+        return str(UUID(candidate))
+    except ValueError:
+        return None

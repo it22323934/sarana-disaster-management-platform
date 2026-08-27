@@ -22,7 +22,7 @@ from ledger_svc.repo.base import (
     PAYMENT_RAILS,
 )
 from ledger_svc.repo.ledger import Approval, Disbursement, LedgerAnchor
-from sarana_shared.db.outbox import make_outbox_model
+from sarana_shared.events.outbox import make_outbox_model
 
 # ledger-svc's own outbox table: outbox.ledger_svc_event.
 OutboxEvent = make_outbox_model("ledger_svc")

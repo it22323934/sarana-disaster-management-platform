@@ -39,7 +39,7 @@ from core_api.repo.resilience import (
     RGObservation,
     RGRelation,
 )
-from sarana_shared.db.outbox import make_outbox_model
+from sarana_shared.events.outbox import make_outbox_model
 
 # core-api's own outbox table: outbox.core_api_event.
 OutboxEvent = make_outbox_model("core_api")
