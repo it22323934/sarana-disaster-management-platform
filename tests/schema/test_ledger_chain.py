@@ -82,6 +82,10 @@ async def test_an_entry_claiming_the_wrong_predecessor_is_refused(
     approver = await make_user_with_role(db, "DS_APPROVER", hierarchy["ds_code"])
     await _approve(db, entitlement["entitlement_id"], "DS", approver)
 
+    # A second, different approver: segregation of duty fires before the chain check, so
+    # reusing the first one would prove nothing about the chain.
+    district = await make_user_with_role(db, "DISTRICT_APPROVER", hierarchy["district_code"])
+
     with pytest.raises(DBAPIError, match="hash chain break"):
         await db.execute(
             text(
@@ -92,7 +96,7 @@ async def test_an_entry_claiming_the_wrong_predecessor_is_refused(
             {
                 "id": uuid7(),
                 "entitlement_id": entitlement["entitlement_id"],
-                "approver": approver,
+                "approver": district,
                 "forged": "f" * 64,
             },
         )

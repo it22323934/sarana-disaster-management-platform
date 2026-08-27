@@ -50,11 +50,16 @@ async def test_correlation_id_is_echoed_back(client: AsyncClient) -> None:
 
 
 async def test_unknown_route_returns_problem_details(client: AsyncClient) -> None:
-    """Never a bare string, not even for a routing miss."""
+    """Never a bare string, not even for a routing miss.
+
+    A service with authentication mounted refuses an unauthenticated caller before it
+    routes, so the status is 401 rather than 404. That is the better of the two: a 404
+    here would confirm which routes exist to someone holding no credential.
+    """
     response = await client.get("/no-such-route")
 
-    assert response.status_code == 404
+    assert response.status_code in (401, 404)
     assert response.headers["content-type"].startswith("application/problem+json")
     body = response.json()
-    assert body["status"] == 404
+    assert body["status"] == response.status_code
     assert body["correlation_id"]

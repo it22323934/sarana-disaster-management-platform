@@ -14,8 +14,12 @@ from fastapi import FastAPI
 from redis.asyncio import Redis
 
 from core_api import SERVICE_DESCRIPTION, __version__
+from core_api.api.v1.jwks import build_jwks_router
 from core_api.api.v1.router import router as v1_router
 from core_api.config import Settings, get_settings
+from core_api.domain.auth.password import PasswordHasherService
+from sarana_shared.auth.middleware import AuthenticationMiddleware
+from sarana_shared.auth.tokens import TokenService
 from sarana_shared.db.session import check_connection, create_engine, create_session_factory
 from sarana_shared.events.bus import RedisStreamsEventBus
 from sarana_shared.service.app import create_service_app
@@ -42,6 +46,13 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         app.state.session_factory = create_session_factory(engine)
         app.state.event_bus = bus
 
+        # core-api is the only token issuer: it is the only service configured with a
+        # private key. Everything else verifies against the JWKS this service publishes.
+        app.state.tokens = TokenService(resolved.tokens(can_issue=True))
+        app.state.password_hasher = PasswordHasherService.create()
+        app.state.keyed_hasher = resolved.keyed_hasher()
+        app.state.field_cipher = resolved.field_cipher()
+
         health.register("database", lambda: check_connection(engine))
         health.register("event_bus", _redis_probe(redis))
 
@@ -60,6 +71,12 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         lifespan_hook=lifespan,
         cors_origins=resolved.cors_origins,
     )
+    # Verified locally against this service's own key. Added after the app factory has
+    # installed correlation and error handling, so an authentication failure is still a
+    # Problem Details response carrying a correlation ID.
+    app.add_middleware(AuthenticationMiddleware, tokens=TokenService(resolved.tokens()))
+
+    app.include_router(build_jwks_router(resolved))
     app.include_router(v1_router, prefix="/api/v1")
     return app
 

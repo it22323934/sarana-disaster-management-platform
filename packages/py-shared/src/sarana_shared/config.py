@@ -20,6 +20,7 @@ from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from sarana_shared.auth.tokens import TokenSettings
+from sarana_shared.crypto.keyed import FieldCipher, KeyedHasher
 from sarana_shared.db.session import DatabaseSettings
 
 ENV_FILE: Final = ".env"
@@ -68,6 +69,17 @@ class SharedSettings(BaseSettings):
     access_token_ttl_seconds: int = Field(default=900, ge=60)
     refresh_token_ttl_seconds: int = Field(default=2_592_000, ge=3_600)
 
+    # Keyed hashing and field encryption for personal data. Hex-encoded, 32 bytes, from
+    # Secrets Manager on AWS. They are separate keys on purpose: the HMAC key is used for
+    # deterministic lookup and the cipher key for recoverable ciphertext, and a single key
+    # doing both would let anyone able to compute a lookup hash also decrypt the field.
+    pii_hmac_key: str = Field(
+        description="Hex-encoded HMAC-SHA256 key for MSISDN and account lookup hashes"
+    )
+    pii_cipher_key: str = Field(
+        description="Hex-encoded AES-256 key for field-level encryption of personal data"
+    )
+
     otlp_endpoint: str | None = Field(default=None)
     tracing_enabled: bool = Field(default=True)
 
@@ -87,6 +99,14 @@ class SharedSettings(BaseSettings):
             statement_timeout_ms=self.database_statement_timeout_ms,
             application_name=application_name,
         )
+
+    def keyed_hasher(self) -> KeyedHasher:
+        """Build the deterministic hasher used for lookup keys."""
+        return KeyedHasher.from_hex(self.pii_hmac_key)
+
+    def field_cipher(self) -> FieldCipher:
+        """Build the cipher used for recoverable personal data."""
+        return FieldCipher.from_hex(self.pii_cipher_key)
 
     def tokens(self, *, can_issue: bool = False) -> TokenSettings:
         """Build token settings.

@@ -186,12 +186,23 @@ class UpstreamUnavailable(SaranaError):
     status = 503
 
 
-def _problem_response(problem: ProblemDetail) -> JSONResponse:
+def problem_response(problem: ProblemDetail) -> JSONResponse:
+    """Render a ProblemDetail as an HTTP response.
+
+    Public because middleware needs it. Starlette installs exception handlers inside the
+    app, below user middleware, so a SaranaError raised in a middleware never reaches
+    them - it escapes as an unhandled 500. Middleware that can reject a request has to
+    render its own Problem Details.
+    """
     return JSONResponse(
         status_code=problem.status,
         content=problem.model_dump(mode="json", exclude_none=True),
         media_type=PROBLEM_CONTENT_TYPE,
     )
+
+
+# Retained for the handlers below, which were written against the private name.
+_problem_response = problem_response
 
 
 async def sarana_error_handler(request: Request, exc: Exception) -> JSONResponse:
