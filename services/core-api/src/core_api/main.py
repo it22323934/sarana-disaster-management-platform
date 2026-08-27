@@ -14,10 +14,19 @@ from fastapi import FastAPI
 from redis.asyncio import Redis
 
 from core_api import SERVICE_DESCRIPTION, __version__
+from core_api.api.internal.audit import router as internal_router
 from core_api.api.v1.jwks import build_jwks_router
 from core_api.api.v1.router import router as v1_router
+from core_api.cache import TTLCache
 from core_api.config import Settings, get_settings
 from core_api.domain.auth.password import PasswordHasherService
+from core_api.gateway import (
+    BreakerRegistry,
+    InternalPrincipalMinter,
+    RateLimitMiddleware,
+    ServiceProxy,
+    StripClientHeadersMiddleware,
+)
 from core_api.repo import OutboxEvent
 from sarana_shared.auth.middleware import AuthenticationMiddleware
 from sarana_shared.auth.tokens import TokenService
@@ -30,6 +39,12 @@ from sarana_shared.service.health import HealthRegistry
 
 SERVICE_NAME = "core-api"
 
+# The resolve cache holds one entry per rounded coordinate. Sri Lanka has ~14,022 GN
+# divisions and reports cluster hard, so this covers a national-scale event comfortably
+# while staying bounded.
+RESOLVE_CACHE_ENTRIES = 50_000
+RESOLVE_CACHE_TTL_SECONDS = 3600.0
+
 # There is deliberately no module-level `app`. Settings are read inside build_app(),
 # so importing this module in a test does not exit the process when the environment
 # is incomplete. uvicorn is started with --factory.
@@ -38,6 +53,16 @@ SERVICE_NAME = "core-api"
 def build_app(settings: Settings | None = None) -> FastAPI:
     """Construct the application. Tests call this directly with their own settings."""
     resolved = settings or get_settings()
+
+    # core-api is the only service that signs, so the private key is mandatory here even
+    # though the shared settings make it optional. Failing at construction names the
+    # variable; the alternative is a None reaching the signer mid-incident.
+    if resolved.jwt_private_key_path is None:
+        raise ValueError(
+            "SARANA_JWT_PRIVATE_KEY_PATH is required for core-api: it is the only token "
+            "issuer and mints the internal principal header the gateway forwards."
+        )
+    private_key_path = resolved.jwt_private_key_path
 
     @asynccontextmanager
     async def lifespan(app: FastAPI, health: HealthRegistry) -> AsyncIterator[None]:
@@ -54,6 +79,22 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         app.state.engine = engine
         app.state.session_factory = create_session_factory(engine)
         app.state.event_bus = bus
+
+        # The hot path. Every citizen report resolves a coordinate to a GN division, and
+        # the answer for a given rounded coordinate never changes between census cycles.
+        app.state.resolve_cache = TTLCache(
+            max_entries=RESOLVE_CACHE_ENTRIES, ttl_seconds=RESOLVE_CACHE_TTL_SECONDS
+        )
+
+        # One breaker per downstream, plus the proxy that consults them. Built here so a
+        # breaker's state survives for the process rather than per request.
+        breakers = BreakerRegistry()
+        app.state.breakers = breakers
+        app.state.proxy = ServiceProxy(
+            downstreams=resolved.downstreams(),
+            minter=InternalPrincipalMinter(private_key_path, issuer=resolved.jwt_issuer),
+            breakers=breakers,
+        )
 
         # Drains this service's outbox onto the bus. The outbox is the source of truth;
         # this is only the transport, so a worker that dies loses nothing - the rows are
@@ -83,6 +124,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
             yield
         finally:
             await worker.stop()
+            await app.state.proxy.aclose()
             await bus.close()
             await redis.aclose()
             await engine.dispose()
@@ -96,13 +138,25 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         lifespan_hook=lifespan,
         cors_origins=resolved.cors_origins,
     )
+    # Starlette runs middleware in reverse order of registration, so these three are added
+    # last-to-first. The resulting order is deliberate and load-bearing:
+    #
+    #   1. StripClientHeaders - before anything reads a header, so no later component can
+    #      be fooled by a client-supplied X-Sarana-Principal.
+    #   2. Authentication     - resolves the principal.
+    #   3. RateLimit          - needs that principal, because the allowance depends on who
+    #      is calling; an anonymous limit applied to an operator would throttle the console.
+    app.add_middleware(RateLimitMiddleware)
     # Verified locally against this service's own key. Added after the app factory has
     # installed correlation and error handling, so an authentication failure is still a
     # Problem Details response carrying a correlation ID.
     app.add_middleware(AuthenticationMiddleware, tokens=TokenService(resolved.tokens()))
+    app.add_middleware(StripClientHeadersMiddleware)
 
     app.include_router(build_jwks_router(resolved))
     app.include_router(v1_router, prefix="/api/v1")
+    # Mounted outside /api/v1: service-to-service only.
+    app.include_router(internal_router)
     return app
 
 

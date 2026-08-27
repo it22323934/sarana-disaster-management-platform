@@ -1,0 +1,346 @@
+"""The administrative hierarchy: the reference data everything else joins against.
+
+These are the most-read and least-changed endpoints on the platform. They are cached
+hard, revalidated with an ETag, and - where it matters - able to serve a stale answer with
+`X-Sarana-Stale: true` rather than fail. A console that cannot draw the map during a
+cyclone is worse than one drawing yesterday's boundaries.
+"""
+
+from __future__ import annotations
+
+from typing import Annotated, Any
+from uuid import UUID
+
+import structlog
+from fastapi import APIRouter, Depends, Query, Request, Response
+from pydantic import BaseModel, ConfigDict
+
+from core_api.api.deps import SessionDep
+from core_api.cache import (
+    HIERARCHY_MAX_AGE,
+    apply_cache_headers,
+    etag_for,
+    matches,
+    not_modified,
+)
+from core_api.domain import hierarchy
+from sarana_shared.auth.dependencies import require
+from sarana_shared.auth.principal import Principal
+from sarana_shared.auth.scopes import Scope
+from sarana_shared.domain.geo import (
+    LK_BBOX_MAX_LAT,
+    LK_BBOX_MAX_LON,
+    LK_BBOX_MIN_LAT,
+    LK_BBOX_MIN_LON,
+)
+from sarana_shared.errors import NotFound, ValidationFailed
+
+_log = structlog.get_logger(__name__)
+
+router = APIRouter(prefix="/admin", tags=["hierarchy"])
+
+ReadPrincipal = Depends(require(Scope.ADMIN_READ))
+
+
+class AreaSummary(BaseModel):
+    """A hierarchy node, without geometry."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    code: str
+    name: dict[str, str]
+
+
+class DistrictSummary(AreaSummary):
+    province_id: str
+
+
+class DSDivisionSummary(AreaSummary):
+    district_id: str
+
+
+class GNDivisionSummary(AreaSummary):
+    ds_division_id: str
+    population: int
+    household_count: int
+    centroid_lon: float | None = None
+    centroid_lat: float | None = None
+
+
+class GNDivisionDetail(GNDivisionSummary):
+    """One division, with the exposure denominators the forecasting agent needs."""
+
+    elderly_pct: float | None = None
+    under5_pct: float | None = None
+    landslide_zone: int | None = None
+    flood_return_period_m: int | None = None
+    road_access_class: int | None = None
+    cell_coverage_pct: float | None = None
+    ds_division_code: str
+    district_code: str
+    province_code: str
+
+
+class ResolvedArea(BaseModel):
+    """The division a coordinate falls in."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    code: str
+    name: dict[str, str]
+    ds_division_id: str
+    ds_division_code: str
+    district_code: str
+    province_code: str
+
+
+class HouseholdSummary(BaseModel):
+    """A household with no personal data.
+
+    Names and phone numbers are never selected by the query behind this, so there is
+    nothing here to redact - which is a stronger guarantee than redacting.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    reference_code: str
+    gn_division_id: str
+    member_count: int
+    has_over_70: bool
+    has_under_5: bool
+    has_mobility_impairment: bool
+    preferred_language: str
+
+
+def _cached_list(
+    request: Request, response: Response, payload: list[dict[str, Any]]
+) -> Response | list[dict[str, Any]]:
+    """Attach cache headers, or return 304 if the client is already current."""
+    tag = etag_for(payload)
+    if matches(request, tag):
+        return not_modified(tag, max_age=HIERARCHY_MAX_AGE)
+    apply_cache_headers(response, etag=tag, max_age=HIERARCHY_MAX_AGE)
+    return payload
+
+
+@router.get("/provinces", response_model=list[AreaSummary])
+async def get_provinces(
+    request: Request,
+    response: Response,
+    session: SessionDep,
+    principal: Principal = ReadPrincipal,
+) -> Any:
+    """All nine provinces."""
+    return _cached_list(request, response, await hierarchy.list_provinces(session))
+
+
+@router.get("/districts", response_model=list[DistrictSummary])
+async def get_districts(
+    request: Request,
+    response: Response,
+    session: SessionDep,
+    principal: Principal = ReadPrincipal,
+    province_id: UUID | None = Query(default=None),
+) -> Any:
+    """Districts, optionally within one province."""
+    rows = await hierarchy.list_districts(session, province_id=province_id)
+    return _cached_list(request, response, rows)
+
+
+@router.get("/ds-divisions", response_model=list[DSDivisionSummary])
+async def get_ds_divisions(
+    request: Request,
+    response: Response,
+    session: SessionDep,
+    principal: Principal = ReadPrincipal,
+    district_id: UUID | None = Query(default=None),
+) -> Any:
+    """DS divisions, optionally within one district."""
+    rows = await hierarchy.list_ds_divisions(session, district_id=district_id)
+    return _cached_list(request, response, rows)
+
+
+@router.get("/gn-divisions", response_model=list[GNDivisionSummary])
+async def get_gn_divisions(
+    request: Request,
+    response: Response,
+    session: SessionDep,
+    principal: Principal = ReadPrincipal,
+    ds_division_id: UUID | None = Query(default=None),
+    bbox: str | None = Query(default=None, description="min_lon,min_lat,max_lon,max_lat in WGS84"),
+    q: str | None = Query(default=None, max_length=120),
+    limit: int = Query(default=500, ge=1, le=2000),
+    offset: int = Query(default=0, ge=0),
+) -> Any:
+    """GN divisions, narrowed by parent, bounding box or name.
+
+    Always paginated: there are ~14,022 of these and no client wants all of them at once.
+    """
+    parsed = _parse_bbox(bbox)
+    rows = await hierarchy.list_gn_divisions(
+        session,
+        ds_division_id=ds_division_id,
+        bbox=parsed,
+        q=q,
+        limit=limit,
+        offset=offset,
+    )
+    return _cached_list(request, response, rows)
+
+
+def _parse_bbox(raw: str | None) -> tuple[float, float, float, float] | None:
+    """Parse and sanity-check a bounding box.
+
+    A malformed box is refused rather than ignored. Silently dropping the filter would
+    return the whole country to a client that asked for one district and thought it had
+    got one.
+    """
+    if raw is None:
+        return None
+
+    parts = raw.split(",")
+    if len(parts) != 4:
+        raise ValidationFailed(
+            "bbox must be four comma-separated numbers: min_lon,min_lat,max_lon,max_lat",
+            context={"bbox": raw},
+        )
+    try:
+        min_lon, min_lat, max_lon, max_lat = (float(part) for part in parts)
+    except ValueError as error:
+        raise ValidationFailed("bbox values must be numbers", context={"bbox": raw}) from error
+
+    if min_lon >= max_lon or min_lat >= max_lat:
+        raise ValidationFailed(
+            "bbox minimums must be smaller than its maximums", context={"bbox": raw}
+        )
+    outside = (
+        max_lon < LK_BBOX_MIN_LON
+        or min_lon > LK_BBOX_MAX_LON
+        or max_lat < LK_BBOX_MIN_LAT
+        or min_lat > LK_BBOX_MAX_LAT
+    )
+    if outside:
+        raise ValidationFailed("bbox does not overlap Sri Lanka", context={"bbox": raw})
+    return min_lon, min_lat, max_lon, max_lat
+
+
+@router.get("/gn-divisions/{division_id}", response_model=GNDivisionDetail)
+async def get_gn_division(
+    division_id: UUID,
+    request: Request,
+    response: Response,
+    session: SessionDep,
+    principal: Principal = ReadPrincipal,
+) -> Any:
+    """One GN division and its vulnerability denominators."""
+    row = await hierarchy.get_gn_division(session, division_id)
+    if row is None:
+        raise NotFound("No such GN division.", context={"gn_division_id": str(division_id)})
+
+    tag = etag_for(row)
+    if matches(request, tag):
+        return not_modified(tag, max_age=HIERARCHY_MAX_AGE)
+    apply_cache_headers(response, etag=tag, max_age=HIERARCHY_MAX_AGE)
+    return row
+
+
+@router.get("/gn-divisions/{division_id}/geometry")
+async def get_gn_division_geometry(
+    division_id: UUID,
+    request: Request,
+    response: Response,
+    session: SessionDep,
+    principal: Principal = ReadPrincipal,
+    tolerance: float = Query(
+        default=hierarchy.DEFAULT_SIMPLIFY_TOLERANCE,
+        ge=0.0,
+        le=hierarchy.MAX_SIMPLIFY_TOLERANCE,
+        description="Simplification tolerance in degrees. 0 returns the exact boundary.",
+    ),
+) -> Any:
+    """A division boundary as GeoJSON, optionally simplified for rendering."""
+    row = await hierarchy.get_gn_geometry(session, division_id, tolerance=tolerance)
+    if row is None:
+        raise NotFound("No such GN division.", context={"gn_division_id": str(division_id)})
+
+    import json
+
+    payload = {
+        "id": row["id"],
+        "code": row["code"],
+        "tolerance": tolerance,
+        "geometry": json.loads(row["geojson"]) if row["geojson"] else None,
+    }
+    tag = etag_for(payload)
+    if matches(request, tag):
+        return not_modified(tag, max_age=HIERARCHY_MAX_AGE)
+    apply_cache_headers(response, etag=tag, max_age=HIERARCHY_MAX_AGE)
+    return payload
+
+
+@router.get("/resolve", response_model=ResolvedArea)
+async def resolve_coordinate(
+    request: Request,
+    response: Response,
+    session: SessionDep,
+    principal: Principal = ReadPrincipal,
+    lat: float = Query(ge=-90.0, le=90.0),
+    lng: float = Query(ge=-180.0, le=180.0),
+) -> Any:
+    """The GN division containing a coordinate.
+
+    On the hot path for every citizen report, with a p99 budget of 20ms. Answers are
+    cached by coordinate rounded to five decimal places - about a metre - so repeated
+    reports from one village share an entry.
+
+    A point outside every boundary is a 404, not the nearest division. Guessing would send
+    responders to the wrong place, and a GPS fix three kilometres offshore is an error
+    worth surfacing rather than smoothing over.
+    """
+    cache = request.app.state.resolve_cache
+    key = hierarchy.resolve_cache_key(lng, lat)
+
+    hit = cache.get(key)
+    if hit is not None:
+        if hit == "__miss__":
+            raise NotFound(
+                "That coordinate is not inside any GN division.",
+                context={"lat": lat, "lng": lng},
+            )
+        response.headers["X-Sarana-Cache"] = "hit"
+        return hit
+
+    row = await hierarchy.resolve_point(session, lon=lng, lat=lat)
+    if row is None:
+        # Negative results are cached too. An offshore coordinate retried in a loop by a
+        # confused client must not become a stream of index scans.
+        cache.put(key, "__miss__")
+        raise NotFound(
+            "That coordinate is not inside any GN division.",
+            context={"lat": lat, "lng": lng},
+        )
+
+    cache.put(key, row)
+    response.headers["X-Sarana-Cache"] = "miss"
+    return row
+
+
+@router.get("/households", response_model=list[HouseholdSummary])
+async def get_households(
+    session: SessionDep,
+    principal: Principal = ReadPrincipal,
+    gn_division_id: Annotated[UUID, Query()] = ...,  # type: ignore[assignment]
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+) -> Any:
+    """Households in one division, scoped by row-level security and PII-free.
+
+    Not cached: this is the one hierarchy endpoint whose rows are about people, and a
+    shared cache keyed by URL would serve one officer's scoped result to another.
+    """
+    return await hierarchy.list_households(
+        session, gn_division_id=gn_division_id, limit=limit, offset=offset
+    )
