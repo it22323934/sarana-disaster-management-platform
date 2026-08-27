@@ -15,11 +15,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from sarana_shared.domain.time import utc_now
-
 # The channels the schema allows. Kept as a reference here rather than re-declared: a
 # channel the database will not store is not a channel this service can accept.
 from incident_svc.repo.base import INTAKE_CHANNELS, LOCATION_SOURCES
+from sarana_shared.domain.time import utc_now
 
 
 class UnsupportedChannel(ValueError):

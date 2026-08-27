@@ -37,6 +37,13 @@ class Settings(SharedSettings):
         default_factory=list, validation_alias="SARANA_INCIDENT_CORS_ORIGINS"
     )
 
+    # Resolving a coordinate to a GN division is the one core-api call on the intake path.
+    # Named here rather than assembled, so a missing value is a configuration error at boot
+    # instead of a failure the first time a citizen reports something.
+    core_api_url: str = Field(
+        default="http://core-api:8001", validation_alias="SARANA_INCIDENT_CORE_API_URL"
+    )
+
 
 def get_settings() -> Settings:
     """Load settings, exiting 78 (EX_CONFIG) if the environment is incomplete."""

@@ -14,9 +14,14 @@ from fastapi import FastAPI
 from redis.asyncio import Redis
 
 from incident_svc import SERVICE_DESCRIPTION, __version__
+from incident_svc.adapters.core_api import CoreApiClient
+from incident_svc.api.internal.channels import router as channels_router
 from incident_svc.api.v1.router import router as v1_router
 from incident_svc.config import Settings, get_settings
+from incident_svc.domain.dispatch_gate import NullResumer
 from incident_svc.repo import OutboxEvent
+from sarana_shared.auth.middleware import AuthenticationMiddleware
+from sarana_shared.auth.tokens import TokenService
 from sarana_shared.db.session import check_connection, create_engine, create_session_factory
 from sarana_shared.events.factory import build_event_bus
 from sarana_shared.events.outbox import OutboxPublisher, OutboxWorker
@@ -50,6 +55,17 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         app.state.session_factory = create_session_factory(engine)
         app.state.event_bus = bus
 
+        # Resolving a coordinate to a division is the one core-api call on the intake
+        # path. The client caches and degrades: a report that cannot be placed is kept
+        # unplaced rather than refused.
+        app.state.core_api = CoreApiClient(resolved.core_api_url)
+
+        # Assisted triage is off until the agent runtime exists (build file 12). The queue
+        # endpoint reports this verbatim, so a dispatcher is never left believing an
+        # ordered list came from a model when it came from the published rule.
+        app.state.assisted_triage = False
+        app.state.thread_resumer = NullResumer()
+
         # Drains this service's outbox onto the bus. The outbox is the source of truth;
         # this is only the transport, so a worker that dies loses nothing - the rows are
         # still there for the next process to pick up.
@@ -66,6 +82,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
             yield
         finally:
             await worker.stop()
+            await app.state.core_api.aclose()
             await bus.close()
             await redis.aclose()
             await engine.dispose()
@@ -79,7 +96,11 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         lifespan_hook=lifespan,
         cors_origins=resolved.cors_origins,
     )
+    app.add_middleware(AuthenticationMiddleware, tokens=TokenService(resolved.tokens()))
+
     app.include_router(v1_router, prefix="/api/v1")
+    # Telco and mesh webhooks. Service-to-service, never reached by a browser.
+    app.include_router(channels_router)
     return app
 
 

@@ -27,9 +27,7 @@ MAX_PHOTOS_PER_REPORT: Final = 3
 
 PRESIGN_TTL_SECONDS: Final = 900
 
-ALLOWED_IMAGE_TYPES: Final[frozenset[str]] = frozenset(
-    {"image/jpeg", "image/png", "image/webp"}
-)
+ALLOWED_IMAGE_TYPES: Final[frozenset[str]] = frozenset({"image/jpeg", "image/png", "image/webp"})
 ALLOWED_AUDIO_TYPES: Final[frozenset[str]] = frozenset(
     {"audio/mpeg", "audio/mp4", "audio/aac", "audio/ogg", "audio/wav", "audio/webm"}
 )

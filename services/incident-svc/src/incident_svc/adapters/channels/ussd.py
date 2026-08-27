@@ -186,9 +186,7 @@ def advance(
                 channel_metadata={"people_bucket": state.people_bucket, "menu": "v1"},
             )
             done = SessionState(step=Step.DONE, language=state.language)
-            return Turn(
-                text=SENT[state.language], state=done, finished=True, intake=intake
-            )
+            return Turn(text=SENT[state.language], state=done, finished=True, intake=intake)
         if choice == "2":
             done = SessionState(step=Step.DONE, language=state.language)
             return Turn(text=CANCELLED[state.language], state=done, finished=True)

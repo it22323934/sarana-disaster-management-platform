@@ -46,8 +46,7 @@ def parse(
     match = _QR.match(qr_payload.strip())
     if match is None:
         raise UnreadableForm(
-            f"{qr_payload[:40]!r} is not a SARANA form code; expected "
-            "SARANA:<gn-division>:<serial>"
+            f"{qr_payload[:40]!r} is not a SARANA form code; expected SARANA:<gn-division>:<serial>"
         )
 
     return ReportIntake(

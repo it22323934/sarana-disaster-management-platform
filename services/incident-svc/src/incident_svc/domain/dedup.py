@@ -92,14 +92,10 @@ def is_candidate(incoming: Candidate, existing: Candidate) -> DuplicateCandidate
     if distance is not None and distance > PROXIMITY_METRES:
         return None
 
-    return DuplicateCandidate(
-        existing_id=existing.id, distance_m=distance, minutes_apart=apart
-    )
+    return DuplicateCandidate(existing_id=existing.id, distance_m=distance, minutes_apart=apart)
 
 
-def find_candidates(
-    incoming: Candidate, existing: list[Candidate]
-) -> list[DuplicateCandidate]:
+def find_candidates(incoming: Candidate, existing: list[Candidate]) -> list[DuplicateCandidate]:
     """Every plausible duplicate, closest in time first.
 
     Returns all of them rather than only the best. A dispatcher deciding whether to merge
