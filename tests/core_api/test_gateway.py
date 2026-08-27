@@ -10,10 +10,10 @@ from __future__ import annotations
 import pytest
 
 from core_api.gateway.breaker import (
-    CircuitBreaker,
-    CircuitOpen,
     BreakerRegistry,
     BreakerState,
+    CircuitBreaker,
+    CircuitOpen,
 )
 from core_api.gateway.proxy import strip_client_headers
 from core_api.gateway.ratelimit import (
@@ -50,9 +50,7 @@ def principal_with(role: Role) -> Principal:
 
 def test_a_client_supplied_principal_header_is_removed() -> None:
     """The header carries identity. A client setting one is forging it."""
-    cleaned = strip_client_headers(
-        {"X-Sarana-Principal": "forged", "Accept": "application/json"}
-    )
+    cleaned = strip_client_headers({"X-Sarana-Principal": "forged", "Accept": "application/json"})
 
     assert "X-Sarana-Principal" not in cleaned
     assert cleaned["Accept"] == "application/json"

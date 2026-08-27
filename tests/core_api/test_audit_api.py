@@ -38,9 +38,7 @@ async def test_the_audit_write_path_is_not_on_the_public_surface(
     client: AsyncClient, admin_header: dict[str, str]
 ) -> None:
     """No bearer token, however privileged, appends to the record via /api/v1."""
-    response = await client.post(
-        "/api/v1/audit", headers=admin_header, json=an_entry()
-    )
+    response = await client.post("/api/v1/audit", headers=admin_header, json=an_entry())
 
     assert response.status_code in (404, 405)
 
@@ -49,9 +47,7 @@ async def test_an_internal_write_is_refused_without_the_system_scope(
     client: AsyncClient, auditor_header: dict[str, str]
 ) -> None:
     """Reading the log does not confer writing to it."""
-    response = await client.post(
-        "/internal/v1/audit", headers=auditor_header, json=an_entry()
-    )
+    response = await client.post("/internal/v1/audit", headers=auditor_header, json=an_entry())
 
     assert response.status_code == 403
 
@@ -213,13 +209,18 @@ async def test_verification_detects_a_row_edited_in_place(
     written = await client.post("/internal/v1/audit", headers=admin_header, json=an_entry())
     seq = written.json()["seq"]
 
-    # The application role cannot do this; the migration owner can, which is exactly the
-    # threat the chain exists to detect.
+    # Plain DML cannot do this: the `append_only` trigger refuses UPDATE and DELETE from
+    # everyone, the table owner included. So the tamper is staged the only way it could
+    # really happen - by disabling that trigger first, which needs ownership. The attacker
+    # modelled here is therefore strictly more privileged than the brief assumed, and the
+    # chain still catches them.
     async with schema_engine.begin() as connection:
+        await connection.execute(text("ALTER TABLE audit.audit_entry DISABLE TRIGGER append_only"))
         await connection.execute(
             text("UPDATE audit.audit_entry SET action = :action WHERE seq = :seq"),
             {"action": "entitlement.approved", "seq": seq},
         )
+        await connection.execute(text("ALTER TABLE audit.audit_entry ENABLE TRIGGER append_only"))
 
     response = await client.get(
         "/api/v1/audit/verify", headers=auditor_header, params={"from_seq": seq, "to_seq": seq}
@@ -233,10 +234,12 @@ async def test_verification_detects_a_row_edited_in_place(
 
     # Put it back, so the chain is intact again for whatever runs next.
     async with schema_engine.begin() as connection:
+        await connection.execute(text("ALTER TABLE audit.audit_entry DISABLE TRIGGER append_only"))
         await connection.execute(
             text("UPDATE audit.audit_entry SET action = :action WHERE seq = :seq"),
             {"action": "entitlement.calculated", "seq": seq},
         )
+        await connection.execute(text("ALTER TABLE audit.audit_entry ENABLE TRIGGER append_only"))
 
 
 async def test_verification_detects_a_row_removed_from_the_middle(
@@ -257,9 +260,11 @@ async def test_verification_detects_a_row_removed_from_the_middle(
     middle, last = written[1]["seq"], written[2]["seq"]
 
     async with schema_engine.begin() as connection:
+        await connection.execute(text("ALTER TABLE audit.audit_entry DISABLE TRIGGER append_only"))
         await connection.execute(
             text("DELETE FROM audit.audit_entry WHERE seq = :seq"), {"seq": middle}
         )
+        await connection.execute(text("ALTER TABLE audit.audit_entry ENABLE TRIGGER append_only"))
 
     response = await client.get(
         "/api/v1/audit/verify",

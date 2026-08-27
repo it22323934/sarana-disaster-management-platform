@@ -19,6 +19,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sarana_shared.db.sql import GENESIS_HASH
+
 # `to_jsonb(t) - 'entry_hash'` is exactly what the trigger hashes. Keep these two in step:
 # if the trigger's payload expression ever changes, this must change with it.
 _RECOMPUTE = "encode(sha256(convert_to((to_jsonb(t) - 'entry_hash')::text, 'UTF8')), 'hex')"
@@ -110,7 +112,10 @@ async def verify_range(session: AsyncSession, *, from_seq: int, to_seq: int) -> 
          looks fine.
     """
     anchor_result = await session.execute(text(_ANCHOR_SQL), {"from_seq": from_seq})
-    anchor = anchor_result.scalar_one_or_none()
+    # No preceding row means this range starts at the head of the chain, where the trigger
+    # writes GENESIS_HASH rather than NULL. Taken from the shared constant the trigger is
+    # built from, so the sentinel cannot drift between the two.
+    anchor = anchor_result.scalar_one_or_none() or GENESIS_HASH
 
     result = await session.execute(text(_VERIFY_SQL), {"from_seq": from_seq, "to_seq": to_seq})
     rows = list(result.mappings())

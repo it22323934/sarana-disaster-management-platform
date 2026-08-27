@@ -238,7 +238,8 @@ async def observations_for(
             "       observation_type, value, confidence, correlation_id "
             "FROM resilience.rg_observation "
             "WHERE entity_id = :entity_id "
-            "  AND (CAST(:attribute AS text) IS NULL OR observation_type = CAST(:attribute AS text)) "
+            "  AND (CAST(:attribute AS text) IS NULL "
+            "       OR observation_type = CAST(:attribute AS text)) "
             "ORDER BY observed_at, id "
             "LIMIT :limit"
         ),

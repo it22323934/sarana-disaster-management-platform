@@ -104,6 +104,16 @@ def admin_header(tokens: TokenService) -> dict[str, str]:
 
 
 @pytest.fixture
+def agent_header(tokens: TokenService) -> dict[str, str]:
+    """An agent: the principal that appends observations.
+
+    RESILIENCE_WRITE belongs to AGENT and SERVICE, never to a human role. Humans read
+    the graph; agents are what put things in it.
+    """
+    return _header(tokens, Role.AGENT)
+
+
+@pytest.fixture
 def citizen_header(tokens: TokenService) -> dict[str, str]:
     """A citizen: holds none of the scopes these endpoints require."""
     return _header(tokens, Role.CITIZEN)
