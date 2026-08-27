@@ -23,7 +23,7 @@ def test_a_grant_round_trips_through_its_string_form() -> None:
 
 
 def test_a_national_grant_uses_the_wildcard() -> None:
-    grant = ScopeGrant.parse("ledger:read:NATIONAL:*")
+    grant = ScopeGrant.parse("ledger:read:NATIONAL:LK")
 
     assert grant.scope_type is ScopeType.NATIONAL
     assert grant.covers(Scope.LEDGER_READ, "LK-02-04-011")
@@ -55,7 +55,7 @@ def test_a_national_grant_cannot_name_a_division() -> None:
 @pytest.mark.parametrize(
     ("grant", "target", "covered"),
     [
-        ("incident:read:NATIONAL:*", "LK-11-03-045", True),
+        ("incident:read:NATIONAL:LK", "LK-11-03-045", True),
         ("incident:read:DISTRICT:LK-11", "LK-11-03-045", True),
         ("incident:read:DISTRICT:LK-11", "LK-11-03", True),
         ("incident:read:DS:LK-11-03", "LK-11-03-045", True),
@@ -73,7 +73,7 @@ def test_containment_follows_the_hierarchy(grant: str, target: str, covered: boo
 
 
 def test_a_grant_only_covers_its_own_permission() -> None:
-    grant = ScopeGrant.parse("incident:read:NATIONAL:*")
+    grant = ScopeGrant.parse("incident:read:NATIONAL:LK")
 
     assert not grant.covers(Scope.DISBURSEMENT_RELEASE, "LK-11-03-045")
 

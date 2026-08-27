@@ -87,9 +87,18 @@ revision: ## Autogenerate a migration. Usage: make revision SVC=ledger-svc M="ad
 		echo "Usage: make revision SVC=<service> M=\"<message>\""; exit 1; fi
 	cd services/$(SVC) && $(UV) run alembic revision --autogenerate -m "$(M)"
 
+.PHONY: seed-generate
+seed-generate: ## Regenerate data/seed from tools/seed/generate.py
+	$(UV) run python tools/seed/generate.py
+
 .PHONY: seed
 seed: ## Load data/seed reference and scenario data
 	$(UV) run python -m sarana_shared.seed.load --path data/seed
+	@# core-api caches the hierarchy for an hour and caches misses too, so a coordinate
+	@# looked up before the seed landed would keep returning 404 for the rest of that hour.
+	@# Restarting is the honest flush: the cache is in-process by design.
+	@echo "Restarting core-api to flush the hierarchy cache..."
+	@$(COMPOSE) restart core-api >/dev/null 2>&1 || true
 
 .PHONY: dev
 dev: ## Run web and mobile in watch mode alongside the compose stack
@@ -139,7 +148,7 @@ ports: ## Print the local port map
 	@echo "  alerting-svc  http://localhost:8003   ledger-svc    http://localhost:8004"
 	@echo "  agent-svc     http://localhost:8005   gov-mock      http://localhost:8006"
 	@echo "  web-ops       http://localhost:3000   web-public    http://localhost:3001"
-	@echo "  postgres      localhost:5432          redis         localhost:6379"
+	@echo "  postgres      localhost:$${SARANA_HOST_PORT_POSTGRES:-5432}          redis         localhost:6379"
 	@echo "  minio api     http://localhost:9000   minio console http://localhost:9001"
 	@echo "  jaeger        http://localhost:16686  mailpit       http://localhost:8025"
 

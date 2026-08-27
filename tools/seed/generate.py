@@ -155,10 +155,7 @@ def _rectangle(lon: float, lat: float, width: float, height: float) -> str:
     """An axis-aligned rectangle as EWKT, ready for a geometry column."""
     west, east = lon - width / 2, lon + width / 2
     south, north = lat - height / 2, lat + height / 2
-    ring = (
-        f"{west} {south}, {east} {south}, {east} {north}, "
-        f"{west} {north}, {west} {south}"
-    )
+    ring = f"{west} {south}, {east} {south}, {east} {north}, {west} {north}, {west} {south}"
     return f"SRID=4326;MULTIPOLYGON((({ring})))"
 
 
@@ -351,9 +348,7 @@ MANIFEST: Final[dict[str, Any]] = {
 def _write(relative: str, records: list[dict[str, Any]]) -> None:
     path = SEED_ROOT / relative
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(records, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    path.write_text(json.dumps(records, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"  {relative:<34} {len(records):>6} records")
 
 

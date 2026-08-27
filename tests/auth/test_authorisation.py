@@ -228,7 +228,7 @@ async def test_an_agent_can_never_pass_a_human_gate() -> None:
     agent = Principal(
         subject_id="forecast-agent",
         roles=frozenset({Role.AGENT}),
-        grants=grants_for_assignments([(Role.AGENT, ScopeType.NATIONAL, "*")]),
+        grants=grants_for_assignments([(Role.AGENT, ScopeType.NATIONAL, "LK")]),
         is_machine=True,
         step_up_at=utc_now(),
     )

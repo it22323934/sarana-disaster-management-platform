@@ -39,7 +39,7 @@ def principal_with(role: Role) -> Principal:
     return Principal(
         subject_id=str(uuid7()),
         roles=frozenset({role}),
-        grants=grants_for_assignments([(role, ScopeType.NATIONAL, "*")]),
+        grants=grants_for_assignments([(role, ScopeType.NATIONAL, "LK")]),
     )
 
 

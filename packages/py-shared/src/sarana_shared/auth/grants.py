@@ -1,7 +1,7 @@
 """The scope grant: a permission bound to an administrative area.
 
 A grant is written `{resource}:{action}:{scope_type}:{scope_code}`, for example
-`assessment:create:GN:LK-11-03-045` or `ledger:read:NATIONAL:*`.
+`assessment:create:GN:LK-11-03-045` or `ledger:read:NATIONAL:LK`.
 
 Authorisation is two independent questions and both must pass: does the principal hold
 this permission, and does their area cover the record being touched. Binding them into
@@ -26,9 +26,19 @@ from typing import Final, Self
 from sarana_shared.auth.scopes import HUMAN_GATE_SCOPES, ROLE_SCOPES, Role, Scope
 from sarana_shared.domain.admin import AdminCodeError, AdminLevel, level_of
 
-# National grants use `*` rather than the code `LK`, so a reader can see at a glance that
-# a grant is unrestricted rather than having to know that LK means the whole country.
-NATIONAL_CODE: Final = "*"
+# National grants use the country code, the same value `admin.user_role` stores and the
+# same one `public.sarana_scope_covers()` tests against.
+#
+# This was `*` until it was found to break every national account. The database CHECK on
+# `user_role` requires 'LK' for a NATIONAL row, so a national role read back out of the
+# database was refused here on the way to minting a token - a 500 on login for every
+# operator, auditor and administrator, which no test caught because tests build grants in
+# Python and never round-trip them through the schema.
+#
+# 'LK' is also the coherent choice on its own merits: every administrative code begins
+# 'LK-', so a national scope covers the country by the same prefix rule every other level
+# uses, instead of needing a wildcard the SQL has to special-case.
+NATIONAL_CODE: Final = "LK"
 
 _GRANT_PATTERN: Final = re.compile(
     r"^(?P<resource>[a-z_]+):(?P<action>[a-z_]+):(?P<scope_type>[A-Z]+):(?P<code>[^:]+)$"

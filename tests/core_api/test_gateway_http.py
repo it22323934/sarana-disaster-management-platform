@@ -105,7 +105,7 @@ def _principal() -> Principal:
     return Principal(
         subject_id=str(uuid7()),
         roles=frozenset({Role.DMC_OPERATOR}),
-        grants=grants_for_assignments([(Role.DMC_OPERATOR, ScopeType.NATIONAL, "*")]),
+        grants=grants_for_assignments([(Role.DMC_OPERATOR, ScopeType.NATIONAL, "LK")]),
     )
 
 

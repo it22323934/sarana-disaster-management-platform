@@ -80,7 +80,7 @@ def admin_header(admin_tokens: TokenService) -> dict[str, str]:
     token = admin_tokens.issue(
         str(uuid7()),
         roles=frozenset({Role.ADMIN}),
-        grants=grants_for_assignments([(Role.ADMIN, ScopeType.NATIONAL, "*")]),
+        grants=grants_for_assignments([(Role.ADMIN, ScopeType.NATIONAL, "LK")]),
     )
     return {"Authorization": f"Bearer {token}"}
 

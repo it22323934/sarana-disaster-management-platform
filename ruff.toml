@@ -45,6 +45,9 @@ ignore = [
 # DDL directly. Every caller-supplied value is still a bound parameter.
 "tests/schema/**" = ["S101", "S608"]
 "tools/sarana-verify/**" = ["T20"]  # a CLI's whole job is printing
+# Same: a generator reports what it wrote. S105 covers the demo account password, which is
+# published on purpose and only ever loaded into a local database.
+"tools/seed/**" = ["T20", "S105"]
 
 [lint.isort]
 known-first-party = [

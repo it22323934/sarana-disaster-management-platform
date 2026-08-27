@@ -80,7 +80,7 @@ def _header(tokens: TokenService, role: Role) -> dict[str, str]:
     token = tokens.issue(
         str(uuid7()),
         roles=frozenset({role}),
-        grants=grants_for_assignments([(role, ScopeType.NATIONAL, "*")]),
+        grants=grants_for_assignments([(role, ScopeType.NATIONAL, "LK")]),
     )
     return {"Authorization": f"Bearer {token}"}
 

@@ -68,7 +68,7 @@ def test_a_national_grant_satisfies_any_narrower_target() -> None:
     operator = Principal(
         subject_id="dmc-1",
         roles=frozenset({Role.DMC_OPERATOR}),
-        grants=grants_for_assignments([(Role.DMC_OPERATOR, ScopeType.NATIONAL, "*")]),
+        grants=grants_for_assignments([(Role.DMC_OPERATOR, ScopeType.NATIONAL, "LK")]),
     )
 
     assert operator.can(Scope.INCIDENT_READ, BATTICALOA_GN)
