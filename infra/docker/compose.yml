@@ -15,7 +15,9 @@ name: sarana
 # host-oriented values in .env.
 x-service-env: &service-env
   # Inside the network, services address each other by container name.
-  SARANA_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sarana}:${POSTGRES_PASSWORD:-sarana_local_only}@postgres:5432/${POSTGRES_DB:-sarana}
+  # The application role, never the owner: a superuser bypasses row-level security
+  # entirely, so owner credentials here would silently disable every policy.
+  SARANA_DATABASE_URL: postgresql+asyncpg://${SARANA_APP_DB_USER:-sarana_app}:${SARANA_APP_DB_PASSWORD:-sarana_app_local_only}@postgres:5432/${POSTGRES_DB:-sarana}
   SARANA_REDIS_URL: redis://redis:6379/0
   SARANA_S3_ENDPOINT_URL: http://minio:9000
   SARANA_OTLP_ENDPOINT: http://jaeger:4317

@@ -38,6 +38,9 @@ ignore = [
 "**/tests/**" = ["S101", "S105", "S106"]
 # The shared test helpers are test code that happens to ship inside the package.
 "packages/py-shared/src/sarana_shared/testing/**" = ["S101"]
+# The schema suite builds SQL from module-level literal constants to exercise the
+# DDL directly. Every caller-supplied value is still a bound parameter.
+"tests/schema/**" = ["S101", "S608"]
 "tools/sarana-verify/**" = ["T20"]  # a CLI's whole job is printing
 
 [lint.isort]

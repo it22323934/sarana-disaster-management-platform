@@ -1,5 +1,34 @@
-"""SQLAlchemy repositories for agent-svc.
+"""SQLAlchemy models for the `hazard` schema."""
 
-All persistence goes through this package (ADR-002). Swapping a table to a different
-store later is a change here and nowhere else.
-"""
+from agent_svc.repo.base import (
+    FORECAST_METHODS,
+    HAZARD_SCHEMA,
+    HAZARD_SOURCES,
+    HAZARD_STATUSES,
+    HAZARD_TYPES,
+    TRIGGER_ACTIONS,
+)
+from agent_svc.repo.hazard import (
+    AnticipatoryTrigger,
+    HazardEvent,
+    HazardFeedReading,
+    ImpactForecast,
+)
+from sarana_shared.db.outbox import make_outbox_model
+
+# agent-svc's own outbox table: outbox.agent_svc_event.
+OutboxEvent = make_outbox_model("agent_svc")
+
+__all__ = [
+    "FORECAST_METHODS",
+    "HAZARD_SCHEMA",
+    "HAZARD_SOURCES",
+    "HAZARD_STATUSES",
+    "HAZARD_TYPES",
+    "TRIGGER_ACTIONS",
+    "AnticipatoryTrigger",
+    "HazardEvent",
+    "HazardFeedReading",
+    "ImpactForecast",
+    "OutboxEvent",
+]

@@ -74,6 +74,13 @@ migrate: ## Run alembic upgrade head for every data-owning service
 		(cd services/$$svc && $(UV) run alembic upgrade head); \
 	done
 
+.PHONY: downgrade
+downgrade: ## DESTRUCTIVE - roll every service back to an empty schema
+	@read -r -p "This drops every SARANA table. Type 'downgrade' to confirm: " reply
+	@if [[ "$$reply" != "downgrade" ]]; then echo "Aborted."; exit 1; fi
+	@set -e
+	@for svc in agent-svc alerting-svc ledger-svc incident-svc core-api; do \n		echo "--> rolling back $$svc"; \n		(cd services/$$svc && $(UV) run alembic downgrade base); \n	done
+
 .PHONY: revision
 revision: ## Autogenerate a migration. Usage: make revision SVC=ledger-svc M="add grievance"
 	@if [[ -z "$(SVC)" || -z "$(M)" ]]; then \

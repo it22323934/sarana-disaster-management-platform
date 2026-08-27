@@ -32,15 +32,17 @@ from sarana_shared.events.bus import InMemoryEventBus
 # The compose stack builds this image; tests reuse it so the extensions match production.
 POSTGRES_IMAGE = os.environ.get("SARANA_TEST_POSTGRES_IMAGE", "sarana/postgres:16-3.4-pgvector")
 
-# Schemas every service expects to exist. Created once per test database.
+# Every schema in the database, with its owning service. Migrations create these; the
+# tuple exists so a test can assert the full set is present after `alembic upgrade head`.
 SERVICE_SCHEMAS: tuple[str, ...] = (
-    "platform",
-    "reference",
-    "resilience",
-    "incident",
-    "alerting",
-    "ledger",
-    "agent",
+    "admin",  # core-api: administrative hierarchy, households, users, roles
+    "hazard",  # agent-svc: hazard events, forecasts, anticipatory triggers
+    "alerting",  # alerting-svc: templates, alerts, dispatches, delivery receipts
+    "incident",  # incident-svc: reports, incidents, dedup, triage, dispatch plans
+    "aid",  # ledger-svc: assessments, entitlements, the ledger, grievances
+    "resilience",  # core-api: the Resilience Graph
+    "audit",  # core-api: append-only agent and human action log
+    "outbox",  # all: one transactional outbox table per service
 )
 
 
@@ -86,7 +88,7 @@ def postgres_url() -> Iterator[str]:
         yield container.get_connection_url()
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def db_engine(postgres_url: str) -> AsyncIterator[AsyncEngine]:
     """A session-scoped engine with extensions and schemas already installed."""
     from sqlalchemy import text

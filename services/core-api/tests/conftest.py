@@ -35,8 +35,8 @@ async def client(settings: Settings) -> AsyncIterator[AsyncClient]:
     empty check set and pass a test that proves nothing.
     """
     app = build_app(settings)
-    async with LifespanManager(app):
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://core-api"
-        ) as async_client:
-            yield async_client
+    async with (
+        LifespanManager(app),
+        AsyncClient(transport=ASGITransport(app=app), base_url="http://core-api") as async_client,
+    ):
+        yield async_client
