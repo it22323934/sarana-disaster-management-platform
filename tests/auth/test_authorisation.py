@@ -18,7 +18,12 @@ from sarana_shared.auth.scopes import Role, Scope
 from sarana_shared.domain.ids import uuid7
 from sarana_shared.domain.time import utc_now
 from sarana_shared.errors import Forbidden
-from tests.schema.factories import make_admin_hierarchy, make_entitlement, make_user_with_role
+from tests.schema.factories import (
+    append_chained,
+    make_admin_hierarchy,
+    make_entitlement,
+    make_user_with_role,
+)
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -98,16 +103,16 @@ async def test_the_assessor_cannot_approve_their_own_entitlement(
     assessor = entitlement["officer_id"]
 
     with pytest.raises(DBAPIError, match="may not also approve"):
-        await db.execute(
-            text(
-                "INSERT INTO aid.approval "
-                "(id, entitlement_id, level, approver_id, decision) "
-                "VALUES (:id, :entitlement_id, 'DS', :approver, 'APPROVED')"
-            ),
-            {
+        await append_chained(
+            db,
+            schema="aid",
+            table="approval",
+            columns={
                 "id": uuid7(),
                 "entitlement_id": entitlement["entitlement_id"],
-                "approver": assessor,
+                "level": "DS",
+                "approver_id": assessor,
+                "decision": "APPROVED",
             },
         )
 
@@ -120,25 +125,30 @@ async def test_one_person_cannot_be_both_levels_of_approval(
     entitlement = await make_entitlement(db, hierarchy)
     approver = await make_user_with_role(db, "DS_APPROVER", KANDY_DS)
 
-    await db.execute(
-        text(
-            "INSERT INTO aid.approval (id, entitlement_id, level, approver_id, decision) "
-            "VALUES (:id, :entitlement_id, 'DS', :approver, 'APPROVED')"
-        ),
-        {"id": uuid7(), "entitlement_id": entitlement["entitlement_id"], "approver": approver},
+    await append_chained(
+        db,
+        schema="aid",
+        table="approval",
+        columns={
+            "id": uuid7(),
+            "entitlement_id": entitlement["entitlement_id"],
+            "level": "DS",
+            "approver_id": approver,
+            "decision": "APPROVED",
+        },
     )
 
     with pytest.raises(DBAPIError, match="already approved"):
-        await db.execute(
-            text(
-                "INSERT INTO aid.approval "
-                "(id, entitlement_id, level, approver_id, decision) "
-                "VALUES (:id, :entitlement_id, 'DISTRICT', :approver, 'APPROVED')"
-            ),
-            {
+        await append_chained(
+            db,
+            schema="aid",
+            table="approval",
+            columns={
                 "id": uuid7(),
                 "entitlement_id": entitlement["entitlement_id"],
-                "approver": approver,
+                "level": "DISTRICT",
+                "approver_id": approver,
+                "decision": "APPROVED",
             },
         )
 

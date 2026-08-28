@@ -110,16 +110,27 @@ Still to write:
    computation; the scheduling and the S3 write do not exist.
 3. **Offline assessment sync** — `POST /api/v1/assessments/sync`, `client_operation_id`
    as the idempotency key, per-device `seq` ordering with gap detection.
-4. **The disbursement gate** — same shape as `incident_svc/domain/dispatch_gate.py`, plus
-   segregation of duty (releaser ≠ assessor ≠ DS approver) and an open-grievance block.
-5. **Grievances**, the citizen confirmation loop, and the HTTP surface.
+4. **Grievances**, the citizen confirmation loop, and the HTTP surface. The gate already
+   refuses a release with an open grievance; nothing yet creates one.
 
-### The blocker: the trigger and the verifier hash differently
+The disbursement gate itself is **done** — `ledger_svc/domain/disbursement_gate.py`, with
+segregation of duty, the approval threshold, the open-grievance block and step-up, all
+tested as attempted releases rather than happy paths. Two properties worth preserving if
+you refactor it:
 
-**This must be fixed before the first real disbursement.** Entries written today would not
-verify with `sarana-verify`, and the ledger's whole claim rests on them verifying.
+- **There is no amount parameter.** The amount comes from the entitlement's own
+  calculation. A releaser who could type a number would make the trace decorative.
+- **There is no bulk release**, deliberately. A bulk endpoint is one mis-selected filter
+  from paying a district twice. If it is ever added: one at a time, one step-up, explicit
+  per-item list, hard cap.
 
-Build file 10 specifies:
+### Resolved: the trigger and the verifier now agree
+
+*Kept here because the reasoning matters, and because the same trap exists anywhere else a
+hash is computed in SQL.*
+
+Entries written before migration `ledger_svc_0006` could not be verified by
+`sarana-verify` at all. Build file 10 specifies:
 
 ```
 entry_hash = SHA256( canonical_json(entry_without_hashes) || prev_hash )   # RFC 8785
@@ -147,21 +158,34 @@ postgres:  {"z": 1, "aa": 2}
 RFC 8785:  {"aa":2,"z":1}
 ```
 
-**Recommended fix.** Do not try to implement RFC 8785 in plpgsql — it is a lot of
-error-prone SQL for a standard that already has a tested Python implementation in
-`sarana_shared.crypto.canonical`. Instead:
+**What was done.** Implementing RFC 8785 in plpgsql would be a great deal of delicate SQL
+to reproduce a standard that already has a tested implementation, so the responsibilities
+were split instead:
 
-- The **application** computes `entry_hash` using the shared canonicaliser and supplies it
-  on insert.
-- The **trigger** stops computing the hash and instead *enforces* what only the database
-  can: that `prev_hash` matches the current tail, that `entry_hash` is present, and that
-  nothing is ever updated or deleted.
+- The **application** computes `entry_hash` via `sarana_shared.crypto.chain`, which is the
+  same code path `sarana-verify` recomputes.
+- The **trigger** (`sarana_enforce_supplied_chain`) stopped computing the hash. It now
+  enforces what only the database can: that the supplied `prev_hash` really is the current
+  tail, under an advisory lock, and that a well-formed hash came with it.
 
-That keeps the property that matters — the chain cannot be broken by any writer — while
-making the hash the published, independently reproducible one. It is a migration against
-`aid.disbursement` and `aid.approval`, plus the equivalent decision for `audit.audit_entry`
-(which has the same trigger and is verified by core-api's `/audit/verify`, so those two
-currently agree with each other and neither agrees with RFC 8785).
+It deliberately does **not** fill `prev_hash` when missing, which was a flaw in the first
+attempt at this: `prev_hash` is an input to `entry_hash`, so filling it afterwards leaves a
+stored hash describing a predecessor the row does not claim. Appending is therefore
+read-tail → compute → insert, retrying if another writer wins the race. That is
+`ledger_svc.repo.chain_writer.append()`, and `tests/schema/factories.append_chained()` is
+the same pattern for tests.
+
+An entry arriving with no hash is **refused**, not given a locally-computed one. A hash
+nobody can reproduce is worse than none — it looks verifiable and is not.
+
+`tests/ledger/test_chain_agreement.py` asserts the two ends agree, and would have caught
+the original defect.
+
+**`audit.audit_entry` deliberately keeps `sarana_hash_chain`.** That chain is verified by
+core-api's `/audit/verify`, which recomputes with the same SQL expression, so the two agree
+with each other. It is never published for outside verification, so it does not need RFC
+8785, and changing it would mean changing that verifier in lockstep for no gain. A test
+asserts this stays a decision rather than drifting into an oversight.
 
 ## Things that will bite you
 

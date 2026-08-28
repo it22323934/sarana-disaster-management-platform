@@ -9,16 +9,20 @@ is verified separately against the published Merkle roots.
 
 from __future__ import annotations
 
-import hashlib
-
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from sarana_shared.crypto.chain import chain_hash
 from sarana_shared.db.sql import GENESIS_HASH
 from sarana_shared.domain.ids import uuid7
-from tests.schema.factories import make_admin_hierarchy, make_entitlement, make_user_with_role
+from tests.schema.factories import (
+    append_chained,
+    make_admin_hierarchy,
+    make_entitlement,
+    make_user_with_role,
+)
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -26,13 +30,18 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 async def _approve(
     db: AsyncConnection, entitlement_id: object, level: str, approver: object
 ) -> None:
-    await db.execute(
-        text(
-            "INSERT INTO aid.approval "
-            "(id, entitlement_id, level, approver_id, decision) "
-            "VALUES (:id, :entitlement_id, :level, :approver, 'APPROVED')"
-        ),
-        {"id": uuid7(), "entitlement_id": entitlement_id, "level": level, "approver": approver},
+    """Record one approval, supplying the chain fields as the service must."""
+    await append_chained(
+        db,
+        schema="aid",
+        table="approval",
+        columns={
+            "id": uuid7(),
+            "entitlement_id": entitlement_id,
+            "level": level,
+            "approver_id": approver,
+            "decision": "APPROVED",
+        },
     )
 
 
@@ -107,9 +116,13 @@ async def test_the_entry_hash_is_reproducible_by_a_third_party(
 ) -> None:
     """An auditor with the row and the previous hash must reach the same digest.
 
-    This is the property the public verifier depends on: the hash is over the row's
-    canonical JSON form, and jsonb sorts its keys, so nothing about the computation
-    depends on privileged access or on our code.
+    This is the property the public verifier depends on, and it is the one this test
+    previously got wrong: it recomputed PostgreSQL's own `jsonb` text form, which is only
+    reproducible by somebody running PostgreSQL. Key order and whitespace both differ from
+    RFC 8785, so every published entry would have failed `sarana-verify`.
+
+    The hash is now computed by the application with RFC 8785, and this checks it the way
+    an outsider would.
     """
     hierarchy = await make_admin_hierarchy(db)
     entitlement = await make_entitlement(db, hierarchy)
@@ -118,15 +131,20 @@ async def test_the_entry_hash_is_reproducible_by_a_third_party(
 
     result = await db.execute(
         text(
-            "SELECT (to_jsonb(a) - 'entry_hash')::text AS payload, entry_hash "
-            "FROM aid.approval a ORDER BY seq LIMIT 1"
+            "SELECT id, entitlement_id, level, approver_id, decision, prev_hash, entry_hash "
+            "FROM aid.approval ORDER BY seq LIMIT 1"
         )
     )
-    payload, entry_hash = result.one()
+    row = dict(result.mappings().one())
 
-    recomputed = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    payload = {
+        key: str(value)
+        for key, value in row.items()
+        if key not in {"id", "prev_hash", "entry_hash"}
+    }
+    recomputed = chain_hash(payload, row["prev_hash"])
 
-    assert recomputed == entry_hash
+    assert recomputed == row["entry_hash"]
 
 
 async def test_an_approval_cannot_be_edited(db: AsyncConnection) -> None:
@@ -145,12 +163,19 @@ async def test_a_refusal_must_give_a_reason(db: AsyncConnection) -> None:
     entitlement = await make_entitlement(db, hierarchy)
     approver = await make_user_with_role(db, "DS_APPROVER", hierarchy["ds_code"])
 
+    # Appended with valid chain fields so the CHECK is what refuses it. A BEFORE INSERT
+    # trigger fires ahead of a CHECK constraint, so omitting them here would prove only
+    # that the chain trigger works - which is a different test.
     with pytest.raises(DBAPIError, match="refusal_has_a_reason"):
-        await db.execute(
-            text(
-                "INSERT INTO aid.approval "
-                "(id, entitlement_id, level, approver_id, decision) "
-                "VALUES (:id, :entitlement_id, 'DS', :approver, 'REJECTED')"
-            ),
-            {"id": uuid7(), "entitlement_id": entitlement["entitlement_id"], "approver": approver},
+        await append_chained(
+            db,
+            schema="aid",
+            table="approval",
+            columns={
+                "id": uuid7(),
+                "entitlement_id": entitlement["entitlement_id"],
+                "level": "DS",
+                "approver_id": approver,
+                "decision": "REJECTED",
+            },
         )

@@ -17,7 +17,12 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from sarana_shared.domain.ids import uuid7
-from tests.schema.factories import make_admin_hierarchy, make_entitlement, make_user_with_role
+from tests.schema.factories import (
+    append_chained,
+    make_admin_hierarchy,
+    make_entitlement,
+    make_user_with_role,
+)
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -116,13 +121,19 @@ async def test_the_resting_state_is_also_constrained(db: AsyncConnection) -> Non
 
 
 async def _release(db: AsyncConnection, entitlement_id: object, released_by: object) -> None:
-    await db.execute(
-        text(
-            "INSERT INTO aid.disbursement "
-            "(id, entitlement_id, amount_lkr_cents, released_by, payment_rail, correlation_id) "
-            "VALUES (:id, :entitlement_id, 100000000, :released_by, 'BANK_TRANSFER', 'test')"
-        ),
-        {"id": uuid7(), "entitlement_id": entitlement_id, "released_by": released_by},
+    """Release funds, supplying the chain fields as the service must."""
+    await append_chained(
+        db,
+        schema="aid",
+        table="disbursement",
+        columns={
+            "id": uuid7(),
+            "entitlement_id": entitlement_id,
+            "amount_lkr_cents": 100000000,
+            "released_by": released_by,
+            "payment_rail": "BANK_TRANSFER",
+            "correlation_id": "test",
+        },
     )
 
 

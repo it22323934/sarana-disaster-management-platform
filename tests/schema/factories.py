@@ -194,3 +194,42 @@ async def make_entitlement(db: AsyncConnection, hierarchy: dict[str, Any]) -> di
         "schedule_id": schedule_id,
         "officer_id": officer_id,
     }
+
+
+async def append_chained(
+    db: AsyncConnection,
+    *,
+    schema: str,
+    table: str,
+    columns: dict[str, Any],
+) -> dict[str, Any]:
+    """Append to a published hash chain the way the service must.
+
+    The trigger requires both `prev_hash` and `entry_hash` to be supplied, because
+    `prev_hash` is an input to the hash and cannot be filled in afterwards. Tests use this
+    rather than a raw INSERT so they exercise the real contract - a helper that quietly
+    computed the hash a different way would let the tests pass while published entries
+    failed verification, which is the exact defect this contract was introduced to fix.
+    """
+    from sarana_shared.crypto.chain import GENESIS_HASH, chain_hash
+
+    tail = await db.execute(
+        text(f"SELECT entry_hash FROM {schema}.{table} ORDER BY seq DESC LIMIT 1")
+    )
+    previous = tail.scalar_one_or_none() or GENESIS_HASH
+
+    # What gets hashed is the entry's meaning, not every column the table carries.
+    payload = {key: str(value) for key, value in columns.items() if key != "id"}
+    entry_hash = chain_hash(payload, previous)
+
+    names = ", ".join(columns)
+    placeholders = ", ".join(f":{name}" for name in columns)
+    result = await db.execute(
+        text(
+            f"INSERT INTO {schema}.{table} ({names}, prev_hash, entry_hash) "
+            f"VALUES ({placeholders}, :prev_hash, :entry_hash) "
+            "RETURNING seq, prev_hash, entry_hash"
+        ),
+        {**columns, "prev_hash": previous, "entry_hash": entry_hash},
+    )
+    return dict(result.mappings().one())
