@@ -45,3 +45,18 @@ def test_cap_vocabularies_match_the_schema_case_insensitively() -> None:
     assert {value.upper() for value in cap.SEVERITIES} == set(CAP_SEVERITIES)
     assert {value.upper() for value in cap.URGENCIES} == set(CAP_URGENCIES)
     assert {value.upper() for value in cap.CERTAINTIES} == set(CAP_CERTAINTIES)
+
+
+def test_every_channel_has_a_coverage_model() -> None:
+    """A channel with no model silently reports zero reachability.
+
+    Zero looks like "this channel cannot reach anyone here", which would send an operator
+    a vehicle they did not need - or, worse, make a working channel look dead.
+    """
+    from alerting_svc.adapters.channels.lora import CHANNEL as LORA_CHANNEL
+    from alerting_svc.api.v1.coverage import BASELINE
+
+    # The mesh is computed from its topology rather than a baseline constant.
+    modelled = set(BASELINE) | {LORA_CHANNEL}
+
+    assert set(DISPATCH_CHANNELS) <= modelled

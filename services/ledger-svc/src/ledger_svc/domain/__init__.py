@@ -1,22 +1,23 @@
-"""Pure business logic for ledger-svc.
+"""Domain rules for ledger-svc: entitlement calculation and its trace."""
 
-No I/O lives here: no database session, no HTTP client, no event bus. Everything in this
-package is a function of its arguments, which is what makes it testable without a
-container and reviewable without tracing a call chain.
-"""
+from __future__ import annotations
 
-from ledger_svc.domain.approval import (
-    DEFAULT_DISTRICT_THRESHOLD_CENTS,
-    ApprovalIncomplete,
-    ApprovalLevel,
-    ApprovalState,
-    SelfApproval,
+from ledger_svc.domain.entitlement import (
+    AssessedItem,
+    CalculationRefused,
+    CalculationStep,
+    CalculationTrace,
+    CostSchedule,
+    ScheduleLine,
+    calculate,
 )
 
 __all__ = [
-    "DEFAULT_DISTRICT_THRESHOLD_CENTS",
-    "ApprovalIncomplete",
-    "ApprovalLevel",
-    "ApprovalState",
-    "SelfApproval",
+    "AssessedItem",
+    "CalculationRefused",
+    "CalculationStep",
+    "CalculationTrace",
+    "CostSchedule",
+    "ScheduleLine",
+    "calculate",
 ]

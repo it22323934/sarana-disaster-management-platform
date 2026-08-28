@@ -19,8 +19,9 @@ strictly sequential and currently sits part-way through 09.
 | 06 | Event backbone | Done |
 | 07 | core-api | Done — 29 endpoints |
 | 08 | incident-svc | Done — 20 endpoints |
-| **09** | **alerting-svc** | **Domain + HTTP done. Targeting is a placeholder.** |
-| 10–11 | ledger-svc, gov-mock | Not started |
+| **09** | **alerting-svc** | **Done — 15 endpoints. Targeting is a placeholder.** |
+| **10** | **ledger-svc** | **Crypto + entitlement calculation done. No HTTP surface.** |
+| 11 | gov-mock | Not started |
 | 12–18 | Agents (LangGraph) | Not started |
 | 19–21 | Web (design system, ops console, public dashboard) | Scaffolds only |
 | 22–24 | Mobile (foundation, citizen, field companion) | Scaffold only |
@@ -56,20 +57,14 @@ Real targeting means reading `admin.household` — `contact_msisdn_hash`,
 service-credential flow described below. Until then every delivery number is structurally
 correct and factually meaningless.
 
-### 2. The twelve templates are defined but never loaded
+### 2. The twelve templates load as DRAFT, and that is deliberate
 
-`tools/seed/templates.py` holds all twelve, validated by `tests/alerting/
-test_seeded_templates.py`. They are **not** wired into `tools/seed/generate.py` or the
-manifest, so `make seed` does not create them. Adding that is a few lines — but note they
-must load as `DRAFT`, and a human then has to sign each language through
-`POST /templates/{id}/review` before anything can be dispatched. That is the gate working,
-not an obstacle to route around.
+`make seed` now creates all twelve, every one `DRAFT` with no reviewer signatures. Before
+any alert can be dispatched a human must sign each language through
+`POST /templates/{id}/review` and then `POST /templates/{id}/publish`.
 
-### 3. Coverage endpoint
-
-`GET /api/v1/coverage?gn_division_id=` is not implemented. `SimulatedMesh.coverage()`
-already returns modelled reachability per division; it needs a route and the other
-channels' equivalents.
+That is the gate working. Do not seed them as PUBLISHED to make a demo flow smoothly —
+it would put twelve machine-translated life-safety messages one API call from a district.
 
 ### What is done
 
@@ -85,6 +80,32 @@ channels' equivalents.
 - `tools/cap_validate.py` — the DoD gate, passing on a generated artefact
 
 ---
+
+## Next: finishing file 10 (ledger-svc)
+
+The parts that make the ledger *auditable* are built and tested. The service layer is not.
+
+Done, and these are the foundations everything else sits on:
+
+- `sarana_shared/crypto/canonical.py` — RFC 8785 JSON canonicalisation, including the
+  UTF-16 code-unit sort that most implementations get wrong
+- `sarana_shared/crypto/merkle.py` — daily anchors, duplicate-last odd-node rule
+  documented and tested, anchors chained to each other
+- `ledger_svc/domain/entitlement.py` — pure deterministic calculation with a mandatory
+  trace; 10,000-assessment property test passes
+
+Still to write:
+
+1. **`tools/sarana-verify/`** — the standalone CLI. The brief calls the tamper test
+   "the single most important one in the repo" and it does not exist yet. It should fetch
+   public anchors and the anonymised feed, recompute every hash and root, and exit
+   non-zero naming the first divergent `seq`. Everything it needs is in the two crypto
+   modules.
+2. **Offline assessment sync** — `POST /api/v1/assessments/sync`, `client_operation_id`
+   as the idempotency key, per-device `seq` ordering with gap detection.
+3. **The disbursement gate** — same shape as `incident_svc/domain/dispatch_gate.py`, plus
+   segregation of duty (releaser ≠ assessor ≠ DS approver) and an open-grievance block.
+4. **Grievances**, the confirmation loop, the anchor job, and the HTTP surface.
 
 ## Things that will bite you
 

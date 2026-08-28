@@ -323,6 +323,38 @@ def build_households() -> list[dict[str, Any]]:
     return rows
 
 
+def build_alert_templates() -> list[dict[str, Any]]:
+    """The twelve Phase 1 templates, every one as DRAFT.
+
+    No reviewer signatures, deliberately. A seeded PUBLISHED template would put twelve
+    machine-translated life-safety messages one API call away from a district, which is
+    precisely what the native-review gate exists to prevent. Somebody signs each language
+    through the review endpoint, or nothing dispatches.
+    """
+    # Imported here rather than at module scope: this file is run as a script
+    # (`python tools/seed/generate.py`), where the repository root is not on the path.
+    import sys
+
+    root = str(REPO_ROOT)
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    from tools.seed.templates import TEMPLATES
+
+    return [
+        {
+            "id": _uuid7_for(f"alert_template:{template['code']}"),
+            "code": template["code"],
+            "hazard_type": template["hazard_type"],
+            "severity": template["severity"],
+            "urgency": template["urgency"],
+            "certainty": template["certainty"],
+            "body": template["body"],
+            "status": "DRAFT",
+        }
+        for template in TEMPLATES
+    ]
+
+
 MANIFEST: Final[dict[str, Any]] = {
     "order": [
         {"file": "reference/province.json", "table": "admin.province", "key": ["code"]},
@@ -340,6 +372,11 @@ MANIFEST: Final[dict[str, Any]] = {
             "file": "scenario/household.json",
             "table": "admin.household",
             "key": ["reference_code"],
+        },
+        {
+            "file": "reference/alert_template.json",
+            "table": "alerting.alert_template",
+            "key": ["code", "version"],
         },
     ]
 }
@@ -366,6 +403,7 @@ def main() -> int:
     _write("scenario/app_user.json", build_users(password_hash))
     _write("scenario/user_role.json", build_user_roles())
     _write("scenario/household.json", build_households())
+    _write("reference/alert_template.json", build_alert_templates())
 
     manifest_path = SEED_ROOT / "manifest.json"
     manifest_path.write_text(json.dumps(MANIFEST, indent=2) + "\n", encoding="utf-8")
