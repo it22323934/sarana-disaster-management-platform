@@ -37,6 +37,17 @@ class Settings(SharedSettings):
         default_factory=list, validation_alias="SARANA_ALERTING_CORS_ORIGINS"
     )
 
+    # The CAP <sender>. Must identify the issuing authority, because a consumer decides
+    # whether to trust an alert by who sent it.
+    cap_sender: str = Field(default="dmc@sarana.lk", validation_alias="SARANA_ALERTING_CAP_SENDER")
+
+    # A misconfigured area selection that targets all 14,022 divisions must be stopped
+    # before twenty million messages. Above this, dispatch requires an explicit override
+    # and a written reason.
+    alert_target_cap: int = Field(
+        default=250_000, ge=1, validation_alias="SARANA_ALERTING_TARGET_CAP"
+    )
+
 
 def get_settings() -> Settings:
     """Load settings, exiting 78 (EX_CONFIG) if the environment is incomplete."""

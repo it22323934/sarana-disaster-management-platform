@@ -1,11 +1,11 @@
-"""Version 1 router for alerting-svc.
-
-Routers for each resource are mounted here. The prefix `/api/v1` is applied by the app
-factory, so a router in this package declares only its own collection path.
-"""
+"""Version 1 router for alerting-svc."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter
 
+from alerting_svc.api.v1 import alerts, templates
+
 router = APIRouter()
+router.include_router(alerts.router)
+router.include_router(templates.router)

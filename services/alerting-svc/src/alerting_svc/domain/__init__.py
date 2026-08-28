@@ -1,6 +1,59 @@
-"""Pure business logic for alerting-svc.
+"""Domain rules for alerting-svc: CAP documents, templates, fan-out and delivery proof."""
 
-No I/O lives here: no database session, no HTTP client, no event bus. Everything in this
-package is a function of its arguments, which is what makes it testable without a
-container and reviewable without tracing a call chain.
-"""
+from __future__ import annotations
+
+from alerting_svc.domain.cap import (
+    CAP_NAMESPACE,
+    Area,
+    CapAlert,
+    CapInvalid,
+    parse_problems,
+    to_xml,
+    validate,
+)
+from alerting_svc.domain.delivery import (
+    GAP_THRESHOLD,
+    DeliverySummary,
+    DivisionGap,
+    DryRun,
+    dry_run,
+    fan_out,
+    gaps,
+    summarise,
+)
+from alerting_svc.domain.templates import (
+    ALLOWED_PARAMETER_TYPES,
+    RenderResult,
+    ReviewIncomplete,
+    TemplateInvalid,
+    TemplateReview,
+    assert_publishable,
+    render,
+    validate_template,
+)
+
+__all__ = [
+    "ALLOWED_PARAMETER_TYPES",
+    "CAP_NAMESPACE",
+    "GAP_THRESHOLD",
+    "Area",
+    "CapAlert",
+    "CapInvalid",
+    "DeliverySummary",
+    "DivisionGap",
+    "DryRun",
+    "RenderResult",
+    "ReviewIncomplete",
+    "TemplateInvalid",
+    "TemplateReview",
+    "assert_publishable",
+    "dry_run",
+    "fan_out",
+    "gaps",
+    "parse_problems",
+    "render",
+    "summarise",
+    "to_xml",
+    "validate",
+    "validate_template",
+]

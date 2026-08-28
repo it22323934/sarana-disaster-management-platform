@@ -68,6 +68,11 @@ DISPATCH_STATUSES: Final[tuple[str, ...]] = (
     "FAILED",
 )
 
+# UNKNOWN and NO_CHANNEL exist because the delivery picture is only useful if it can say
+# who was *not* reached. A channel that cannot confirm reports UNKNOWN and it counts
+# against coverage; NO_CHANNEL is the list an operator sends a vehicle to. Folding either
+# into QUEUED or DELIVERED would produce a map that claims a village was warned when
+# nobody knows whether it was.
 DELIVERY_STATUSES: Final[tuple[str, ...]] = (
     "QUEUED",
     "SENT",
@@ -75,4 +80,6 @@ DELIVERY_STATUSES: Final[tuple[str, ...]] = (
     "READ",
     "FAILED",
     "EXPIRED",
+    "UNKNOWN",
+    "NO_CHANNEL",
 )

@@ -14,9 +14,20 @@ from fastapi import FastAPI
 from redis.asyncio import Redis
 
 from alerting_svc import SERVICE_DESCRIPTION, __version__
+from alerting_svc.adapters.channels.lora import SimulatedMesh
+from alerting_svc.adapters.channels.mock_gateways import (
+    InAppChannel,
+    ManualChannel,
+    MockPushService,
+    MockSmsGateway,
+    MockUssdPush,
+)
+from alerting_svc.api.internal.dlr import router as dlr_router
 from alerting_svc.api.v1.router import router as v1_router
 from alerting_svc.config import Settings, get_settings
 from alerting_svc.repo import OutboxEvent
+from sarana_shared.auth.middleware import AuthenticationMiddleware
+from sarana_shared.auth.tokens import TokenService
 from sarana_shared.db.session import check_connection, create_engine, create_session_factory
 from sarana_shared.events.factory import build_event_bus
 from sarana_shared.events.outbox import OutboxPublisher, OutboxWorker
@@ -50,6 +61,17 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         app.state.session_factory = create_session_factory(engine)
         app.state.event_bus = bus
 
+        # Every channel is a mock or a simulation in Phase 1. The receipts say so, the
+        # console badges the mesh tier, and nothing infers "real" from a channel name.
+        app.state.channels = [
+            MockSmsGateway(),
+            MockUssdPush(),
+            MockPushService(),
+            InAppChannel(),
+            SimulatedMesh(),
+            ManualChannel(),
+        ]
+
         # Drains this service's outbox onto the bus. The outbox is the source of truth;
         # this is only the transport, so a worker that dies loses nothing - the rows are
         # still there for the next process to pick up.
@@ -79,7 +101,11 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         lifespan_hook=lifespan,
         cors_origins=resolved.cors_origins,
     )
+    app.add_middleware(AuthenticationMiddleware, tokens=TokenService(resolved.tokens()))
+
     app.include_router(v1_router, prefix="/api/v1")
+    # Telco delivery-receipt webhooks. Service-to-service, never a browser.
+    app.include_router(dlr_router)
     return app
 
 
