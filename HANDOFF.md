@@ -20,7 +20,7 @@ strictly sequential and currently sits part-way through 09.
 | 07 | core-api | Done — 29 endpoints |
 | 08 | incident-svc | Done — 20 endpoints |
 | **09** | **alerting-svc** | **Done — 15 endpoints. Targeting is a placeholder.** |
-| **10** | **ledger-svc** | **Crypto + entitlement calculation done. No HTTP surface.** |
+| **10** | **ledger-svc** | **Crypto, calculation and `sarana-verify` done. No HTTP surface.** |
 | 11 | gov-mock | Not started |
 | 12–18 | Agents (LangGraph) | Not started |
 | 19–21 | Web (design system, ops console, public dashboard) | Scaffolds only |
@@ -94,18 +94,74 @@ Done, and these are the foundations everything else sits on:
 - `ledger_svc/domain/entitlement.py` — pure deterministic calculation with a mandatory
   trace; 10,000-assessment property test passes
 
+- `tools/sarana-verify/` — the standalone verifier, with a README written for a
+  journalist. Detects an edited row, a deleted row, and a fully rewritten chain; exits
+  non-zero naming the divergent `seq`. `tests/ledger/test_tamper_detection.py` is the
+  test the brief calls the most important in the repo.
+
 Still to write:
 
-1. **`tools/sarana-verify/`** — the standalone CLI. The brief calls the tamper test
-   "the single most important one in the repo" and it does not exist yet. It should fetch
-   public anchors and the anonymised feed, recompute every hash and root, and exit
-   non-zero naming the first divergent `seq`. Everything it needs is in the two crypto
-   modules.
-2. **Offline assessment sync** — `POST /api/v1/assessments/sync`, `client_operation_id`
+1. **Wire the verifier to real endpoints.** `GET /api/v1/ledger/public` and
+   `GET /api/v1/ledger/anchors` do not exist yet, so `--base-url` has nothing to fetch.
+   The tool works today against JSON files; both endpoints must be public and
+   unauthenticated when they land.
+2. **The anchor job** — daily at 00:00 Colombo, build the Merkle root, write it to S3
+   with Object Lock in compliance mode, publish it. `sarana_shared.crypto.merkle` does the
+   computation; the scheduling and the S3 write do not exist.
+3. **Offline assessment sync** — `POST /api/v1/assessments/sync`, `client_operation_id`
    as the idempotency key, per-device `seq` ordering with gap detection.
-3. **The disbursement gate** — same shape as `incident_svc/domain/dispatch_gate.py`, plus
+4. **The disbursement gate** — same shape as `incident_svc/domain/dispatch_gate.py`, plus
    segregation of duty (releaser ≠ assessor ≠ DS approver) and an open-grievance block.
-4. **Grievances**, the confirmation loop, the anchor job, and the HTTP surface.
+5. **Grievances**, the citizen confirmation loop, and the HTTP surface.
+
+### The blocker: the trigger and the verifier hash differently
+
+**This must be fixed before the first real disbursement.** Entries written today would not
+verify with `sarana-verify`, and the ledger's whole claim rests on them verifying.
+
+Build file 10 specifies:
+
+```
+entry_hash = SHA256( canonical_json(entry_without_hashes) || prev_hash )   # RFC 8785
+```
+
+`public.sarana_hash_chain()`, shipped in file 04, computes something else:
+
+```sql
+payload := (to_jsonb(NEW) - 'entry_hash')::text;   -- PostgreSQL's jsonb text form
+NEW.entry_hash := encode(sha256(convert_to(payload, 'UTF8')), 'hex');
+```
+
+Three concrete differences, all demonstrated against the running database:
+
+| | PostgreSQL `jsonb::text` | RFC 8785 |
+|---|---|---|
+| Key order | by (length, bytes) | by UTF-16 code unit |
+| Whitespace | `{"a": 2}` | `{"a":2}` |
+| `prev_hash` | inside the hashed payload | appended after it |
+
+The ordering difference is not theoretical:
+
+```
+postgres:  {"z": 1, "aa": 2}
+RFC 8785:  {"aa":2,"z":1}
+```
+
+**Recommended fix.** Do not try to implement RFC 8785 in plpgsql — it is a lot of
+error-prone SQL for a standard that already has a tested Python implementation in
+`sarana_shared.crypto.canonical`. Instead:
+
+- The **application** computes `entry_hash` using the shared canonicaliser and supplies it
+  on insert.
+- The **trigger** stops computing the hash and instead *enforces* what only the database
+  can: that `prev_hash` matches the current tail, that `entry_hash` is present, and that
+  nothing is ever updated or deleted.
+
+That keeps the property that matters — the chain cannot be broken by any writer — while
+making the hash the published, independently reproducible one. It is a migration against
+`aid.disbursement` and `aid.approval`, plus the equivalent decision for `audit.audit_entry`
+(which has the same trigger and is verified by core-api's `/audit/verify`, so those two
+currently agree with each other and neither agrees with RFC 8785).
 
 ## Things that will bite you
 
