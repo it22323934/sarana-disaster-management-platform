@@ -14,9 +14,11 @@ from fastapi import FastAPI
 from redis.asyncio import Redis
 
 from ledger_svc import SERVICE_DESCRIPTION, __version__
+from ledger_svc.api.internal import router as internal_router
 from ledger_svc.api.v1.router import router as v1_router
 from ledger_svc.config import Settings, get_settings
 from ledger_svc.repo import OutboxEvent
+from ledger_svc.workers.anchor import AnchorWorker
 from sarana_shared.db.session import check_connection, create_engine, create_session_factory
 from sarana_shared.events.factory import build_event_bus
 from sarana_shared.events.outbox import OutboxPublisher, OutboxWorker
@@ -59,12 +61,20 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         app.state.outbox_publisher = publisher
         app.state.outbox_worker = worker
 
+        # ADR-005. Builds the daily Merkle root and writes it where the operator cannot
+        # change it. It catches up on start, so a process that was down over a midnight
+        # does not leave a permanent hole in the public proof.
+        anchors = AnchorWorker(app.state.session_factory)
+        anchors.start()
+        app.state.anchor_worker = anchors
+
         health.register("database", lambda: check_connection(engine))
         health.register("event_bus", _redis_probe(redis))
 
         try:
             yield
         finally:
+            await anchors.stop()
             await worker.stop()
             await bus.close()
             await redis.aclose()
@@ -80,6 +90,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         cors_origins=resolved.cors_origins,
     )
     app.include_router(v1_router, prefix="/api/v1")
+    app.include_router(internal_router, prefix="/internal/v1")
     return app
 
 

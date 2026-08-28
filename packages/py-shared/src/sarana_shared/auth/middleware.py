@@ -51,6 +51,13 @@ ANONYMOUS_PATHS: Final[frozenset[str]] = frozenset(
         # picker before there is a token to present, so requiring one here would mean a
         # citizen could not read the page that asks them to log in.
         "/api/v1/meta/reference",
+        # The transparency surface, at the paths build file 10 names. Anonymous is the
+        # whole point: a journalist checking these figures against the S3 anchors must not
+        # need an account from the institution whose numbers they are checking. Each is
+        # aggregated to district and day in SQL - see `ledger_svc.repo.queries`.
+        "/api/v1/ledger/public",
+        "/api/v1/ledger/anchors",
+        "/api/v1/cost-schedules",
     }
 )
 

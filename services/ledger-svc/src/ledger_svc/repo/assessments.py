@@ -214,3 +214,33 @@ class Entitlement(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         String(20), nullable=False, server_default="CALCULATED", index=True
     )
     correlation_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+
+
+class DeviceSyncCursor(Base):
+    """The highest operation seq the server has accepted from one field device.
+
+    The one piece of state the assessments themselves cannot supply. Without it a batch
+    arriving as 8, 9, 10 after 7 was lost is indistinguishable from the next three
+    operations in order, and the record gets rebuilt out of an update whose create never
+    arrived.
+
+    Moves forward only. A device that is reset gets a new `device_id`; rewinding a cursor
+    would let a replayed log overwrite work already accepted.
+    """
+
+    __tablename__ = "device_sync_cursor"
+    __table_args__ = (
+        CheckConstraint("last_applied_seq >= 0", name="cursor_non_negative"),
+        CheckConstraint(
+            "blocked_on_seq IS NULL OR blocked_on_seq > last_applied_seq",
+            name="block_is_ahead_of_the_cursor",
+        ),
+        {"schema": AID_SCHEMA},
+    )
+
+    device_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    last_applied_seq: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    last_synced_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    blocked_on_seq: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

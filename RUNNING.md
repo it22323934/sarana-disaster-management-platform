@@ -142,15 +142,48 @@ docker rm -f $(docker ps -aq --filter name=testcontainers)
 
 ## What is not built yet
 
-The stack boots and the core API is complete, but most of the product above it is not.
-Working backwards from the build files:
+The four backend services are complete and the stack boots. Above them, most of the
+product is not there. Working backwards from the build files:
 
-- **incident-svc, alerting-svc, ledger-svc and gov-mock have no endpoints.** Their schemas,
-  repositories and migrations exist; their routers are empty. Files 08–11.
+- **gov-mock has no endpoints.** Its scaffold exists; its routers are empty. File 11.
 - **No agents.** No LangGraph runtime, no forecasting, warning, intake, triage or anomaly
   agent. Files 12–18.
 - **The three frontends are framework scaffolds** — one page each. Files 19–24.
 - **No AWS infrastructure, observability wiring or CI.** Files 25–29.
 
 So: you can log in, read the hierarchy, resolve coordinates, drive the Resilience Graph and
-the audit log, and watch the event backbone work. There is no user interface yet.
+the audit log, take a citizen report through triage to a dispatch gate, compose and fan out
+a CAP alert, and run an assessment through calculation, approval, the disbursement gate and
+onto a publicly verifiable ledger. There is no user interface yet — all of it is HTTP.
+
+### Known gaps inside what *is* built
+
+Worth knowing before you demo anything:
+
+- **Every payment rail is a mock**, and every payment reference starts `MOCK-`. Nothing
+  moves money.
+- **Alert targeting is a placeholder.** `alerting_svc`'s `_targets_for()` returns a fixed
+  set, so delivery counts are structurally correct and factually meaningless.
+- **Anchors are not externally stored** unless an object store is configured. Without one
+  the anchor job records the Merkle root in the database and logs
+  `anchor_not_externally_stored`; the `s3_object_lock_uri` is null rather than a
+  plausible-looking S3 URI, because an anchor that claims to be under a compliance lock
+  and is not would be a lie at the exact point somebody relies on it.
+- **There is no service-to-service credential mechanism.** incident-svc calls core-api with
+  a long-lived token from `SARANA_INCIDENT_SERVICE_TOKEN`.
+
+## Checking the ledger yourself
+
+The transparency claim is testable from outside, with no account:
+
+```bash
+curl http://localhost:8004/api/v1/ledger/public
+curl http://localhost:8004/api/v1/ledger/anchors
+curl http://localhost:8004/api/v1/cost-schedules
+
+cd tools/sarana-verify && python verify.py --base-url http://localhost:8004
+```
+
+Exit `0` means every entry hashes to its published value, the chain is unbroken, and every
+daily Merkle root matches its anchor. Exit `1` names the exact `seq` of the first
+divergence. Exit `2` means it could not read the data — which is not a pass.

@@ -76,6 +76,13 @@ writing JSON so that the same data always produces exactly the same bytes. It ha
 standard: if SARANA and this tool serialised the same payment differently, the hashes
 would differ and verification would be meaningless.
 
+"Without its hashes" means without four fields: `prev_hash` and `entry_hash`, because they
+are the output; and `seq` and `anchor_date`, because they are storage and grouping
+metadata. The chain linkage already fixes the order, so committing to the row number as
+well would make an honest renumbering look like tampering. Every entry in the feed carries
+those four alongside the fields that *are* hashed, so you can strip them and recompute with
+nothing but `sha256sum` and patience.
+
 - **Change a payment amount** → that entry's own hash stops matching.
 - **Delete a payment** → every remaining hash is still individually valid, but the *chain*
   between them breaks.
@@ -99,6 +106,11 @@ rewritten.
 
 Each anchor also commits to how many entries that day held, so removing the *last* payment
 of a day — which leaves a perfectly valid chain — is caught by the count.
+
+The anchors are chained to each other as well. Each one carries `prev_anchor_hash`, the
+hash of the previous day's whole record, so removing an *entire day* is as detectable as
+altering one row inside it: the day after the deleted one names a predecessor that is no
+longer published.
 
 ## Why you can trust the tool itself
 

@@ -5,6 +5,7 @@ from ledger_svc.repo.assessments import (
     CostSchedule,
     CostScheduleLine,
     DamageAssessment,
+    DeviceSyncCursor,
     Entitlement,
 )
 from ledger_svc.repo.base import (
@@ -50,6 +51,7 @@ __all__ = [
     "CostSchedule",
     "CostScheduleLine",
     "DamageAssessment",
+    "DeviceSyncCursor",
     "Disbursement",
     "Entitlement",
     "Grievance",

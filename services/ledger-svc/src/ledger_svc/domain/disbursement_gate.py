@@ -24,11 +24,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import Any, Final, Protocol
 from uuid import UUID
 
 import structlog
 
+from ledger_svc.domain.approval import DEFAULT_DISTRICT_THRESHOLD_CENTS
 from sarana_shared.auth.principal import STEP_UP_WINDOW, Principal
 from sarana_shared.domain.time import utc_now
 
@@ -84,7 +85,12 @@ class ApprovalLevel(StrEnum):
 # DS approval alone is enough - the second pair of eyes costs more than it saves on a
 # household goods payment, and slowing every small release delays the people least able to
 # wait.
-DISTRICT_APPROVAL_THRESHOLD_CENTS = 100_000_00
+#
+# Imported from `domain.approval` rather than restated. The two modules held different
+# numbers until this was noticed, which put entitlements between them in a state where the
+# approval flow reported them ready and the release then refused them for a signature
+# nobody had been asked for.
+DISTRICT_APPROVAL_THRESHOLD_CENTS: Final = DEFAULT_DISTRICT_THRESHOLD_CENTS
 
 
 @dataclass(frozen=True, slots=True)

@@ -22,12 +22,23 @@ from dataclasses import dataclass
 from typing import Any
 
 from sarana_shared.crypto.canonical import canonical_bytes
+from sarana_shared.crypto.chain import HASH_FIELDS
 
 EMPTY_ROOT = hashlib.sha256(b"").hexdigest()
 
 
 def leaf_hash(entry: Any) -> str:
-    """The hash of one ledger entry, over its canonical form."""
+    """The hash of one ledger entry, over its canonical form.
+
+    Strips the same four fields the chain hash excludes - the two hashes, `seq` and
+    `anchor_date` - so a leaf built here and a leaf recomputed by `tools/sarana-verify`
+    from the published feed are the same bytes. Doing it inside this function rather than
+    asking callers to strip first is deliberate: `build_anchor` needs `seq` to record the
+    range it covers, so a caller that had already removed it could not, and one that had
+    not would hash a different shape from the public.
+    """
+    if isinstance(entry, dict):
+        entry = {key: value for key, value in entry.items() if key not in HASH_FIELDS}
     return hashlib.sha256(canonical_bytes(entry)).hexdigest()
 
 

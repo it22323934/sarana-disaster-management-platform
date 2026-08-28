@@ -9,7 +9,7 @@ Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 ## Where the build has got to
 
 The repository is organised around 30 numbered build files in `.claude/`. Progress is
-strictly sequential and currently sits part-way through 09.
+strictly sequential. Files 03-10 are complete; the next unstarted file is 11.
 
 | File | Area | State |
 |---|---|---|
@@ -19,34 +19,34 @@ strictly sequential and currently sits part-way through 09.
 | 06 | Event backbone | Done |
 | 07 | core-api | Done — 29 endpoints |
 | 08 | incident-svc | Done — 20 endpoints |
-| **09** | **alerting-svc** | **Done — 15 endpoints. Targeting is a placeholder.** |
-| **10** | **ledger-svc** | **Crypto, calculation and `sarana-verify` done. No HTTP surface.** |
-| 11 | gov-mock | Not started |
+| 09 | alerting-svc | Done — 15 endpoints. Targeting is a placeholder. |
+| 10 | ledger-svc | Done — 28 endpoints, publicly verifiable ledger |
+| **11** | **gov-mock** | **Not started — start here** |
 | 12–18 | Agents (LangGraph) | Not started |
 | 19–21 | Web (design system, ops console, public dashboard) | Scaffolds only |
 | 22–24 | Mobile (foundation, citizen, field companion) | Scaffold only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-**594 tests passing.** `ruff check`, `ruff format --check` and `mypy` (192 source files)
-all clean.
+**680 tests passing, 2 skipped.** `ruff check`, `ruff format --check` and `mypy` (230
+source files) all clean.
 
 ```
 core-api        29 endpoints,  6,483 lines
 incident-svc    20 endpoints,  4,615 lines
-alerting-svc     0 endpoints,  2,028 lines   <- domain only
-ledger-svc       0 endpoints,  1,078 lines   <- schema only
+alerting-svc    15 endpoints
+ledger-svc      28 endpoints
 agent-svc        0 endpoints,    575 lines   <- schema only
 gov-mock         0 endpoints,    172 lines   <- scaffold
 ```
 
 ---
 
-## Start here: finishing file 09
+## The one thing carried forward from file 09
 
-Most of it is done. Three things remain, and the first is load-bearing.
+File 09 is otherwise complete. This is the piece that was left, and it is load-bearing.
 
-### 1. Real targeting — the one that matters
+### Real targeting
 
 `alerting_svc.api.v1.alerts._targets_for()` is a **placeholder**. It returns one synthetic
 target per GN division so the fan-out, delivery accounting and gaps logic above it are
@@ -57,7 +57,7 @@ Real targeting means reading `admin.household` — `contact_msisdn_hash`,
 service-credential flow described below. Until then every delivery number is structurally
 correct and factually meaningless.
 
-### 2. The twelve templates load as DRAFT, and that is deliberate
+### The twelve templates load as DRAFT, and that is deliberate
 
 `make seed` now creates all twelve, every one `DRAFT` with no reviewer signatures. Before
 any alert can be dispatched a human must sign each language through
@@ -66,7 +66,7 @@ any alert can be dispatched a human must sign each language through
 That is the gate working. Do not seed them as PUBLISHED to make a demo flow smoothly —
 it would put twelve machine-translated life-safety messages one API call from a district.
 
-### What is done
+### What file 09 delivered
 
 - `domain/cap.py` — CAP 1.2 documents, three `<info>` blocks, structural validation
 - `domain/templates.py` — trilingual review gate, parameter substitution, soft third gate
@@ -81,48 +81,91 @@ it would put twelve machine-translated life-safety messages one API call from a 
 
 ---
 
-## Next: finishing file 10 (ledger-svc)
+## File 10 is done — what was built, and the four decisions inside it
 
-The parts that make the ledger *auditable* are built and tested. The service layer is not.
+28 endpoints. The chain from a GN officer's offline assessment through calculation,
+approval, the disbursement gate, the hash-chained ledger entry, the daily Merkle anchor and
+the citizen's confirmation SMS is complete and end-to-end tested.
 
-Done, and these are the foundations everything else sits on:
+The parts worth knowing before you touch any of it:
 
-- `sarana_shared/crypto/canonical.py` — RFC 8785 JSON canonicalisation, including the
-  UTF-16 code-unit sort that most implementations get wrong
-- `sarana_shared/crypto/merkle.py` — daily anchors, duplicate-last odd-node rule
-  documented and tested, anchors chained to each other
-- `ledger_svc/domain/entitlement.py` — pure deterministic calculation with a mandatory
-  trace; 10,000-assessment property test passes
+### `/ledger/public` is per-entry, not aggregated
 
-- `tools/sarana-verify/` — the standalone verifier, with a README written for a
-  journalist. Detects an edited row, a deleted row, and a fully rewritten chain; exits
-  non-zero naming the divergent `seq`. `tests/ledger/test_tamper_detection.py` is the
-  test the brief calls the most important in the repo.
+The brief says the feed is "anonymised, aggregated" *and* that `sarana-verify` "recomputes
+every entry hash" from it. Those cannot both hold: a total is a claim, and recomputing a
+hash chain needs the entries the chain is over. So the feed is per-entry and anonymised —
+no household, no GN division, no assessment reference, no coordinate, no name — and the
+aggregate the dashboard wants is a second endpoint, `/api/v1/public/ledger-summary`.
 
-Still to write:
+`released_by` and `entitlement_id` stay in the public feed. Both are UUIDs with no public
+resolver, and a ledger that does not commit to who released public money is not an
+accountability record.
 
-1. **Wire the verifier to real endpoints.** `GET /api/v1/ledger/public` and
-   `GET /api/v1/ledger/anchors` do not exist yet, so `--base-url` has nothing to fetch.
-   The tool works today against JSON files; both endpoints must be public and
-   unauthenticated when they land.
-2. **The anchor job** — daily at 00:00 Colombo, build the Merkle root, write it to S3
-   with Object Lock in compliance mode, publish it. `sarana_shared.crypto.merkle` does the
-   computation; the scheduling and the S3 write do not exist.
-3. **Offline assessment sync** — `POST /api/v1/assessments/sync`, `client_operation_id`
-   as the idempotency key, per-device `seq` ordering with gap detection.
-4. **Grievances**, the citizen confirmation loop, and the HTTP surface. The gate already
-   refuses a release with an open grievance; nothing yet creates one.
+### One definition of a ledger entry, in `domain/ledger_entry.py`
 
-The disbursement gate itself is **done** — `ledger_svc/domain/disbursement_gate.py`, with
-segregation of duty, the approval threshold, the open-grievance block and step-up, all
-tested as attempted releases rather than happy paths. Two properties worth preserving if
-you refactor it:
+Three things have to agree byte for byte or an honest ledger fails verification: what
+`chain_writer` hashes, what `/ledger/public` publishes, and what the anchor job builds the
+tree over. They all call `public_entry()`. `released_at` is rendered to a **string** there,
+because `+00:00` versus `Z` from a JSON serialiser is enough to break every hash in the
+feed, and it would break at deployment rather than in a test.
 
-- **There is no amount parameter.** The amount comes from the entitlement's own
-  calculation. A releaser who could type a number would make the trace decorative.
-- **There is no bulk release**, deliberately. A bulk endpoint is one mis-selected filter
-  from paying a district twice. If it is ever added: one at a time, one step-up, explicit
-  per-item list, hard cap.
+`tests/ledger/test_public_feed.py` asserts the agreement, including that the verifier can
+parse the API's actual response envelopes. That last test exists because `date` and
+`anchor_date` diverged between the two and nothing failed — every other test built its own
+anchor dict, so the mismatch would have surfaced the first time a journalist ran the tool.
+
+### `seq` and `anchor_date` are outside the hash
+
+`HASH_FIELDS` is four fields, not two. `seq` is a database identity column that is not
+known until the row is written, so an entry could not be hashed before insertion if the
+hash covered it; the chain linkage already fixes the order. `anchor_date` is a timezone
+rendering of `released_at`, so committing to it would make the hash depend on a rendering
+rather than a fact. `tools/sarana-verify` excludes the same four and
+`tests/ledger/test_chain_agreement.py` asserts the two lists are one set.
+
+Note `link()` in the shared module strips only `OUTPUT_FIELDS`, the two hashes it rewrites.
+Conflating the two sets made it drop `seq` from the record it returned.
+
+### The append-only table has exactly one opening (migration 0008)
+
+`aid.disbursement` had `citizen_confirmed`, `citizen_confirmed_at` and
+`citizen_confirm_channel` and no way to ever set them — UPDATE was revoked from
+`sarana_app` and trigger-blocked for everyone including the owner. Three columns that
+permanently read false, which under-reports every payment that actually arrived.
+
+0008 replaces the blanket trigger with `aid.disbursement_confirmation_only()`, which
+compares every other column and refuses the write if any of them moved, and forbids a
+confirmation going true → false. The grant is column-level. The confirmation columns are
+outside the hashed payload, so answering an SMS cannot change a published hash.
+
+If you add a column to `aid.disbursement`, add it to `IMMUTABLE_COLUMNS` in that migration.
+The list is explicit rather than derived so an addition has to be considered.
+
+### Still placeholder, and honest about it
+
+- **Anchors are not externally stored** without an object store. `NullAnchorStore` returns
+  `None` for the URI and logs `anchor_not_externally_stored` rather than a plausible
+  `s3://` string. An anchor claiming a compliance lock it does not have would be a lie at
+  the exact point somebody relies on it. Wiring MinIO or S3 is the remaining work.
+- **Every payment rail is a mock**, every reference starts `MOCK-`, and
+  `adapters/rails.py` deliberately has no failure-injection knob — a rail that sometimes
+  fails on a demo has its failures explained away as the demo.
+- **`aid.device_sync_cursor`** (migration 0007) is new: the per-device `seq` cursor the gap
+  rule needs. Without it, 8-9-10 after 7 was lost is indistinguishable from the next three
+  operations in order.
+
+### Two schema contradictions found and fixed
+
+Both were live defects, not tidying:
+
+1. **Two district approval thresholds.** `domain/approval.py` said LKR 500,000;
+   `domain/disbursement_gate.py` said LKR 100,000. An entitlement between them read as
+   fully approved and was then refused at release for a signature nobody had been asked
+   for. The gate now imports the constant.
+2. **`aid.ledger_anchor` had no `prev_anchor_hash`** (fixed in 0009). ADR-005 chains the
+   anchors so a removed *day* is as detectable as an altered row; the value was computed,
+   written into the S3 object, and then dropped. A verifier could check every root and
+   still miss a missing Tuesday.
 
 ### Resolved: the trigger and the verifier now agree
 
@@ -338,6 +381,17 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
 - **Seed data below district level is synthetic.** Provinces and districts are real
   (official codes and names). DS and GN divisions are generated rectangles around real
   district centroids. Never present them as survey boundaries.
+- **Anchors have no object store (file 10).** The Merkle root is computed, chained to the
+  previous day and published; it is not written to S3 Object Lock unless a store is
+  configured. `NullAnchorStore` says so in the logs and leaves `s3_object_lock_uri` null
+  rather than inventing a plausible URI. Until it is wired, the chain is verifiable and
+  the *external* anchor — the half that survives an operator rewriting the database — is
+  not there.
+- **Entitlement calculation reads one schedule line (file 10).** `POST /entitlements`
+  values the assessment's single category. A household with damage in several categories
+  needs several assessments today. The pure calculator underneath already handles multiple
+  items and the household cap; the endpoint does not yet pass them.
+- **Payment rails are mocks.** Every reference starts `MOCK-`.
 
 ---
 

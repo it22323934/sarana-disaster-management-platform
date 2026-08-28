@@ -56,7 +56,12 @@ from sarana_shared.crypto.merkle import Anchor, merkle_root  # noqa: E402
 GENESIS_HASH = "0" * 64
 
 # Fields that are not part of what gets hashed: the hashes themselves.
-HASH_FIELDS = ("prev_hash", "entry_hash")
+# Excluded when recomputing. `prev_hash` and `entry_hash` because they are the output;
+# `seq` and `anchor_date` because they are storage and grouping metadata - the chain
+# linkage already fixes the order, so committing to the row number as well would make an
+# honest renumbering look like tampering. The service excludes the same four, in
+# `ledger_svc.domain.ledger_entry.NON_PAYLOAD_FIELDS`.
+HASH_FIELDS = ("prev_hash", "entry_hash", "seq", "anchor_date")
 
 FETCH_TIMEOUT_SECONDS = 30
 

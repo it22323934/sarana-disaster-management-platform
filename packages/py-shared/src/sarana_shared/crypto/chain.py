@@ -44,10 +44,27 @@ from sarana_shared.crypto.canonical import canonical_bytes
 # so a chain started under either scheme begins the same way.
 GENESIS_HASH: Final = "0" * 64
 
-# Excluded from the hashed payload: the hashes themselves. `prev_hash` is appended after
-# the canonical form rather than folded into it, so the chaining is visible in the
-# algorithm rather than buried in the data.
-HASH_FIELDS: Final[tuple[str, ...]] = ("prev_hash", "entry_hash")
+# Excluded from the hashed payload.
+#
+# The two hashes, because they are the output. `prev_hash` is appended after the canonical
+# form rather than folded into it, so the chaining is visible in the algorithm rather than
+# buried in the data.
+#
+# `seq` and `anchor_date`, because they are storage and grouping metadata rather than
+# content. `seq` is a database identity column that is not known until the row is written,
+# so an entry could not be hashed before it was inserted if the hash covered it; the chain
+# linkage already fixes the order, which is the property `seq` would otherwise supply.
+# `anchor_date` is derived from `released_at` by a timezone conversion, so committing to it
+# would make the hash depend on a rendering rather than on a fact.
+#
+# `tools/sarana-verify` excludes exactly these four, and `tests/ledger/test_chain_agreement`
+# asserts the two lists are the same set. That test exists because they diverged once.
+HASH_FIELDS: Final[tuple[str, ...]] = ("prev_hash", "entry_hash", "seq", "anchor_date")
+
+# The two fields `link()` recomputes and writes back. Distinct from HASH_FIELDS on purpose:
+# that one says what the hash does not cover, this one says what the record does not keep
+# from its input. Conflating them made `link()` drop `seq` from the entry it returned.
+OUTPUT_FIELDS: Final[tuple[str, ...]] = ("prev_hash", "entry_hash")
 
 
 def chain_hash(entry: dict[str, Any], prev_hash: str | None = None) -> str:
@@ -68,7 +85,7 @@ def link(entry: dict[str, Any], prev_hash: str | None = None) -> dict[str, Any]:
     otherwise be holding a record whose hash silently no longer describes it.
     """
     previous = prev_hash or entry.get("prev_hash") or GENESIS_HASH
-    linked = {key: value for key, value in entry.items() if key not in HASH_FIELDS}
+    linked = {key: value for key, value in entry.items() if key not in OUTPUT_FIELDS}
     linked["prev_hash"] = previous
     linked["entry_hash"] = chain_hash(linked, previous)
     return linked

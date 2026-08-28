@@ -159,11 +159,21 @@ class LedgerAnchor(UUIDPrimaryKeyMixin, Base):
         CheckConstraint("entry_count > 0", name="anchor_covers_entries"),
         CheckConstraint("last_seq >= first_seq", name="seq_range_ordered"),
         CheckConstraint("merkle_root ~ '^[0-9a-f]{64}$'", name="merkle_root_is_sha256"),
+        CheckConstraint(
+            "prev_anchor_hash IS NULL OR prev_anchor_hash ~ '^[0-9a-f]{64}$'",
+            name="prev_anchor_hash_is_sha256",
+        ),
         {"schema": AID_SCHEMA},
     )
 
     anchor_date: Mapped[date] = mapped_column(Date, nullable=False)
     merkle_root: Mapped[str] = mapped_column(Text, nullable=False)
+    prev_anchor_hash: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        doc="The previous day's anchor_hash. Chaining the days means removing a whole "
+        "day is as detectable as altering one row inside it.",
+    )
     entry_count: Mapped[int] = mapped_column(Integer, nullable=False)
     first_seq: Mapped[int] = mapped_column(BigInteger, nullable=False)
     last_seq: Mapped[int] = mapped_column(BigInteger, nullable=False)
