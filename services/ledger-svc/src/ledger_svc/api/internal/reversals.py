@@ -134,17 +134,9 @@ async def record_reversal(
     except domain.ReversalRefused as error:
         raise ValidationFailed(str(error)) from error
 
-    stored = await chain_writer.append(
-        session,
-        schema="aid",
-        table="disbursement_reversal",
-        columns=entry.as_columns(),
-        hashed_payload=entry.hashed_payload(),
-    )
-
-    # The household is told what happened and what to do about it, in all three languages.
-    # Raised before the entitlement is reopened so that a failure here rolls back the whole
-    # transaction rather than leaving money on the books with nobody informed.
+    # The household's case is opened first. `aid.disbursement_reversal` is append-only, so
+    # the entry has to be complete when it lands - a case number could never be attached
+    # afterwards, and a reversal without one is a household nobody told.
     new_grievance = grievance_domain.from_failed_transfer(
         household_id=UUID(context["household_id"]),
         disbursement_id=body.disbursement_id,
@@ -156,8 +148,13 @@ async def record_reversal(
     grievance = await queries.insert_grievance(
         session, **new_grievance.as_columns(grievance_id=grievance_id)
     )
-    await queries.attach_grievance_to_reversal(
-        session, reversal_id=entry.id, grievance_id=grievance_id
+
+    stored = await chain_writer.append(
+        session,
+        schema="aid",
+        table="disbursement_reversal",
+        columns=entry.as_columns(grievance_id=grievance_id),
+        hashed_payload=entry.hashed_payload(),
     )
 
     # Back to APPROVED, not REJECTED. The approvals still stand — what failed was the

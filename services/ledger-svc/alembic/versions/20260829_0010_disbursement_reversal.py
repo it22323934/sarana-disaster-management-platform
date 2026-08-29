@@ -192,10 +192,11 @@ def upgrade() -> None:
         sa.Column(
             "grievance_id",
             postgresql.UUID(as_uuid=True),
-            nullable=True,
-            comment="The grievance raised on the household's behalf. Nullable only so the "
-            "reversal can be written first; a reversal with no grievance after the fact "
-            "is a household nobody told.",
+            nullable=False,
+            comment="The grievance raised on the household's behalf. NOT NULL because the "
+            "case is opened before the entry is written: a reversal that could exist "
+            "without one is a household nobody told, and this table is append-only so it "
+            "could never be filled in afterwards.",
         ),
         sa.Column("correlation_id", sa.String(length=64), nullable=False),
         sa.Column(

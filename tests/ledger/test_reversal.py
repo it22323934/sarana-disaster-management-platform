@@ -93,7 +93,7 @@ async def a_reversal(
     previous = tail.scalar_one_or_none() or GENESIS_HASH
     entry_hash = chain_hash(entry.hashed_payload(), previous)
 
-    columns = entry.as_columns()
+    columns = entry.as_columns(grievance_id=uuid7())
     names = ", ".join(columns)
     placeholders = ", ".join(f":{name}" for name in columns)
     await db.execute(

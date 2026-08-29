@@ -228,9 +228,11 @@ Worth knowing before you demo anything:
   set, so delivery counts are structurally correct and factually meaningless. gov-mock now
   serves real-shaped households and per-division coverage, so what is missing is the
   credential to read `admin.household`, not the data.
-- **A failed payment produces no compensating ledger entry.** The mock rail fails about 3%
-  of transfers with a specific reason; nothing yet turns that into a reversing ledger entry
-  and a grievance. A household can hold a published disbursement and an empty account.
+- **A reversed payment does not message the household.** The mock rail fails about 3% of
+  transfers, and ledger-svc's settlement poller now turns each one into a compensating
+  ledger entry, a grievance in the household's own language and a reopened entitlement —
+  but nothing yet consumes the event that would send the SMS, so they hear about it from an
+  officer rather than a message.
 - **Anchors are not externally stored** unless an object store is configured. Without one
   the anchor job records the Merkle root in the database and logs
   `anchor_not_externally_stored`; the `s3_object_lock_uri` is null rather than a
@@ -246,11 +248,13 @@ The transparency claim is testable from outside, with no account:
 ```bash
 curl http://localhost:8004/api/v1/ledger/public
 curl http://localhost:8004/api/v1/ledger/anchors
+curl http://localhost:8004/api/v1/ledger/reversals
 curl http://localhost:8004/api/v1/cost-schedules
 
 cd tools/sarana-verify && python verify.py --base-url http://localhost:8004
 ```
 
-Exit `0` means every entry hashes to its published value, the chain is unbroken, and every
-daily Merkle root matches its anchor. Exit `1` names the exact `seq` of the first
+Exit `0` means every entry hashes to its published value, both chains are unbroken, every
+daily Merkle root matches its anchor, and every payment the bank returned carries a matching
+compensating entry. Exit `1` names the exact `seq` of the first
 divergence. Exit `2` means it could not read the data — which is not a pass.

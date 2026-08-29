@@ -716,13 +716,6 @@ JOIN aid.damage_assessment a ON a.id = e.assessment_id
 WHERE d.id = :disbursement_id
 """
 
-_ATTACH_GRIEVANCE_TO_REVERSAL = """
-UPDATE aid.disbursement_reversal
-   SET grievance_id = :grievance_id
- WHERE id = :reversal_id
-RETURNING id::text, grievance_id::text
-"""
-
 _GET_REVERSAL = """
 SELECT r.seq, r.id::text, r.disbursement_id::text, r.entitlement_id::text,
        r.amount_lkr_cents, r.reason, r.rail_reference, r.reversed_at,
@@ -753,27 +746,48 @@ LIMIT :limit
 """
 
 
+# Payments the rail has accepted but that nothing has confirmed settled or failed. The
+# settlement poller's work list.
+#
+# Ordered oldest first: a transfer that has been in flight longest is the one a household
+# has been waiting on, and it is the one most likely to have quietly failed.
+_PENDING_SETTLEMENT = """
+SELECT d.id::text AS disbursement_id,
+       d.payment_ref,
+       d.payment_rail,
+       d.released_at
+FROM aid.disbursement d
+WHERE d.reversed_at IS NULL
+  AND d.payment_ref IS NOT NULL
+  AND NOT d.citizen_confirmed
+  -- Built from an integer rather than bound as an interval string: asyncpg prepares
+  -- statements and refuses to adapt a Python str to interval, which fails at runtime
+  -- rather than at import.
+  AND d.released_at >= now() - (CAST(:window_days AS integer) * INTERVAL '1 day')
+ORDER BY d.released_at
+LIMIT :limit
+"""
+
+
+async def pending_settlement(
+    session: AsyncSession, *, window_days: int = 30, limit: int = 200
+) -> list[dict[str, Any]]:
+    """Disbursements whose rail outcome is still unknown.
+
+    Bounded by a window because a payment nobody has resolved in a month is not going to be
+    resolved by polling; it is a case for a person. Without the bound the work list grows
+    forever and the poller spends its time on the oldest failures rather than the newest.
+    """
+    result = await session.execute(
+        text(_PENDING_SETTLEMENT), {"window_days": window_days, "limit": limit}
+    )
+    return [dict(row) for row in result.mappings()]
+
+
 async def reversal_context_row(
     session: AsyncSession, disbursement_id: UUID
 ) -> dict[str, Any] | None:
     result = await session.execute(text(_REVERSAL_CONTEXT), {"disbursement_id": disbursement_id})
-    row = result.mappings().first()
-    return dict(row) if row else None
-
-
-async def attach_grievance_to_reversal(
-    session: AsyncSession, *, reversal_id: UUID, grievance_id: UUID
-) -> dict[str, Any] | None:
-    """Link the grievance back to the entry that caused it.
-
-    A separate write because the reversal has to be appended first - its hash covers the
-    payment, not the case number - and because `grievance_id` is deliberately outside the
-    hashed payload so the order of these two writes cannot change a published hash.
-    """
-    result = await session.execute(
-        text(_ATTACH_GRIEVANCE_TO_REVERSAL),
-        {"reversal_id": reversal_id, "grievance_id": grievance_id},
-    )
     row = result.mappings().first()
     return dict(row) if row else None
 

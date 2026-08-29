@@ -29,14 +29,14 @@ strictly sequential. Files 03-11 are complete; the next unstarted file is 12.
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-**974 tests passing, 2 skipped.** `ruff check`, `ruff format --check` and `mypy` (258
+**1,013 tests passing, 2 skipped.** `ruff check`, `ruff format --check` and `mypy` (261
 source files) all clean.
 
 ```
 core-api        29 endpoints,  6,483 lines
 incident-svc    20 endpoints,  4,615 lines
 alerting-svc    15 endpoints,  3,357 lines
-ledger-svc      28 endpoints,  5,986 lines
+ledger-svc      29 endpoints,  6,900 lines
 gov-mock        35 endpoints,  4,900 lines   <- 7 mocked systems + control plane
 agent-svc        0 endpoints,    575 lines   <- schema only
 ```
@@ -410,13 +410,11 @@ Two replicas would disagree about a claim's status and a poller would watch it f
 
 ### Still placeholder, and honest about it
 
-- **The compensating ledger entry on a failed transfer is not wired.** The rail reports
-  `FAILED` with a specific, quotable reason, and `ledger-svc` documents compensating
-  entries — but nothing joins the two: no code turns a failed transfer into a reversing
-  entry plus an auto-raised grievance. Build file 11 lists a test for this; writing one
-  today would assert nothing. **This is the first thing to wire when ledger-svc is next
-  opened.** Until then a household can hold a published disbursement and an empty account
-  with nobody notified.
+- **The compensating ledger entry is wired** — see the section above. A failed transfer
+  now produces a chained reversal, a grievance in the household's own language, and a
+  reopened entitlement. What is *not* built is the outbound half: nothing in alerting-svc
+  yet consumes `sarana.aid.disbursement.reversed`, so the case exists and an officer sees
+  it, but the household is not messaged automatically.
 - **The payment webhook is registered and never called.** Delivering a callback would mean
   the mock reaching into the platform on its own schedule, which makes a scenario replay
   depend on network timing. The ledger polls instead.
@@ -434,6 +432,117 @@ Two replicas would disagree about a claim's status and a poller would watch it f
 per-division coverage that degrades as cell sites lose power. What is still missing is the
 platform's own `admin.household` read behind core-api, which is the service-credential
 problem below, not a data problem.
+
+---
+
+## The compensating entry, and the four decisions inside it
+
+The loose end between files 10 and 11, now closed. About three transfers in a hundred fail
+*after* the rail accepted them, by which time `aid.disbursement` has recorded a release,
+hashed it and published it. Nothing in the platform used to find out.
+
+`ledger_svc.workers.settlement` now asks the rail about every payment whose outcome is
+still unknown, and when one has come back it writes a compensating entry, raises the
+household's grievance and reopens the entitlement, in one transaction.
+
+### A separate table, not a negative-amount disbursement
+
+`aid.disbursement_reversal`, on its own hash chain. Three reasons, in order of weight:
+
+`ledger_svc.domain.ledger_entry` defines the one field set that is hashed *and* published
+*and* anchored. Adding a field to it changes the recomputed hash of **every entry ever
+written**, including the ones written before the field existed, and breaks
+`tools/sarana-verify` against all of history. A reversal with its own payload shape cannot
+touch that.
+
+`aid.disbursement` constrains `amount_lkr_cents > 0` and held one row per entitlement.
+Both are real invariants that stop a double-pay bug, and neither should be relaxed to model
+a rare correction.
+
+And it is how double-entry bookkeeping has always recorded one.
+
+`disbursement_id` is **inside** the reversal's hashed payload, so a reversal cannot later
+be denied or quietly re-pointed at a different payment. That is the difference between a
+compensating entry and a note in a file.
+
+### `reversed` is published and not hashed, and the exclusion list is now five
+
+The public feed carries `reversed` on each entry, because publishing a released payment
+with no hint that the money came back is the sort of true-but-misleading number a
+transparency feed exists to prevent.
+
+It is **outside** the hash, for the same reason the citizen confirmation columns are: the
+entry means "this money was released, on this date, by this person", and that stays true.
+So `HASH_FIELDS` is now `(prev_hash, entry_hash, seq, anchor_date, reversed)` in all three
+places — `sarana_shared.crypto.chain`, `ledger_svc.domain.ledger_entry.NON_PAYLOAD_FIELDS`
+and `tools/sarana-verify`. `tests/ledger/test_chain_agreement.py` asserts they are one set;
+`tests/ledger/test_public_feed.py` asserts the field is published, excluded, and absent
+from `public_entry()`.
+
+**This is the trap that cost a day in file 10 and would have cost another here.** A field
+added to the published feed and not to the exclusion list makes every honest entry fail
+verification, and it fails at deployment rather than in a test.
+
+`sarana-verify` gained `--reversals` and cross-checks the two feeds: a reversal against a
+disbursement that is not published, an amount that does not match, or an entry flagged
+`reversed` with no compensating entry. That last one matters because `reversed` is the one
+field on an entry an operator could change without breaking a hash.
+
+### A reversed payment frees the entitlement to be paid again
+
+`uq_disbursement_entitlement` became a partial unique index over live rows only
+(`WHERE reversed_at IS NULL`), and `already_released` in the release gate now means
+"released and not reversed".
+
+Without that, reversing a bounced payment would permanently bar the household from money
+they are owed — which makes the correction a worse outcome than leaving the bad record
+standing. `tests/ledger/test_reversal.py` asserts both halves: a reversed entitlement can
+be paid again, and two *live* payments for one entitlement are still refused.
+
+### The grievance is raised before the entry, and `SYSTEM` is a real channel
+
+The first version appended the reversal and then updated `grievance_id` onto it. The
+append-only trigger refused, correctly — an editable reversal is a way to un-fail a
+payment. Rather than open a hole in that guarantee for a case number, the order was
+reversed: the case is opened first and `grievance_id` is `NOT NULL`. A reversal that could
+exist without one is a household nobody told, and on an append-only table it could never be
+filled in afterwards.
+
+`GRIEVANCE_CHANNELS` gained `SYSTEM`. Nobody replied NO — a bank returned the money and the
+household is at home believing they have been paid. Recording that as `SMS` would put a
+falsehood in the field an officer reads to decide how to reply, and would make "how are
+citizens actually reaching us?" unanswerable from the data.
+
+The grievance text comes from `domain.reversal.REASON_TEXT`, in all three languages, and is
+written as an instruction rather than a diagnosis. A test asserts the English never contains
+the enum value: `ACCOUNT_DORMANT` tells a family nothing; "visit your bank branch to
+reactivate it" tells them what to do on Monday.
+
+### What the poller will and will not do
+
+- **An unreachable rail reverses nothing.** `GovUpstreamError` leaves the payment alone for
+  the next pass. A poller reading a timeout as a failed payment would reverse money that is
+  on its way and do it to every household in the same pass, turning one bank outage into a
+  national incident inside the platform. This is the most important test in
+  `tests/ledger/test_settlement_poller.py`.
+- **A reference the rail has never heard of reverses nothing.** The ledger and the rail
+  disagreeing is a reconciliation case for a person; taking money off the books on the
+  strength of an *absence* is the wrong direction.
+- **It never retries the transfer.** Re-sending to an account that just rejected it
+  produces a second failure and a ledger claiming two payments. Paying again is a new
+  release through the human gate.
+- **A machine cannot record a human judgement.** `MACHINE_REPORTABLE` excludes
+  `ADMINISTRATIVE_ERROR` and `DUPLICATE_PAYMENT` — those are decisions about what somebody
+  did, not observations of what a bank returned, and a system that can make them by itself
+  can take money off the books with nobody accountable.
+- **`SARANA_LEDGER_SETTLEMENT_POLL_SECONDS=0` disables it**, which is what tooling and
+  one-shot runs want.
+
+`tests/ledger/test_vocabularies.py` is the seam test between the two files: every failure
+reason the mock rail can report is one the schema will store, the adapter's enum has not
+narrowed it, and a worker is permitted to record all of them. A reason the rail invents and
+the database rejects would be a 500 on the one path that only runs when a household's
+payment has already failed.
 
 ---
 
@@ -599,9 +708,12 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
   needs several assessments today. The pure calculator underneath already handles multiple
   items and the household cap; the endpoint does not yet pass them.
 - **Payment rails are mocks.** Every reference starts `MOCK-`.
-- **A failed transfer produces no compensating ledger entry (files 10 + 11).** The rail
-  reports the failure with a quotable reason; nothing turns it into a reversing entry and an
-  auto-raised grievance. The highest-priority loose end between the two files.
+- **A reversed payment does not yet message the household.** The compensating entry, the
+  grievance and the reopened entitlement are all written, and
+  `sarana.aid.disbursement.reversed` is published for alerting-svc — but nothing consumes
+  it, so the household learns about it when an officer contacts them rather than by SMS.
+  The event carries `needs_new_bank_details`, which is what decides whether that message
+  says "we will try again" or "bring us different account details".
 
 ---
 

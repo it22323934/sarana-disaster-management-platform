@@ -161,8 +161,9 @@ MACHINE_REPORTABLE: Final[frozenset[ReversalReason]] = frozenset(
 # Excluded when recomputing a reversal's hash, for the same reasons the disbursement
 # excludes its four: `prev_hash`/`entry_hash` are the output, `seq` is an identity column
 # not known before insertion, and `anchor_date` is a rendering. `grievance_id` joins them
-# because the grievance is written after the entry and would otherwise make the hash depend
-# on the order of two writes inside one transaction.
+# because which case number was opened is operational metadata rather than part of what the
+# correction says happened - the substance is the amount, the reason and the payment it
+# reverses, and all three are hashed.
 NON_PAYLOAD_FIELDS: Final[tuple[str, ...]] = (
     "prev_hash",
     "entry_hash",
@@ -220,10 +221,16 @@ class Reversal:
     reversed_at: datetime
     correlation_id: str
 
-    def as_columns(self) -> dict[str, Any]:
-        """Every column `aid.disbursement_reversal` needs, apart from the two hashes."""
+    def as_columns(self, *, grievance_id: UUID) -> dict[str, Any]:
+        """Every column `aid.disbursement_reversal` needs, apart from the two hashes.
+
+        `grievance_id` is passed in rather than held on the entry because the case is
+        opened first: the table is append-only, so a reversal has to be complete when it
+        lands or its case number could never be attached at all.
+        """
         return {
             "id": self.id,
+            "grievance_id": grievance_id,
             "disbursement_id": self.disbursement_id,
             "entitlement_id": self.entitlement_id,
             "amount_lkr_cents": self.amount_lkr_cents,

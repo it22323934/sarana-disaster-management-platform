@@ -367,6 +367,39 @@ class AidDisbursementCitizenConfirmed(EventPayload):
     channel: str
 
 
+@register(ev.AID_DISBURSEMENT_REVERSED)
+class AidDisbursementReversed(EventPayload):
+    """A released payment came back. Side-effecting: the household is told about it.
+
+    Roughly three transfers in a hundred fail *after* the rail accepted them, by which
+    time the release is recorded, hashed and published. The correction is a compensating
+    entry on its own chain, never an edit — `aid.disbursement` keeps saying what it said,
+    because the state did believe it had paid this household.
+
+    Side-effecting because a consumer sends the household an SMS naming the reason and
+    what to do about it. A replay would send that message a second time to somebody
+    already standing at a bank counter.
+
+    `reason` is carried rather than a bare "failed": each one has a different remedy, and
+    the message the household receives has to say which applies. `grievance_id` is present
+    because the case is raised on their behalf — nobody complained, a bank bounced a
+    payment — and a consumer that cannot point at the case cannot tell them where to ask.
+    """
+
+    reversal_id: UUID
+    disbursement_id: UUID
+    entitlement_id: UUID
+    amount_lkr_cents: int = Field(gt=0)
+    reason: str
+    needs_new_bank_details: bool = Field(
+        description="Whether this can only be fixed by the household supplying a "
+        "different account, rather than by trying again."
+    )
+    grievance_id: UUID
+    seq: int = Field(description="Position in the compensating-entry chain")
+    entry_hash: str
+
+
 @register(ev.AID_ANOMALY_FLAGGED)
 class AidAnomalyFlagged(EventPayload):
     """A pattern warranting review. Never public, and it names no one (ADR-009).

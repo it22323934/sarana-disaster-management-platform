@@ -33,6 +33,19 @@ class Settings(SharedSettings):
         validation_alias="SARANA_LEDGER_HOST",
     )
     port: int = Field(default=8004, ge=1, le=65535, validation_alias="SARANA_LEDGER_PORT")
+    # Where the payment rail lives. Today that is gov-mock; `GovMode.REAL` swaps in the
+    # stubbed real client, which refuses with the credential it still needs rather than
+    # falling back to the mock and reporting synthetic settlements as real ones.
+    gov_mock_url: str = Field(
+        default="http://localhost:8006", validation_alias="SARANA_GOV_MOCK_URL"
+    )
+    # Seconds between settlement polls. Zero disables the poller entirely, which is what
+    # tests and one-shot tooling want - a background task asking a rail about payments is
+    # the last thing a unit test needs.
+    settlement_poll_seconds: float = Field(
+        default=900.0, ge=0.0, validation_alias="SARANA_LEDGER_SETTLEMENT_POLL_SECONDS"
+    )
+
     cors_origins: list[str] = Field(
         default_factory=list, validation_alias="SARANA_LEDGER_CORS_ORIGINS"
     )

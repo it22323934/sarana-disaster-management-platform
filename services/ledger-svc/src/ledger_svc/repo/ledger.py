@@ -201,10 +201,10 @@ class DisbursementReversal(UUIDPrimaryKeyMixin, Base):
     rail_reference: Mapped[str | None] = mapped_column(String(128), nullable=True)
     reversed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
-    # Nullable only so the entry can be written before the grievance it triggers. A
-    # reversal still holding NULL after the transaction committed is a household nobody
-    # told, which `tests/ledger/test_reversal.py` asserts cannot happen.
-    grievance_id: Mapped[Any | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    # NOT NULL. The case is opened before the entry is written, so a reversal that could
+    # exist without one would be a household nobody told - and this table is append-only,
+    # so it could never be filled in afterwards.
+    grievance_id: Mapped[Any] = mapped_column(PGUUID(as_uuid=True), nullable=False)
 
     correlation_id: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(

@@ -19,6 +19,8 @@ from ledger_svc.api.v1.router import router as v1_router
 from ledger_svc.config import Settings, get_settings
 from ledger_svc.repo import OutboxEvent
 from ledger_svc.workers.anchor import AnchorWorker
+from ledger_svc.workers.settlement import SettlementWorker
+from sarana_shared.adapters.gov import build_payment_client
 from sarana_shared.db.session import check_connection, create_engine, create_session_factory
 from sarana_shared.events.factory import build_event_bus
 from sarana_shared.events.outbox import OutboxPublisher, OutboxWorker
@@ -68,12 +70,31 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         anchors.start()
         app.state.anchor_worker = anchors
 
+        # Asks the rail what became of every payment whose outcome is still unknown. About
+        # three transfers in a hundred are accepted and then returned, and without this
+        # nothing in the platform would ever find out: the release is recorded, hashed and
+        # published, and the household is at home believing they have been paid.
+        settlements: SettlementWorker | None = None
+        rail = build_payment_client(base_url=resolved.gov_mock_url)
+        if resolved.settlement_poll_seconds > 0:
+            settlements = SettlementWorker(
+                app.state.session_factory,
+                rail=rail,
+                interval_seconds=resolved.settlement_poll_seconds,
+            )
+            settlements.start()
+        app.state.settlement_worker = settlements
+        app.state.payment_rail = rail
+
         health.register("database", lambda: check_connection(engine))
         health.register("event_bus", _redis_probe(redis))
 
         try:
             yield
         finally:
+            if settlements is not None:
+                await settlements.stop()
+            await rail.aclose()
             await anchors.stop()
             await worker.stop()
             await bus.close()
