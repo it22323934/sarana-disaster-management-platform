@@ -57,9 +57,21 @@ GENESIS_HASH: Final = "0" * 64
 # `anchor_date` is derived from `released_at` by a timezone conversion, so committing to it
 # would make the hash depend on a rendering rather than on a fact.
 #
-# `tools/sarana-verify` excludes exactly these four, and `tests/ledger/test_chain_agreement`
+# `reversed` joined them in file 11's follow-up. It is a later fact *about* the entry - a
+# bank returned the money - recorded authoritatively as its own hashed row in
+# aid.disbursement_reversal. The disbursement still means "this was released, on this date,
+# by this person", and that stays true. A ledger whose entry hash changed when a payment
+# bounced would fail verification for an honest reason, which is the worst kind.
+#
+# `tools/sarana-verify` excludes exactly these five, and `tests/ledger/test_chain_agreement`
 # asserts the two lists are the same set. That test exists because they diverged once.
-HASH_FIELDS: Final[tuple[str, ...]] = ("prev_hash", "entry_hash", "seq", "anchor_date")
+HASH_FIELDS: Final[tuple[str, ...]] = (
+    "prev_hash",
+    "entry_hash",
+    "seq",
+    "anchor_date",
+    "reversed",
+)
 
 # The two fields `link()` recomputes and writes back. Distinct from HASH_FIELDS on purpose:
 # that one says what the hash does not cover, this one says what the record does not keep

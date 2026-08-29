@@ -71,7 +71,21 @@ ANOMALY_SUBJECTS: Final[tuple[str, ...]] = (
 
 # ADR-008: any citizen may dispute any assessment, entitlement or disbursement affecting
 # their household, through any of these channels.
-GRIEVANCE_CHANNELS: Final[tuple[str, ...]] = ("SMS", "USSD", "APP", "IN_PERSON", "PHONE", "WEB")
+#
+# `SYSTEM` is the odd one out and is not a citizen channel. It marks a grievance the
+# platform raised on a household's behalf - because a bank returned their payment and
+# nobody had told them. Recording that as SMS would put a falsehood in the field an officer
+# reads to decide how to reply, and would make "how are citizens actually reaching us?"
+# unanswerable from the data.
+GRIEVANCE_CHANNELS: Final[tuple[str, ...]] = (
+    "SMS",
+    "USSD",
+    "APP",
+    "IN_PERSON",
+    "PHONE",
+    "WEB",
+    "SYSTEM",
+)
 
 GRIEVANCE_STATUSES: Final[tuple[str, ...]] = (
     "RECEIVED",

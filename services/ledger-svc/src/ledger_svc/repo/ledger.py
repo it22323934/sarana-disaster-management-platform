@@ -31,6 +31,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -98,7 +99,15 @@ class Disbursement(UUIDPrimaryKeyMixin, Base):
 
     __tablename__ = "disbursement"
     __table_args__ = (
-        UniqueConstraint("entitlement_id", name="uq_disbursement_entitlement"),
+        # One *live* payment per entitlement, as a partial unique index in migration 0010
+        # rather than a constraint here: a household whose payment bounced must be able to
+        # be paid again, and a plain unique constraint would bar them permanently.
+        Index(
+            "uq_disbursement_entitlement_live",
+            "entitlement_id",
+            unique=True,
+            postgresql_where=text("reversed_at IS NULL"),
+        ),
         CheckConstraint(in_list("payment_rail", PAYMENT_RAILS), name="payment_rail_known"),
         CheckConstraint("amount_lkr_cents > 0", name="amount_positive"),
         CheckConstraint(
@@ -136,10 +145,74 @@ class Disbursement(UUIDPrimaryKeyMixin, Base):
     )
     citizen_confirm_channel: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
+    reversed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+        doc="Stamped by a trigger when a compensating entry is written. A back-pointer "
+        "for the release gate, not the record: the record is the hashed row in "
+        "aid.disbursement_reversal.",
+    )
+
     correlation_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class DisbursementReversal(UUIDPrimaryKeyMixin, Base):
+    """A compensating entry: money that was released and then came back.
+
+    Its own table on its own hash chain, rather than a negative-amount `Disbursement`.
+    `ledger_svc.domain.ledger_entry` defines the exact field set that is hashed *and*
+    published *and* anchored; adding a field to it would change the recomputed hash of
+    every entry ever written and break `tools/sarana-verify` against all of history. A
+    reversal with its own payload shape cannot disturb that, and it is how double-entry
+    bookkeeping has always recorded a correction.
+
+    Append-only like everything else here. `disbursement_id` is inside the hashed payload,
+    so a reversal cannot later be denied or re-pointed at a different payment.
+    """
+
+    __tablename__ = "disbursement_reversal"
+    __table_args__ = (
+        # A payment is reversed once. A rail reporting the same failure twice is the same
+        # failure, and a second entry would double-count the money coming back.
+        UniqueConstraint("disbursement_id", name="uq_reversal_disbursement"),
+        CheckConstraint("amount_lkr_cents > 0", name="reversal_amount_positive"),
+        Index("ix_reversal_seq", "seq"),
+        {"schema": AID_SCHEMA},
+    )
+
+    seq: Mapped[int] = mapped_column(BigInteger, Identity(always=True), nullable=False, unique=True)
+    disbursement_id: Mapped[Any] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(f"{AID_SCHEMA}.disbursement.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    entitlement_id: Mapped[Any] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(f"{AID_SCHEMA}.entitlement.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    amount_lkr_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    reason: Mapped[str] = mapped_column(String(32), nullable=False)
+    rail_reference: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    reversed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    # Nullable only so the entry can be written before the grievance it triggers. A
+    # reversal still holding NULL after the transaction committed is a household nobody
+    # told, which `tests/ledger/test_reversal.py` asserts cannot happen.
+    grievance_id: Mapped[Any | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+
+    correlation_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    prev_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    entry_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class LedgerAnchor(UUIDPrimaryKeyMixin, Base):

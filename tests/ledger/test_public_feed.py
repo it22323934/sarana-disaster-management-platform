@@ -163,7 +163,15 @@ def test_the_anchored_payload_selects_no_identifier(column: str) -> None:
 def test_the_response_model_publishes_only_the_agreed_fields() -> None:
     """A field added to the model without being added to the hash would break every
     verification; one added to both would publish something new without anybody deciding
-    to."""
+    to.
+
+    `reversed` was added deliberately, and it is the second kind: published but outside
+    the hash. A payment the bank later returned is a fact about the entry rather than part
+    of what the entry says happened, and the authoritative record is the chained
+    compensating entry at /api/v1/ledger/reversals. Publishing a released payment with no
+    hint that the money came back would be the sort of true-but-misleading number a
+    transparency feed exists to prevent.
+    """
     assert set(PublicLedgerEntry.model_fields) == {
         "seq",
         "anchor_date",
@@ -175,7 +183,30 @@ def test_the_response_model_publishes_only_the_agreed_fields() -> None:
         "released_at",
         "payment_rail",
         "payment_ref",
+        "reversed",
     }
+
+
+def test_the_reversal_flag_is_outside_the_hash() -> None:
+    """`reversed` must be stripped before recomputing, or all of history stops verifying.
+
+    The trap the handoff documents: a field added to the published feed and *not* to the
+    exclusion list changes the recomputed payload of every entry ever written, including
+    the ones written before the field existed. Their stored hashes were computed without
+    it, so every one of them would fail.
+    """
+    from sarana_shared.crypto.chain import HASH_FIELDS
+
+    assert "reversed" in NON_PAYLOAD_FIELDS
+    assert "reversed" in HASH_FIELDS
+    assert "reversed" not in public_entry(
+        entitlement_id=uuid7(),
+        amount_lkr_cents=1,
+        released_by=uuid7(),
+        released_at="2026-08-29T00:00:00+00:00",
+        payment_rail="CASH",
+        payment_ref="MOCK-CASH-1",
+    )
 
 
 def test_the_hashed_payload_is_exactly_what_is_published() -> None:

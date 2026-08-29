@@ -49,6 +49,7 @@ AID_ENTITLEMENT_CALCULATED: Final = "sarana.aid.entitlement.calculated"
 AID_APPROVAL_RECORDED: Final = "sarana.aid.approval.recorded"
 AID_DISBURSEMENT_RELEASED: Final = "sarana.aid.disbursement.released"
 AID_DISBURSEMENT_CITIZEN_CONFIRMED: Final = "sarana.aid.disbursement.citizen_confirmed"
+AID_DISBURSEMENT_REVERSED: Final = "sarana.aid.disbursement.reversed"
 AID_ANOMALY_FLAGGED: Final = "sarana.aid.anomaly.flagged"
 AID_ANOMALY_DISPOSED: Final = "sarana.aid.anomaly.disposed"
 AID_GRIEVANCE_RAISED: Final = "sarana.aid.grievance.raised"
@@ -89,6 +90,7 @@ ALL_EVENT_TYPES: Final[tuple[str, ...]] = (
     AID_APPROVAL_RECORDED,
     AID_DISBURSEMENT_RELEASED,
     AID_DISBURSEMENT_CITIZEN_CONFIRMED,
+    AID_DISBURSEMENT_REVERSED,
     AID_ANOMALY_FLAGGED,
     AID_ANOMALY_DISPOSED,
     AID_GRIEVANCE_RAISED,
@@ -105,5 +107,8 @@ SIDE_EFFECTING_EVENT_TYPES: Final[frozenset[str]] = frozenset(
         ALERT_DISPATCHED,
         DISPATCH_RELEASED,
         AID_DISBURSEMENT_RELEASED,
+        # alerting-svc tells the household their payment came back and what to do
+        # about it. A replay would send that SMS again.
+        AID_DISBURSEMENT_REVERSED,
     }
 )

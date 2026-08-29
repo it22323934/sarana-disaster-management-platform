@@ -22,7 +22,12 @@ from ledger_svc.repo.base import (
     GRIEVANCE_SUBJECTS,
     PAYMENT_RAILS,
 )
-from ledger_svc.repo.ledger import Approval, Disbursement, LedgerAnchor
+from ledger_svc.repo.ledger import (
+    Approval,
+    Disbursement,
+    DisbursementReversal,
+    LedgerAnchor,
+)
 from sarana_shared.events.outbox import make_outbox_model
 
 # ledger-svc's own outbox table: outbox.ledger_svc_event.
@@ -53,6 +58,7 @@ __all__ = [
     "DamageAssessment",
     "DeviceSyncCursor",
     "Disbursement",
+    "DisbursementReversal",
     "Entitlement",
     "Grievance",
     "LedgerAnchor",

@@ -53,6 +53,13 @@ class LedgerEntry(BaseModel):
     payment_ref: str | None
     prev_hash: str | None
     entry_hash: str | None
+    reversed: bool = Field(
+        default=False,
+        description="Whether the bank later returned this payment. Outside the hashed "
+        "payload - strip it before recomputing - because it is a later fact about the "
+        "entry rather than part of what the entry says happened. The authoritative record "
+        "is the matching entry in /api/v1/ledger/reversals.",
+    )
     citizen_confirmed: bool
     citizen_confirmed_at: datetime | None
     gn_division_code: str
@@ -83,6 +90,13 @@ class PublicLedgerEntry(BaseModel):
     payment_ref: str | None
     prev_hash: str | None
     entry_hash: str | None
+    reversed: bool = Field(
+        default=False,
+        description="Whether the bank later returned this payment. Outside the hashed "
+        "payload - strip it before recomputing - because it is a later fact about the "
+        "entry rather than part of what the entry says happened. The authoritative record "
+        "is the matching entry in /api/v1/ledger/reversals.",
+    )
     anchor_date: str
 
 
@@ -90,6 +104,41 @@ class PublicLedgerResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     entries: list[PublicLedgerEntry]
+    next_seq: int | None = Field(
+        default=None, description="Pass as from_seq to continue. Null when the feed ends."
+    )
+    scheme: dict[str, str]
+    note: str = Field(description="How to verify these figures independently.")
+
+
+class PublicReversal(BaseModel):
+    """One compensating entry as the world sees it.
+
+    Anonymised on exactly the same terms as `PublicLedgerEntry`. `disbursement_id` is a
+    UUID with no public resolver and it is inside the hashed payload, so a reversal cannot
+    later be denied or re-pointed at a different payment.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    seq: int
+    disbursement_id: str
+    entitlement_id: str
+    amount_lkr_cents: int
+    reason: str
+    rail_reference: str | None
+    reversed_at: str = Field(
+        description="ISO 8601 UTC, as a string. The hashed bytes and the published bytes "
+        "are the same bytes."
+    )
+    prev_hash: str | None
+    entry_hash: str | None
+
+
+class PublicReversalResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    entries: list[PublicReversal]
     next_seq: int | None = Field(
         default=None, description="Pass as from_seq to continue. Null when the feed ends."
     )
@@ -173,7 +222,9 @@ class ScheduleOut(BaseModel):
 # with `sha256sum` and a shell loop.
 HASH_SCHEME = {
     "entry_hash": "SHA256( canonical_json(entry_without_hashes) || prev_hash )",
-    "entry_without_hashes": "the entry minus prev_hash, entry_hash, seq and anchor_date",
+    "entry_without_hashes": (
+        "the entry minus prev_hash, entry_hash, seq, anchor_date and reversed"
+    ),
     "canonical_json": "RFC 8785 JSON Canonicalization Scheme",
     "genesis_prev_hash": "64 zero characters",
     "merkle_leaf": "SHA256( canonical_json(entry_without_hashes) )",
@@ -185,9 +236,26 @@ HASH_SCHEME = {
 PUBLIC_NOTE = (
     "Every entry, anonymised. Verify against /api/v1/ledger/anchors and the S3 Object "
     "Lock objects with tools/sarana-verify; it needs no credentials and no access to us. "
-    "Recompute each entry_hash over the entry with prev_hash, entry_hash, seq and "
-    "anchor_date removed."
+    "Recompute each entry_hash over the entry with prev_hash, entry_hash, seq, "
+    "anchor_date and reversed removed. An entry marked reversed was returned by the bank "
+    "afterwards; the compensating entry is at /api/v1/ledger/reversals and is chained "
+    "and verifiable in exactly the same way."
 )
+
+REVERSAL_NOTE = (
+    "Every compensating entry, anonymised, on its own hash chain. A reversal is money "
+    "that was released and came back - the original disbursement stays in the feed and "
+    "stays true, because the state did believe it had paid. Recompute each entry_hash "
+    "over the entry with prev_hash, entry_hash and seq removed."
+)
+
+REVERSAL_HASH_SCHEME = {
+    "entry_hash": "SHA256( canonical_json(entry_without_hashes) || prev_hash )",
+    "entry_without_hashes": "the entry minus prev_hash, entry_hash and seq",
+    "canonical_json": "RFC 8785 JSON Canonicalization Scheme",
+    "genesis_prev_hash": "64 zero characters",
+    "verifier": "tools/sarana-verify in the SARANA repository",
+}
 
 
 @router.get("/ledger", response_model=list[LedgerEntry])
@@ -230,6 +298,31 @@ async def public_ledger(
         "next_seq": (entries[-1]["seq"] + 1) if len(entries) == limit else None,
         "scheme": HASH_SCHEME,
         "note": PUBLIC_NOTE,
+    }
+
+
+@router.get("/ledger/reversals", response_model=PublicReversalResponse)
+async def public_reversals(
+    session: PublicSessionDep,
+    from_seq: int = Query(default=0, ge=0),
+    limit: int = Query(default=1000, ge=1, le=5000),
+) -> Any:
+    """The anonymised compensating-entry feed. No authentication.
+
+    Published for the same reason the disbursement feed is: a transparency system that
+    shows only the payments it believes succeeded is not one. Roughly three transfers in a
+    hundred come back, and a reader looking at `/ledger/public` alone would count them as
+    money delivered.
+
+    Its own chain, so verifying it does not depend on the disbursement chain and a gap in
+    one is not mistaken for tampering in the other.
+    """
+    entries = await queries.public_reversals(session, from_seq=from_seq, limit=limit)
+    return {
+        "entries": entries,
+        "next_seq": (entries[-1]["seq"] + 1) if len(entries) == limit else None,
+        "scheme": REVERSAL_HASH_SCHEME,
+        "note": REVERSAL_NOTE,
     }
 
 

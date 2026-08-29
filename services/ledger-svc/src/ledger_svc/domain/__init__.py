@@ -38,12 +38,22 @@ from ledger_svc.domain.grievance import (
     assert_transition,
     blocks_release,
     from_confirmation_reply,
+    from_failed_transfer,
     lapse_unconfirmed,
     parse_confirmation,
     raise_grievance,
     sla_due,
 )
 from ledger_svc.domain.ledger_entry import NON_PAYLOAD_FIELDS, payload_of, public_entry
+from ledger_svc.domain.reversal import (
+    MACHINE_REPORTABLE,
+    REASON_TEXT,
+    Reversal,
+    ReversalReason,
+    ReversalRefused,
+    public_reversal,
+    reverse,
+)
 from ledger_svc.domain.sync import (
     MAX_BATCH_OPERATIONS,
     OperationStatus,
@@ -56,8 +66,10 @@ from ledger_svc.domain.sync import (
 
 __all__ = [
     "CONFIRMATION_WINDOW_DAYS",
+    "MACHINE_REPORTABLE",
     "MAX_BATCH_OPERATIONS",
     "NON_PAYLOAD_FIELDS",
+    "REASON_TEXT",
     "AlreadyReleased",
     "Approval",
     "ApprovalLevel",
@@ -76,6 +88,9 @@ __all__ = [
     "ReleaseContext",
     "ReleaseDecision",
     "ReleaseRefused",
+    "Reversal",
+    "ReversalReason",
+    "ReversalRefused",
     "ScheduleLine",
     "SegregationViolated",
     "StepUpRequired",
@@ -88,12 +103,15 @@ __all__ = [
     "blocks_release",
     "calculate",
     "from_confirmation_reply",
+    "from_failed_transfer",
     "lapse_unconfirmed",
     "parse_confirmation",
     "payload_of",
     "plan",
     "public_entry",
+    "public_reversal",
     "raise_grievance",
     "release",
+    "reverse",
     "sla_due",
 ]

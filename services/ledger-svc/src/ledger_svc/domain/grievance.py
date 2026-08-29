@@ -249,6 +249,48 @@ def from_confirmation_reply(
     )
 
 
+def from_failed_transfer(
+    *,
+    household_id: UUID,
+    disbursement_id: UUID,
+    description: dict[str, str],
+    raised_at: datetime | None = None,
+    assigned_ds_division_code: str | None = None,
+    correlation_id: str = "",
+) -> NewGrievance:
+    """Raise a grievance because a released payment came back.
+
+    **The household did not ask for this one.** Nobody replied NO; a bank returned the
+    money and the household is sitting at home believing they have been paid. Raising it on
+    their behalf is what turns a silent failure into a case with a clock on it — a
+    seven-day SLA, an assigned division, and an officer who has to answer.
+
+    The alternative is a reversal recorded in the ledger, a household never told, and the
+    discrepancy surfacing weeks later when they ask why the money never arrived. That is
+    the failure mode the whole confirmation loop exists to close, and it would be perverse
+    to leave it open on the one path where the platform *already knows* the payment failed.
+
+    `channel="SYSTEM"` because it arrived on no citizen channel. `description` comes from
+    `domain.reversal.REASON_TEXT`, in all three languages, and says what the household
+    should actually do.
+    """
+    _log.info(
+        "grievance_from_failed_transfer",
+        disbursement_id=str(disbursement_id),
+        household_id=str(household_id),
+    )
+    return raise_grievance(
+        household_id=household_id,
+        subject_type="DISBURSEMENT",
+        subject_id=disbursement_id,
+        channel="SYSTEM",
+        description=description,
+        raised_at=raised_at,
+        assigned_ds_division_code=assigned_ds_division_code,
+        correlation_id=correlation_id,
+    )
+
+
 def blocks_release(status: str) -> bool:
     """Whether a grievance in this status stops its own entitlement being released.
 

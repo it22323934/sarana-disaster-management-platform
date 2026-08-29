@@ -311,7 +311,11 @@ SELECT e.id::text AS entitlement_id,
        a.gn_division_code,
        a.assessed_by::text AS assessor_id,
        a.household_id::text,
-       EXISTS (SELECT 1 FROM aid.disbursement d WHERE d.entitlement_id = e.id)
+       -- Live payments only. A reversed disbursement is money that came back, so the
+       -- entitlement is unpaid again and must be releasable; the row stays visible to an
+       -- auditor either way.
+       EXISTS (SELECT 1 FROM aid.disbursement d
+                WHERE d.entitlement_id = e.id AND d.reversed_at IS NULL)
            AS already_released
 FROM aid.entitlement e
 JOIN aid.damage_assessment a ON a.id = e.assessment_id
@@ -476,7 +480,12 @@ SELECT d.seq,
        d.payment_ref,
        d.prev_hash,
        d.entry_hash,
-       DATE(d.released_at AT TIME ZONE 'Asia/Colombo')::text AS anchor_date
+       DATE(d.released_at AT TIME ZONE 'Asia/Colombo')::text AS anchor_date,
+       -- Outside the hashed payload, and `sarana-verify` strips it before recomputing.
+       -- Carried anyway because publishing a released payment with no hint that the money
+       -- came back is the kind of true-but-misleading number a transparency feed exists to
+       -- prevent. The authoritative record is the entry in /ledger/reversals.
+       (d.reversed_at IS NOT NULL) AS reversed
 FROM aid.disbursement d
 WHERE d.seq >= :from_seq
 ORDER BY d.seq
@@ -684,6 +693,102 @@ async def unanchored_days(session: AsyncSession, today: date) -> list[date]:
     """
     result = await session.execute(text(_UNANCHORED_DAYS), {"today": today})
     return [row[0] for row in result]
+
+
+# --------------------------------------------------------------------------------------
+# Reversals
+# --------------------------------------------------------------------------------------
+
+# Everything a reversal needs about the payment it is correcting, in one read: the amount
+# that has to come back, the household to raise the grievance for, and the division to
+# assign it to. Read once so the decision cannot change under the write.
+_REVERSAL_CONTEXT = """
+SELECT d.id::text            AS disbursement_id,
+       d.entitlement_id::text,
+       d.amount_lkr_cents,
+       d.payment_ref,
+       d.reversed_at,
+       a.household_id::text,
+       a.gn_division_code
+FROM aid.disbursement d
+JOIN aid.entitlement e ON e.id = d.entitlement_id
+JOIN aid.damage_assessment a ON a.id = e.assessment_id
+WHERE d.id = :disbursement_id
+"""
+
+_ATTACH_GRIEVANCE_TO_REVERSAL = """
+UPDATE aid.disbursement_reversal
+   SET grievance_id = :grievance_id
+ WHERE id = :reversal_id
+RETURNING id::text, grievance_id::text
+"""
+
+_GET_REVERSAL = """
+SELECT r.seq, r.id::text, r.disbursement_id::text, r.entitlement_id::text,
+       r.amount_lkr_cents, r.reason, r.rail_reference, r.reversed_at,
+       r.grievance_id::text, r.prev_hash, r.entry_hash
+FROM aid.disbursement_reversal r
+WHERE r.disbursement_id = :disbursement_id
+"""
+
+# The public reversal feed. Anonymised on exactly the same terms as `_PUBLIC_LEDGER_ENTRIES`
+# - no household, no division, no assessment reference - and rendering `reversed_at` to a
+# string in SQL for the same reason: the published bytes and the hashed bytes must be
+# identical whichever JSON serialiser runs.
+_PUBLIC_REVERSALS = """
+SELECT r.seq,
+       r.disbursement_id::text,
+       r.entitlement_id::text,
+       r.amount_lkr_cents,
+       r.reason,
+       r.rail_reference,
+       TO_CHAR(r.reversed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US+00:00')
+           AS reversed_at,
+       r.prev_hash,
+       r.entry_hash
+FROM aid.disbursement_reversal r
+WHERE r.seq >= :from_seq
+ORDER BY r.seq
+LIMIT :limit
+"""
+
+
+async def reversal_context_row(
+    session: AsyncSession, disbursement_id: UUID
+) -> dict[str, Any] | None:
+    result = await session.execute(text(_REVERSAL_CONTEXT), {"disbursement_id": disbursement_id})
+    row = result.mappings().first()
+    return dict(row) if row else None
+
+
+async def attach_grievance_to_reversal(
+    session: AsyncSession, *, reversal_id: UUID, grievance_id: UUID
+) -> dict[str, Any] | None:
+    """Link the grievance back to the entry that caused it.
+
+    A separate write because the reversal has to be appended first - its hash covers the
+    payment, not the case number - and because `grievance_id` is deliberately outside the
+    hashed payload so the order of these two writes cannot change a published hash.
+    """
+    result = await session.execute(
+        text(_ATTACH_GRIEVANCE_TO_REVERSAL),
+        {"reversal_id": reversal_id, "grievance_id": grievance_id},
+    )
+    row = result.mappings().first()
+    return dict(row) if row else None
+
+
+async def get_reversal_for(session: AsyncSession, disbursement_id: UUID) -> dict[str, Any] | None:
+    result = await session.execute(text(_GET_REVERSAL), {"disbursement_id": disbursement_id})
+    row = result.mappings().first()
+    return dict(row) if row else None
+
+
+async def public_reversals(
+    session: AsyncSession, *, from_seq: int = 0, limit: int = 500
+) -> list[dict[str, Any]]:
+    result = await session.execute(text(_PUBLIC_REVERSALS), {"from_seq": from_seq, "limit": limit})
+    return [dict(row) for row in result.mappings()]
 
 
 # --------------------------------------------------------------------------------------

@@ -29,8 +29,17 @@ from typing import Any, Final
 
 # Excluded when recomputing a hash. `prev_hash` and `entry_hash` because they are the
 # output; `seq` and `anchor_date` because they are storage and grouping metadata that the
-# entry's own chain linkage already orders. `tools/sarana-verify` excludes the same four.
-NON_PAYLOAD_FIELDS: Final[tuple[str, ...]] = ("prev_hash", "entry_hash", "seq", "anchor_date")
+# entry's own chain linkage already orders; `reversed` because a bank returning the money
+# afterwards is a later fact about this entry, recorded as its own hashed row in
+# aid.disbursement_reversal, not a change to what this entry says happened.
+# `tools/sarana-verify` excludes the same five.
+NON_PAYLOAD_FIELDS: Final[tuple[str, ...]] = (
+    "prev_hash",
+    "entry_hash",
+    "seq",
+    "anchor_date",
+    "reversed",
+)
 
 
 def public_entry(

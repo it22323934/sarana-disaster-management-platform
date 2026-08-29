@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from ledger_svc.api.internal import confirmations
+from ledger_svc.api.internal import confirmations, reversals
 
 router = APIRouter()
 router.include_router(confirmations.router)
+router.include_router(reversals.router)
