@@ -35,6 +35,12 @@ testpaths = ["packages/py-shared/tests", "services", "tests"]
 # six services each holding a `tests/test_health.py` collide on module name and pytest
 # refuses to collect them in one run.
 addopts = "-q --strict-markers --import-mode=importlib"
+# importlib mode does not put the rootdir on sys.path, so `from tools.seed...` in a test
+# fails to import and takes the whole collection down with it. The seed generators are
+# genuinely test inputs - `tests/alerting/test_seeded_templates.py` asserts the shipped
+# templates against them - so the root belongs on the path rather than the import being
+# worked around.
+pythonpath = ["."]
 markers = [
     "live_llm: hits the real OpenAI API; skipped unless --live-llm is passed",
 ]

@@ -140,12 +140,69 @@ The suite uses testcontainers. If a run dies with a port-mapping error from
 docker rm -f $(docker ps -aq --filter name=testcontainers)
 ```
 
+## Driving the government and telco mocks
+
+gov-mock stands in for seven systems SARANA would integrate with. Every response says so:
+`X-Sarana-Mock: true` on the header and `"source": "MOCK"` in the body. The adapters in
+`sarana_shared.adapters.gov` refuse anything that does not carry both.
+
+One simulated clock drives all seven, and it is **pinned** — nothing moves until you move
+it. That is what makes a demo replayable.
+
+```bash
+curl -X POST localhost:8006/mock/v1/scenario/load \
+  -H 'Content-Type: application/json' -d '{"scenario_id":"ditwah_kandy"}'   # starts at T-72h
+
+curl -X POST localhost:8006/mock/v1/scenario/advance \
+  -H 'Content-Type: application/json' -d '{"to":"T+6h"}'
+
+curl -s localhost:8006/met/v1/warnings                    # XML, as the Department serves it
+curl -s localhost:8006/nbro/v1/bulletins | jq '.bulletins | length'
+curl -s "localhost:8006/dmc/v1/shelters?district=LK-51" | jq '.shelters[0]'
+curl -s localhost:8006/mock/v1/state | jq '.clock, .derived'
+```
+
+Step through `T-24h`, `T-6h`, `T+6h`, `T+24h`, `T+48h` and the whole story moves together:
+rainfall rises on the east coast, NBRO escalates from watch to evacuate, the DMC opens
+shelters and they fill, and cell coverage falls as sites lose mains power. The clock only
+runs forward — reload the scenario to start again.
+
+### Failure injection is on, at 5%
+
+Timeouts, upstream errors, malformed bodies and stale data, five per cent each by default.
+On deliberately: if the platform only works at 0%, it is not built. Turn it up to see what
+breaks, and back down when you are done.
+
+```bash
+curl -X POST localhost:8006/mock/v1/chaos \
+  -H 'Content-Type: application/json' -d '{"timeout_pct":100}'
+
+curl -X POST localhost:8006/mock/v1/chaos -H 'Content-Type: application/json' \
+  -d '{"timeout_pct":0,"error_pct":0,"malformed_pct":0,"stale_pct":0}'
+```
+
+`/mock/v1/*` is never injected into, so you can always turn it back off. If a call fails and
+you want to know why, `GET /mock/v1/state` reports the injection counters.
+
+**Stale is the one that will confuse you.** A well-formed answer computed three hours ago.
+Nothing about it looks wrong; that is exactly the point of it.
+
+### The inbound simulator
+
+<http://localhost:8006/telco/sim> is a page where you play the part of a citizen with a
+feature phone: type a number, pick a language, and send an SMS or step through the USSD
+menu. It posts into incident-svc, so a message sent here becomes a real report you can watch
+move through triage.
+
+It needs `SARANA_INCIDENT_SERVICE_TOKEN` in `.env` — mint one with `uv run python
+tools/seed/service_token.py`. The token stays on the server; the page never sees it, and the
+number you type is hashed before it goes anywhere.
+
 ## What is not built yet
 
-The four backend services are complete and the stack boots. Above them, most of the
+The five backend services are complete and the stack boots. Above them, most of the
 product is not there. Working backwards from the build files:
 
-- **gov-mock has no endpoints.** Its scaffold exists; its routers are empty. File 11.
 - **No agents.** No LangGraph runtime, no forecasting, warning, intake, triage or anomaly
   agent. Files 12–18.
 - **The three frontends are framework scaffolds** — one page each. Files 19–24.
@@ -154,7 +211,12 @@ product is not there. Working backwards from the build files:
 So: you can log in, read the hierarchy, resolve coordinates, drive the Resilience Graph and
 the audit log, take a citizen report through triage to a dispatch gate, compose and fan out
 a CAP alert, and run an assessment through calculation, approval, the disbursement gate and
-onto a publicly verifiable ledger. There is no user interface yet — all of it is HTTP.
+onto a publicly verifiable ledger. You can also play a cyclone through every government and
+telco system the platform talks to, and send a citizen's SMS in from a browser page.
+
+There is no user interface yet, with one exception — `/telco/sim`, which exists because a
+demo of an offline-first platform that only shows dashboards is a demo of the wrong thing.
+Everything else is HTTP.
 
 ### Known gaps inside what *is* built
 
@@ -163,7 +225,12 @@ Worth knowing before you demo anything:
 - **Every payment rail is a mock**, and every payment reference starts `MOCK-`. Nothing
   moves money.
 - **Alert targeting is a placeholder.** `alerting_svc`'s `_targets_for()` returns a fixed
-  set, so delivery counts are structurally correct and factually meaningless.
+  set, so delivery counts are structurally correct and factually meaningless. gov-mock now
+  serves real-shaped households and per-division coverage, so what is missing is the
+  credential to read `admin.household`, not the data.
+- **A failed payment produces no compensating ledger entry.** The mock rail fails about 3%
+  of transfers with a specific reason; nothing yet turns that into a reversing ledger entry
+  and a grievance. A household can hold a published disbursement and an empty account.
 - **Anchors are not externally stored** unless an object store is configured. Without one
   the anchor job records the Merkle root in the database and logs
   `anchor_not_externally_stored`; the `s3_object_lock_uri` is null rather than a

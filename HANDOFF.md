@@ -1,6 +1,6 @@
 # SARANA — handoff
 
-State of the build as of 2026-08-28. Written for whoever picks this up next.
+State of the build as of 2026-08-29. Written for whoever picks this up next.
 
 Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 
@@ -9,7 +9,7 @@ Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 ## Where the build has got to
 
 The repository is organised around 30 numbered build files in `.claude/`. Progress is
-strictly sequential. Files 03-10 are complete; the next unstarted file is 11.
+strictly sequential. Files 03-11 are complete; the next unstarted file is 12.
 
 | File | Area | State |
 |---|---|---|
@@ -21,24 +21,32 @@ strictly sequential. Files 03-10 are complete; the next unstarted file is 11.
 | 08 | incident-svc | Done — 20 endpoints |
 | 09 | alerting-svc | Done — 15 endpoints. Targeting is a placeholder. |
 | 10 | ledger-svc | Done — 28 endpoints, publicly verifiable ledger |
-| **11** | **gov-mock** | **Not started — start here** |
-| 12–18 | Agents (LangGraph) | Not started |
+| 11 | gov-mock | Done — 35 endpoints, 7 mocked systems, inbound simulator |
+| **12** | **LangGraph runtime** | **Not started — start here** |
+| 13–18 | Agents | Not started |
 | 19–21 | Web (design system, ops console, public dashboard) | Scaffolds only |
 | 22–24 | Mobile (foundation, citizen, field companion) | Scaffold only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-**680 tests passing, 2 skipped.** `ruff check`, `ruff format --check` and `mypy` (230
+**974 tests passing, 2 skipped.** `ruff check`, `ruff format --check` and `mypy` (258
 source files) all clean.
 
 ```
 core-api        29 endpoints,  6,483 lines
 incident-svc    20 endpoints,  4,615 lines
-alerting-svc    15 endpoints
-ledger-svc      28 endpoints
+alerting-svc    15 endpoints,  3,357 lines
+ledger-svc      28 endpoints,  5,986 lines
+gov-mock        35 endpoints,  4,900 lines   <- 7 mocked systems + control plane
 agent-svc        0 endpoints,    575 lines   <- schema only
-gov-mock         0 endpoints,    172 lines   <- scaffold
 ```
+
+The jump from 680 is file 11's suite plus `tests/alerting/test_seeded_templates.py`, which
+had never run: it imports `tools.seed.templates`, and pytest's `--import-mode=importlib`
+does not put the repo root on `sys.path`, so the module failed to import and took the whole
+collection down with it. `pythonpath = ["."]` in `pyproject.toml` fixes it. Worth knowing
+because the symptom was a *collection* error, which reads like a broken test file rather
+than 13 tests that had silently never executed.
 
 ---
 
@@ -46,7 +54,7 @@ gov-mock         0 endpoints,    172 lines   <- scaffold
 
 File 09 is otherwise complete. This is the piece that was left, and it is load-bearing.
 
-### Real targeting
+### Real targeting — still open, but no longer blocked on data
 
 `alerting_svc.api.v1.alerts._targets_for()` is a **placeholder**. It returns one synthetic
 target per GN division so the fan-out, delivery accounting and gaps logic above it are
@@ -56,6 +64,11 @@ Real targeting means reading `admin.household` — `contact_msisdn_hash`,
 `preferred_language`, `gn_division_id` — which lives behind core-api and needs the
 service-credential flow described below. Until then every delivery number is structurally
 correct and factually meaningless.
+
+**File 11 removed the other half of the problem.** gov-mock now serves households by GN
+division and per-division coverage that degrades as cell sites lose power, so there is
+realistic data to target against and a real reason for a delivery gap to appear. What is
+left is the credential.
 
 ### The twelve templates load as DRAFT, and that is deliberate
 
@@ -230,6 +243,200 @@ with each other. It is never published for outside verification, so it does not 
 8785, and changing it would mean changing that verifier in lockstep for no gain. A test
 asserts this stays a decision rather than drifting into an oversight.
 
+## File 11 is done — the seven mocks, and the decisions inside them
+
+35 endpoints across seven mocked systems, a control plane, and an inbound SMS/USSD
+simulator page. Every agent in files 12–18 depends on this, which is why it comes first.
+
+The adapter layer is the deliverable that matters most:
+`packages/py-shared/src/sarana_shared/adapters/gov/`. Each system appears three times — a
+**Protocol** (what SARANA needs), a **MockClient** (HTTP to gov-mock), and a **RealClient**
+whose every method raises `NotImplementedError` naming the endpoint, the credential and the
+agreement still to be negotiated. Nothing imports the mock directly.
+
+`integration_register()` prints the whole outstanding negotiation list. It is generated from
+the same records the stubs raise from, so it cannot drift the way a document would. Print it
+when somebody asks what SARANA needs from which agency.
+
+### The routers mount at the root, not under `/api/v1`
+
+`/met/v1/warnings`, `/ndrsc/v1/claims`, `/telco/v1/sms/send`. Every other service serves one
+versioned prefix; this one stands in for seven systems that are not SARANA, and each has its
+own URL shape. Normalising them would make the mock tidier and would hide exactly what has
+to be true for the real swap to be a configuration change.
+
+The `api/v1/`, `repo/`, `domain/` and `adapters/` scaffold packages were removed. gov-mock
+owns no tables and has no domain of its own — it stands in for other people's.
+
+### Both mock markers are checked by the client, not trusted from the server
+
+Every response carries `X-Sarana-Mock: true`; every JSON body carries `"source": "MOCK"`;
+the XML feed carries `source="MOCK"` on its root element. `MockGovClient` **refuses** a
+response without them.
+
+That check is the point. Without it, pointing `SARANA_GOV_MOCK_URL` at a real agency
+endpoint would work, and nobody would find out until real warnings appeared in a demo — or
+a demo's synthetic rainfall reached something that mattered. The header is stamped by
+middleware mounted outermost, so it also covers 404s, validation failures and the failures
+chaos injects: the guarantee has no exceptions to reason about.
+
+### One clock, pinned, and every mock reads it
+
+`gov_mock.clock.SimulatedClock`. Nothing reads the wall clock — `api/deps.simulated_now` is
+the only source of "now", and a route calling `datetime.now()` would opt out of both the
+scenario driver and the staleness injection.
+
+It is **pinned by default**: `now()` returns the same instant until somebody advances it, so
+every figure is a pure function of `(seed, entity, offset)`. The same scenario at T+6h
+produces the same rainfall at the same stations on every machine and every replay. `speed`
+is the seam for file 28's driver; it is 0 here because a test that has to sleep to observe a
+value will be flaky on somebody else's laptop.
+
+The escalation this produces is the arc the whole platform needs:
+
+```
+T-72h  Yellow advisory     Kandy   4.8mm   no bulletins       nobody displaced
+T-24h  Amber               Kandy 113mm     12 DS on WATCH
+T-6h   Red                 Kandy 155mm     28 DS EVACUATE     evacuation orders out
+T+6h   Red (peak)          Kandy 131mm     32 DS EVACUATE     13,680 displaced
+T+24h  Red, subsiding      Kandy  54mm     bulletins easing   34,863 displaced
+T+48h  stood down          Kandy   9mm     no bulletins       42,172 displaced
+T+120h                                                        orders lifted
+```
+
+### Rainfall falls off away from the track, and that is load-bearing
+
+`gov_mock.data.met.exposure_at` is a 2D Gaussian around the landfall point. The first
+version had a flat national peak with an east-coast multiplier, and the result was that
+every district in the country crossed every threshold at once — NBRO issued 25 identical
+EVACUATE bulletins, including for Colombo. That looks like a working escalation and is
+actually a national deluge no targeting logic can be tested against.
+
+`dmc.AFFECTED_DISTRICTS` is now **derived** from the same model rather than hand-listed, so
+moving the track cannot leave shelters filling in districts the rain never reached.
+
+### Chaos is on by default, and the control plane is exempt
+
+5% each of timeout, error, malformed and stale, per build file 11. Timeout genuinely holds
+the connection rather than answering a fast 504 — a client's timeout handling is only
+exercised by something that actually fails to answer. A gateway 504 now maps to `GovTimeout`
+rather than a generic refusal, because a gateway reporting an upstream timeout is the same
+fact as our own read timeout expiring, and a caller deciding whether a retry is safe must
+not have to know which side noticed.
+
+`/mock/v1/*` is never injected into. Injecting failures into the endpoint that turns
+injection off would make 100% chaos unrecoverable, and the first person to try it would have
+to restart the container mid-demo.
+
+**Stale is the one to worry about.** A well-formed answer computed three hours ago, where
+nothing about the response looks wrong. It is the injection most likely to be believed and
+the only one that cannot be caught by checking a status code.
+
+### A derived outcome needs a digest, not a checksum
+
+`gov_mock.data.derive`. Several mocks decide something once and must keep deciding it the
+same way forever — whether a transfer fails, whether the CMS returns a claim, whether a NIC
+is on the register. None may be *drawn*: a transfer that fails on one poll and settles on
+the next is undebuggable, and a household told two different things about the same card is
+far worse than a consistent gap.
+
+The first implementation derived them from `sum(ord(c) for c in reference) % 1000`. That
+looks fine and clusters badly: `SARANA-PAY-0000` through `SARANA-PAY-0499` span about twenty
+consecutive values, because a fixed prefix contributes a constant and four digits cannot
+move the total far. The result was not "3% of transfers fail" but "3% of reference
+*namespaces* fail" — a whole batch shares one fate, decided by whichever prefix somebody
+chose. A test looking for one failing transfer in five hundred found none.
+
+A SHA-256 bucket has no such structure. Used for its distribution, not for any security
+property; the `salt` keeps independent decisions about the same identifier independent, so a
+NIC's presence on the register does not correlate with whether that household's payment
+fails.
+
+### The registers are independent copies, and a test holds them together
+
+gov-mock keeps its own district table, its own landslide zonation and its own network
+inventory, because a real agency does. Independent copies are the right shape — but only if
+something checks them. `tests/gov_mock/test_registers_agree.py` asserts, in both directions,
+that the mock and `data/seed` agree on district codes, district names, GN code shapes,
+`landslide_zone` and `cell_coverage_pct`.
+
+The failure this prevents is quiet: the mock says a division is in zone 2 while
+`admin.gn_division` says zone 4, an agent reasons about one hazard map, a warning is issued
+off the other, and nothing anywhere reports an error.
+
+Same pattern as the vocabulary tests. Write one whenever two systems hold the same fact.
+
+### NBRO's thresholds are stand-ins, and every record says so
+
+`rain_thresholds()` is what the rule-based fallback forecast (file 13) will key off. The
+figures are served rather than embedded in agent code so that replacing them with NBRO's
+real ones is a data change, not a code change somewhere nobody remembers to look.
+
+Every `ThresholdSet` carries a `provenance` string beginning `SYNTHETIC`, and
+`ThresholdSet.is_official` reports False everywhere they are used. **Getting the real
+thresholds in writing is the highest-value item on the integration register.** Do not
+quietly delete the provenance string to make a dashboard look tidier.
+
+### NDRSC: SARANA pushes, the CMS is the system of record
+
+Read `sarana_shared.adapters.gov.ndrsc`'s module docstring before touching any of it. The
+direction is the design, and it is not a technical preference: a system that models itself
+as the authority on who gets compensated is asking NDRSC to surrender its own register, and
+it does not get adopted. `submit_claim` pushes, `claim_status` reads back, and there is
+deliberately no method that edits or withdraws a submitted claim — a correction is a new
+claim referencing the old one.
+
+### Names are distributed by district, and the weights are not demographic data
+
+`gov_mock.data.names`. A demo where every household in Batticaloa has a Sinhala name is
+wrong, and it is wrong in a way that tells Tamil and Muslim communities the system was not
+built with them in mind. Three naming conventions are modelled, each by its own real rule
+rather than one template with the word list swapped.
+
+`COMPOSITION` holds approximate district shares rounded from the 2012 census. They exist for
+exactly one purpose: weighting which convention a generated name follows. **They are not
+demographic data and nothing may present them as such** — no chart, no report, no
+"population by ethnicity" panel.
+
+### gov-mock owns no tables, and runs as one replica
+
+Recorded state — claims, transfers, messages, headcounts — lives in memory
+(`gov_mock.state`). Giving an external-system mock tables inside the platform's own database
+would put other people's records inside the boundary SARANA is audited on. Restarting the
+container is meant to be how you reset it.
+
+The consequence, stated so nobody spends an afternoon on it: **do not scale this service**.
+Two replicas would disagree about a claim's status and a poller would watch it flip.
+
+### Still placeholder, and honest about it
+
+- **The compensating ledger entry on a failed transfer is not wired.** The rail reports
+  `FAILED` with a specific, quotable reason, and `ledger-svc` documents compensating
+  entries — but nothing joins the two: no code turns a failed transfer into a reversing
+  entry plus an auto-raised grievance. Build file 11 lists a test for this; writing one
+  today would assert nothing. **This is the first thing to wire when ledger-svc is next
+  opened.** Until then a household can hold a published disbursement and an empty account
+  with nobody notified.
+- **The payment webhook is registered and never called.** Delivering a callback would mean
+  the mock reaching into the platform on its own schedule, which makes a scenario replay
+  depend on network timing. The ledger polls instead.
+- **Met observations have no history.** `from`/`to` are accepted and ignored, and the
+  response says so in `window_supported: false` rather than quietly reinterpreting a window
+  as "now".
+- **Two scenarios only**, `ditwah_kandy` and `quiet`. File 28 adds the rest. `quiet` exists
+  so "nothing fires when nothing is happening" is testable — as easy a bug to ship as
+  missing a cyclone, and much harder to notice.
+
+### What this unblocks
+
+**Alert targeting — the file 09 carry-forward — is now unblocked on the data side.**
+`/hhreg/v1/households` serves households by GN division, and `/telco/v1/coverage` serves
+per-division coverage that degrades as cell sites lose power. What is still missing is the
+platform's own `admin.household` read behind core-api, which is the service-credential
+problem below, not a data problem.
+
+---
+
 ## Things that will bite you
 
 These each cost real debugging time. They are written down so they cost you none.
@@ -392,6 +599,9 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
   needs several assessments today. The pure calculator underneath already handles multiple
   items and the household cap; the endpoint does not yet pass them.
 - **Payment rails are mocks.** Every reference starts `MOCK-`.
+- **A failed transfer produces no compensating ledger entry (files 10 + 11).** The rail
+  reports the failure with a quotable reason; nothing turns it into a reversing entry and an
+  auto-raised grievance. The highest-priority loose end between the two files.
 
 ---
 
@@ -421,6 +631,15 @@ make lint                    # ruff + mypy + eslint + tsc
 make seed-generate           # regenerate data/seed
 uv run python -m tools.cap_validate artifacts/cap/*.xml
 uv run python tools/seed/service_token.py    # mint a SERVICE token
+
+# gov-mock (file 11)
+curl -s localhost:8006/met/v1/warnings | head -1               # XML, with the mock header
+curl -X POST localhost:8006/mock/v1/scenario/load  -d '{"scenario_id":"ditwah_kandy"}'
+curl -X POST localhost:8006/mock/v1/scenario/advance -d '{"to":"T+6h"}'
+curl -X POST localhost:8006/mock/v1/chaos -d '{"timeout_pct":100}'
+curl -s localhost:8006/mock/v1/state | jq .clock
+open http://localhost:8006/telco/sim                           # the inbound simulator
+uv run pytest tests/gov_mock
 ```
 
 Demo accounts and the port map are in [RUNNING.md](RUNNING.md). Password for all of them

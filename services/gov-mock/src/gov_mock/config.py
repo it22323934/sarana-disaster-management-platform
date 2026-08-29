@@ -37,6 +37,41 @@ class Settings(SharedSettings):
         default_factory=list, validation_alias="SARANA_GOV_MOCK_CORS_ORIGINS"
     )
 
+    # The seed for every generator in this service. A demo replayed from a fresh container
+    # produces the same rainfall, the same households and the same injected failures in
+    # the same order - which is what makes a scenario reproducible rather than a story.
+    seed: int = Field(default=20251128, validation_alias="SARANA_GOV_MOCK_SEED")
+
+    # Failure injection. Defaults are build file 11's: 5% each, on in dev, because a
+    # platform that only works at 0% is not built. Tests set them to zero and the chaos
+    # suite sets them to 100.
+    timeout_pct: float = Field(
+        default=5.0, ge=0.0, le=100.0, validation_alias="SARANA_GOV_MOCK_TIMEOUT_PCT"
+    )
+    error_pct: float = Field(
+        default=5.0, ge=0.0, le=100.0, validation_alias="SARANA_GOV_MOCK_ERROR_PCT"
+    )
+    malformed_pct: float = Field(
+        default=5.0, ge=0.0, le=100.0, validation_alias="SARANA_GOV_MOCK_MALFORMED_PCT"
+    )
+    stale_pct: float = Field(
+        default=5.0, ge=0.0, le=100.0, validation_alias="SARANA_GOV_MOCK_STALE_PCT"
+    )
+    latency_ms: int = Field(
+        default=250, ge=0, le=60_000, validation_alias="SARANA_GOV_MOCK_LATENCY_MS"
+    )
+
+    # Where the inbound simulator posts a citizen's SMS or USSD turn, and the credential it
+    # uses. The token stays server-side: putting a long-lived INCIDENT_WRITE credential
+    # into a page anybody at a demo can open would hand out the ability to file reports as
+    # the telco gateway.
+    incident_svc_url: str = Field(
+        default="http://localhost:8002", validation_alias="SARANA_INCIDENT_SVC_URL"
+    )
+    incident_service_token: str | None = Field(
+        default=None, validation_alias="SARANA_INCIDENT_SERVICE_TOKEN"
+    )
+
 
 def get_settings() -> Settings:
     """Load settings, exiting 78 (EX_CONFIG) if the environment is incomplete."""
