@@ -36,7 +36,7 @@ only shows up in the record afterwards.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
 import structlog
 
@@ -45,8 +45,22 @@ from agent_svc.runtime.state import AgentOutput, AgentState
 
 _log = structlog.get_logger(__name__)
 
-# A node function: takes state, returns the partial update it wants merged.
-type Node = Callable[[AgentState], Awaitable[dict[str, Any]]]
+
+class Node(Protocol):
+    """A graph node: takes state, returns the partial update it wants merged.
+
+    A `Protocol` rather than a `Callable` alias, and the parameter really is named `state`.
+    LangGraph's own `_Node` protocol names it that, and protocol matching compares
+    parameter names - so a `Callable[[AgentState], ...]` alias erases the name and a node
+    typed with it fails `add_node`'s overloads while the identical unwrapped function
+    passes. That failure reads as a problem with the node and is a problem with the alias.
+
+    The return is deliberately `Any`: a node usually returns a partial `AgentState`, but
+    LangGraph also accepts a `Command` from a node that routes itself.
+    """
+
+    def __call__(self, state: AgentState) -> Awaitable[Any]: ...
+
 
 # Below this, a node's answer goes to a person rather than onward. The same threshold the
 # model router upgrades at, deliberately: a call that was not confident enough to trust is
@@ -184,7 +198,11 @@ def with_confidence(
     """
 
     async def wrapped(state: AgentState) -> dict[str, Any]:
-        update = await node(state)
+        # `Node` returns Any, because a node may hand back a Command rather than an update.
+        # A wrapped node has to be one that returns an update - there is nothing sensible
+        # to do with a Command's confidence - so the narrowing is asserted here rather than
+        # assumed further down.
+        update: dict[str, Any] = await node(state)
         output = update.get("output") or {}
 
         confidence = float(output.get("confidence", 0.0))

@@ -8,20 +8,32 @@ This file says what this service is and what it depends on, nothing more.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
+import structlog
 from fastapi import FastAPI
 from redis.asyncio import Redis
 
 from agent_svc import SERVICE_DESCRIPTION, __version__
+from agent_svc.agents.noop import SPEC as NOOP_SPEC
 from agent_svc.api.v1.router import router as v1_router
 from agent_svc.config import Settings, get_settings
 from agent_svc.repo import OutboxEvent
+from agent_svc.runtime.checkpoint import (
+    durable_checkpointer,
+    is_durable,
+    memory_checkpointer,
+)
+from agent_svc.runtime.models import SpendTracker
+from agent_svc.runtime.registry import REGISTRY
+from agent_svc.runtime.tracing import configure_tracing
 from sarana_shared.db.session import check_connection, create_engine, create_session_factory
 from sarana_shared.events.factory import build_event_bus
 from sarana_shared.events.outbox import OutboxPublisher, OutboxWorker
 from sarana_shared.service.app import create_service_app
 from sarana_shared.service.health import HealthRegistry
+
+_log = structlog.get_logger(__name__)
 
 SERVICE_NAME = "agent-svc"
 
@@ -59,12 +71,50 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         app.state.outbox_publisher = publisher
         app.state.outbox_worker = worker
 
+        # The checkpointer is what makes a paused run survive a redeploy. An in-process
+        # one loses every pending approval on restart, so a deployment that ends up with
+        # one says so on its first log line rather than on the first interrupt that never
+        # comes back.
+        exit_stack = AsyncExitStack()
+        if resolved.durable_checkpoints:
+            checkpointer = await exit_stack.enter_async_context(
+                durable_checkpointer(resolved.database_url)
+            )
+        else:
+            checkpointer = memory_checkpointer()
+        if not is_durable(checkpointer):
+            _log.warning(
+                "agent_checkpoints_not_durable",
+                impact="every run paused on a human decision is lost when this process "
+                "restarts; set SARANA_AGENT_DURABLE_CHECKPOINTS=true",
+            )
+        app.state.checkpointer = checkpointer
+
+        if NOOP_SPEC.name not in REGISTRY.names():
+            REGISTRY.register(NOOP_SPEC)
+        REGISTRY.compile_all(checkpointer)
+        app.state.agents = REGISTRY
+
+        app.state.spend = SpendTracker(daily_cap_usd=resolved.daily_spend_cap_usd)
+        configure_tracing(
+            enabled=resolved.tracing,
+            project=resolved.langsmith_project,
+            api_key=resolved.langsmith_api_key,
+        )
+        if not resolved.openai_api_key:
+            _log.warning(
+                "agent_model_provider_unconfigured",
+                impact="every agent runs its deterministic path and labels the output "
+                "DETERMINISTIC; this is the same code a provider outage falls back to",
+            )
+
         health.register("database", lambda: check_connection(engine))
         health.register("event_bus", _redis_probe(redis))
 
         try:
             yield
         finally:
+            await exit_stack.aclose()
             await worker.stop()
             await bus.close()
             await redis.aclose()

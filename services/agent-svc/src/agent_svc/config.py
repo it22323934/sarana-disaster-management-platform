@@ -37,6 +37,36 @@ class Settings(SharedSettings):
         default_factory=list, validation_alias="SARANA_AGENT_CORS_ORIGINS"
     )
 
+    # The model provider. Absent, every agent runs its deterministic path and says so -
+    # which is the behaviour a blackout produces, so a laptop with no key exercises the
+    # same code the platform falls back to during an outage.
+    openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
+
+    # Per-tier model identifiers. Overridable because a model identifier is a fact about
+    # the provider's catalogue on a given day, not a fact about this platform.
+    model_volume: str | None = Field(default=None, validation_alias="SARANA_AGENT_MODEL_VOLUME")
+    model_standard: str | None = Field(default=None, validation_alias="SARANA_AGENT_MODEL_STANDARD")
+    model_escalated: str | None = Field(
+        default=None, validation_alias="SARANA_AGENT_MODEL_ESCALATED"
+    )
+
+    # The daily spend cap. Reaching it drops every tier to VOLUME and then to the
+    # deterministic paths, with an alert. Cost must not be able to page somebody at 3 a.m.
+    # during a cyclone.
+    daily_spend_cap_usd: float = Field(
+        default=50.0, ge=0.0, validation_alias="SARANA_AGENT_DAILY_SPEND_CAP_USD"
+    )
+
+    # Durable checkpointing. False uses an in-process saver, which loses every paused run
+    # on restart - fine for a test, catastrophic in a deployment, and the boot log says so.
+    durable_checkpoints: bool = Field(
+        default=True, validation_alias="SARANA_AGENT_DURABLE_CHECKPOINTS"
+    )
+
+    langsmith_api_key: str | None = Field(default=None, validation_alias="LANGSMITH_API_KEY")
+    langsmith_project: str = Field(default="sarana", validation_alias="LANGSMITH_PROJECT")
+    tracing: bool = Field(default=False, validation_alias="LANGSMITH_TRACING")
+
 
 def get_settings() -> Settings:
     """Load settings, exiting 78 (EX_CONFIG) if the environment is incomplete."""
