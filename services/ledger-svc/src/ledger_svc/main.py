@@ -21,6 +21,8 @@ from ledger_svc.repo import OutboxEvent
 from ledger_svc.workers.anchor import AnchorWorker
 from ledger_svc.workers.settlement import SettlementWorker
 from sarana_shared.adapters.gov import build_payment_client
+from sarana_shared.auth.middleware import AuthenticationMiddleware
+from sarana_shared.auth.tokens import TokenService
 from sarana_shared.db.session import check_connection, create_engine, create_session_factory
 from sarana_shared.events.factory import build_event_bus
 from sarana_shared.events.outbox import OutboxPublisher, OutboxWorker
@@ -110,6 +112,13 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         lifespan_hook=lifespan,
         cors_origins=resolved.cors_origins,
     )
+
+    # Verified locally against this service's own public key - never a call to core-api per
+    # request, which would make the platform's busiest hour depend on one service being up.
+    # Added after the app factory has installed correlation and error handling, so an
+    # authentication failure is still a Problem Details response carrying a correlation ID.
+    app.add_middleware(AuthenticationMiddleware, tokens=TokenService(resolved.tokens()))
+
     app.include_router(v1_router, prefix="/api/v1")
     app.include_router(internal_router, prefix="/internal/v1")
     return app

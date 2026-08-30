@@ -18,6 +18,7 @@ from agent_svc import SERVICE_DESCRIPTION, __version__
 from agent_svc.agents.noop import SPEC as NOOP_SPEC
 from agent_svc.api.v1.router import router as v1_router
 from agent_svc.config import Settings, get_settings
+from agent_svc.consumers import AgentTriggerWorker
 from agent_svc.repo import OutboxEvent
 from agent_svc.runtime.checkpoint import (
     durable_checkpointer,
@@ -27,6 +28,8 @@ from agent_svc.runtime.checkpoint import (
 from agent_svc.runtime.models import SpendTracker
 from agent_svc.runtime.registry import REGISTRY
 from agent_svc.runtime.tracing import configure_tracing
+from sarana_shared.auth.middleware import AuthenticationMiddleware
+from sarana_shared.auth.tokens import TokenService
 from sarana_shared.db.session import check_connection, create_engine, create_session_factory
 from sarana_shared.events.factory import build_event_bus
 from sarana_shared.events.outbox import OutboxPublisher, OutboxWorker
@@ -95,6 +98,14 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         REGISTRY.compile_all(checkpointer)
         app.state.agents = REGISTRY
 
+        # Most runs start here rather than from a click: an event arrives and an agent
+        # picks it up. Started after the registry is compiled, because a trigger firing
+        # against a registry with no graphs in it would be a KeyError on the first report
+        # of the day.
+        triggers = AgentTriggerWorker(app.state.session_factory, bus=bus, registry=REGISTRY)
+        triggers.start()
+        app.state.trigger_worker = triggers
+
         app.state.spend = SpendTracker(daily_cap_usd=resolved.daily_spend_cap_usd)
         configure_tracing(
             enabled=resolved.tracing,
@@ -114,6 +125,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            await triggers.stop()
             await exit_stack.aclose()
             await worker.stop()
             await bus.close()
@@ -129,6 +141,13 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         lifespan_hook=lifespan,
         cors_origins=resolved.cors_origins,
     )
+
+    # Verified locally against this service's own public key - never a call to core-api per
+    # request, which would make the platform's busiest hour depend on one service being up.
+    # Added after the app factory has installed correlation and error handling, so an
+    # authentication failure is still a Problem Details response carrying a correlation ID.
+    app.add_middleware(AuthenticationMiddleware, tokens=TokenService(resolved.tokens()))
+
     app.include_router(v1_router, prefix="/api/v1")
     return app
 

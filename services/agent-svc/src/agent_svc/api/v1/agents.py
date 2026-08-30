@@ -36,7 +36,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from agent_svc.runtime.checkpoint import config_for
-from agent_svc.runtime.state import initial_state, thread_id_for
+from agent_svc.runtime.run import RunResult, as_result, start_run
 from sarana_shared.auth.dependencies import require
 from sarana_shared.auth.principal import Principal
 from sarana_shared.auth.scopes import Scope
@@ -47,15 +47,20 @@ _log = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
-# Reading what an agent concluded, and starting one. `AGENT_INVOKE` is held by AGENT and
-# SERVICE and by operators - a person watching a cyclone should be able to ask an agent to
-# look at something without waiting for an event to trigger it.
+# Two scopes, and the split is the point.
+#
+# `AGENT_INVOKE` *starts* an agent. Held by AGENT, SERVICE and ADMIN - mostly machines,
+# because most runs are triggered by an event rather than by somebody clicking.
 InvokePrincipal = Depends(require(Scope.AGENT_INVOKE))
 
-# Answering an interrupt is a human decision by definition, so the resume endpoint refuses
-# every machine principal. An agent resuming its own approval would make the gate
-# decorative, and this is the cheapest place to say so.
-DecidePrincipal = Depends(require(Scope.AGENT_INVOKE, allow_machine=False))
+# `AGENT_REVIEW` sees and answers what an agent is waiting on. Held by the operational
+# human roles and never by a machine, because the whole point of an interrupt is that a
+# person decides. `allow_machine=False` is belt and braces over a scope no machine holds:
+# an agent resuming its own approval would make every gate in the platform decorative.
+#
+# Before this scope existed the inbox was readable only by ADMIN, which would have left the
+# dispatchers and approvers who actually answer these unable to open the queue.
+ReviewPrincipal = Depends(require(Scope.AGENT_REVIEW, allow_machine=False))
 
 
 class RunRequest(BaseModel):
@@ -123,7 +128,7 @@ class RunResponse(BaseModel):
 
 
 @router.get("", response_model=list[dict[str, Any]])
-async def list_agents(request: Request, principal: Principal = InvokePrincipal) -> Any:
+async def list_agents(request: Request, principal: Principal = ReviewPrincipal) -> Any:
     """Which agents exist, what they work on, and what each does in a blackout.
 
     `degraded` is on the list rather than buried in a docstring because it is the question
@@ -144,7 +149,7 @@ async def list_agents(request: Request, principal: Principal = InvokePrincipal) 
 
 
 @router.post("/{agent}/runs", response_model=RunResponse, status_code=202)
-async def start_run(
+async def start_agent_run(
     agent: str,
     body: RunRequest,
     request: Request,
@@ -160,31 +165,16 @@ async def start_run(
     if agent not in registry.names():
         raise NotFound(f"No agent named {agent!r}. Known: {', '.join(registry.names())}")
 
-    spec = registry.spec(agent)
-    subject_type = body.subject_type or spec.subject_type
-    thread_id = thread_id_for(agent, subject_type, body.subject_id)
-    config = config_for(thread_id)
-
-    state = initial_state(
+    result = await start_run(
+        registry,
         agent=agent,
-        subject_type=subject_type,
         subject_id=body.subject_id,
+        subject_type=body.subject_type,
+        payload=body.input,
         correlation_id=ensure_correlation_id(),
         causation_id=body.causation_id,
     )
-    # The caller's input lands in `output` because that is the key nodes read and write.
-    # Naming it `input` on the wire and `output` in state is the one place those differ;
-    # a separate state key would mean every node checking two places for its data.
-    state["output"] = dict(body.input)
-
-    result = await registry.graph(agent).ainvoke(state, config)
-    _log.info(
-        "agent_run_started",
-        agent=agent,
-        thread_id=thread_id,
-        interrupted="__interrupt__" in result,
-    )
-    return _as_response(thread_id, result)
+    return _as_response(result)
 
 
 @router.post("/threads/{thread_id}/resume", response_model=RunResponse)
@@ -192,7 +182,7 @@ async def resume_run(
     thread_id: str,
     body: ResumeRequest,
     request: Request,
-    principal: Principal = DecidePrincipal,
+    principal: Principal = ReviewPrincipal,
 ) -> Any:
     """Answer an interrupt and let the run continue.
 
@@ -236,7 +226,7 @@ async def resume_run(
         "reason": body.reason,
     }
 
-    result = await graph.ainvoke(Command(resume=decision), config)
+    resumed = as_result(thread_id, await graph.ainvoke(Command(resume=decision), config))
     _log.info(
         "agent_run_resumed",
         agent=agent,
@@ -245,12 +235,12 @@ async def resume_run(
         approved=body.approved,
         decided_by=body.decided_by,
     )
-    return _as_response(thread_id, result)
+    return _as_response(resumed)
 
 
 @router.get("/threads/{thread_id}", response_model=RunResponse)
 async def read_thread(
-    thread_id: str, request: Request, principal: Principal = InvokePrincipal
+    thread_id: str, request: Request, principal: Principal = ReviewPrincipal
 ) -> Any:
     """Where a run has got to, and what it is waiting for."""
     agent, _, _ = _split_thread_id(thread_id)
@@ -262,14 +252,14 @@ async def read_thread(
     if snapshot is None or not snapshot.created_at:
         raise NotFound("No such thread.")
 
-    return _as_response(thread_id, dict(snapshot.values), interrupts=snapshot.interrupts)
+    return _as_response(as_result(thread_id, dict(snapshot.values), interrupts=snapshot.interrupts))
 
 
 @router.get("/threads/{thread_id}/history", response_model=list[dict[str, Any]])
 async def read_history(
     thread_id: str,
     request: Request,
-    principal: Principal = InvokePrincipal,
+    principal: Principal = ReviewPrincipal,
     limit: int = Query(default=20, ge=1, le=100),
 ) -> Any:
     """The checkpoint history, for working out why an agent decided something.
@@ -304,7 +294,7 @@ async def read_history(
 @router.get("/threads", response_model=list[ThreadSummary])
 async def list_threads(
     request: Request,
-    principal: Principal = InvokePrincipal,
+    principal: Principal = ReviewPrincipal,
     status: str = Query(default="interrupted", pattern="^(interrupted|all)$"),
     subject_type: str | None = Query(default=None),
     agent: str | None = Query(default=None),
@@ -340,40 +330,57 @@ async def list_threads(
 async def pending_threads(
     graph: Any, spec: Any, *, status: str, limit: int
 ) -> list[dict[str, Any]]:
-    """Every thread of one agent that is waiting on a person.
+    """Every thread of one agent, and what it is waiting on.
 
-    Walks the checkpointer's own listing. LangGraph exposes this per-thread rather than as
-    a cross-thread query, so a deployment with many interrupted runs should back this with
-    an index on the checkpoint table rather than a scan — noted here because the first
-    cyclone is the wrong time to discover the approval inbox is O(threads).
+    Two steps, and the second is the one that matters. The checkpointer can list thread
+    ids; it cannot say which of them are paused on a human — `interrupt_payload` in our own
+    state is never written, because the pause is LangGraph's mechanism rather than ours.
+    Only `graph.aget_state()` knows, via `snapshot.interrupts`.
+
+    So this lists ids and then asks the graph about each. That is N+1 by construction.
+    Acceptable while the number of live threads is small; a deployment with thousands of
+    pending approvals wants an index on the checkpoint table instead, and the first cyclone
+    is the wrong time to discover the approval inbox is O(threads). Noted here rather than
+    left for somebody to find.
     """
-    found: list[dict[str, Any]] = []
     checkpointer = getattr(graph, "checkpointer", None)
     if checkpointer is None:
-        return found
+        return []
 
-    async for item in checkpointer.alist(None, limit=limit):
-        values = item.checkpoint.get("channel_values", {})
+    prefix = f"{spec.name}:"
+    thread_ids: list[str] = []
+    seen: set[str] = set()
+    async for item in checkpointer.alist(None, limit=limit * 4):
         thread_id = item.config.get("configurable", {}).get("thread_id", "")
-        if not thread_id or not thread_id.startswith(f"{spec.name}:"):
+        if thread_id and thread_id.startswith(prefix) and thread_id not in seen:
+            seen.add(thread_id)
+            thread_ids.append(thread_id)
+
+    found: list[dict[str, Any]] = []
+    for thread_id in thread_ids:
+        snapshot = await graph.aget_state(config_for(thread_id))
+        if snapshot is None:
             continue
 
-        interrupted = bool(values.get("interrupt_payload")) or bool(
-            item.metadata.get("writes", {}).get("__interrupt__")
-        )
-        if status == "interrupted" and not interrupted:
+        interrupts = getattr(snapshot, "interrupts", ()) or ()
+        payload = getattr(interrupts[0], "value", None) if interrupts else None
+        if status == "interrupted" and payload is None:
             continue
 
+        values = dict(snapshot.values)
         found.append(
             {
                 "thread_id": thread_id,
                 "agent": spec.name,
                 "subject_type": values.get("subject_type", spec.subject_type),
                 "subject_id": values.get("subject_id", ""),
-                "status": "INTERRUPTED" if interrupted else values.get("status", "RUNNING"),
-                "interrupt": values.get("interrupt_payload"),
+                "status": "INTERRUPTED" if payload else values.get("status", "RUNNING"),
+                "interrupt": payload,
             }
         )
+        if len(found) >= limit:
+            break
+
     return found
 
 
@@ -395,25 +402,17 @@ def _split_thread_id(thread_id: str) -> tuple[str, str, str]:
     return parts[0], parts[1], parts[2]
 
 
-def _as_response(
-    thread_id: str, result: dict[str, Any], *, interrupts: Any = None
-) -> dict[str, Any]:
-    """Shape a graph result for the wire.
+def _as_response(result: RunResult) -> dict[str, Any]:
+    """A run result, as the wire renders it.
 
-    An interrupted run reports `INTERRUPTED` and carries what it is asking, because a
-    caller that has to infer "waiting on a human" from the absence of an output will
-    eventually infer it wrong.
+    The shaping itself lives in `runtime.run.as_result`, because the event consumers need
+    the same answer and a second copy of "is this interrupted?" is a second copy that can
+    disagree.
     """
-    pending = result.get("__interrupt__") or interrupts or []
-    payload = None
-    if pending:
-        first = pending[0]
-        payload = getattr(first, "value", first)
-
     return {
-        "thread_id": thread_id,
-        "status": "INTERRUPTED" if payload else result.get("status", "RUNNING"),
-        "interrupt": payload,
-        "output": result.get("output", {}),
-        "notes": result.get("notes", []),
+        "thread_id": result.thread_id,
+        "status": result.status,
+        "interrupt": result.interrupt,
+        "output": result.output,
+        "notes": result.notes,
     }

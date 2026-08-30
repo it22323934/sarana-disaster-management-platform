@@ -107,6 +107,8 @@ service-clients: ## Provision the machine credentials services authenticate with
 
 .PHONY: service-clients
 
+FIXTURES ?= data/fixtures/smoke
+
 .PHONY: dev
 dev: ## Run web and mobile in watch mode alongside the compose stack
 	pnpm turbo run dev
@@ -135,6 +137,11 @@ fmt: ## Auto-fix formatting and import order
 openapi: ## Regenerate the merged OpenAPI spec and the TypeScript client
 	$(UV) run python -m sarana_shared.openapi.merge --out packages/ts-shared/openapi.json
 	pnpm --filter @sarana/ts-shared run generate:api
+
+.PHONY: eval
+eval: ## Score an agent against labelled fixtures. Usage: make eval AGENT=noop [FIXTURES=data/fixtures/smoke]
+	@test -n "$(AGENT)" || (echo "Usage: make eval AGENT=noop" && exit 1)
+	$(UV) run python -m agent_svc.runtime.eval --agent $(AGENT) --fixtures $(FIXTURES)
 
 .PHONY: verify-events
 verify-events: ## Fail if an event contract change would break a running consumer

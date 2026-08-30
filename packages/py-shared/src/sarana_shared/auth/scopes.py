@@ -71,6 +71,14 @@ class Scope(StrEnum):
 
     # Platform
     AGENT_INVOKE = "agent:invoke"
+    # Seeing and answering an agent's human-in-the-loop interrupts.
+    #
+    # Separate from AGENT_INVOKE, which is about *starting* an agent and is held by
+    # machines. This is the opposite: it is held only by people, because the whole point of
+    # an interrupt is that a person decides. Without it as its own scope the approval inbox
+    # is readable only by ADMIN, and the human gates become a queue the humans who operate
+    # them cannot open.
+    AGENT_REVIEW = "agent:review"
     SYSTEM_ADMIN = "system:admin"
 
 
@@ -130,6 +138,7 @@ ROLE_SCOPES: Final[dict[Role, frozenset[Scope]]] = {
     Role.DS_APPROVER: frozenset(
         {
             Scope.ADMIN_READ,
+            Scope.AGENT_REVIEW,
             Scope.ALERT_READ,
             Scope.FORECAST_READ,
             Scope.INCIDENT_READ,
@@ -149,6 +158,7 @@ ROLE_SCOPES: Final[dict[Role, frozenset[Scope]]] = {
     Role.DISTRICT_APPROVER: frozenset(
         {
             Scope.ADMIN_READ,
+            Scope.AGENT_REVIEW,
             Scope.ALERT_READ,
             Scope.ALERT_DRAFT,
             Scope.ALERT_APPROVE,
@@ -174,6 +184,7 @@ ROLE_SCOPES: Final[dict[Role, frozenset[Scope]]] = {
     Role.DMC_OPERATOR: frozenset(
         {
             Scope.ADMIN_READ,
+            Scope.AGENT_REVIEW,
             Scope.ALERT_READ,
             Scope.ALERT_DRAFT,
             Scope.ALERT_APPROVE,
@@ -194,6 +205,7 @@ ROLE_SCOPES: Final[dict[Role, frozenset[Scope]]] = {
     Role.DISPATCHER: frozenset(
         {
             Scope.ADMIN_READ,
+            Scope.AGENT_REVIEW,
             Scope.ALERT_READ,
             Scope.INCIDENT_READ,
             Scope.INCIDENT_WRITE,

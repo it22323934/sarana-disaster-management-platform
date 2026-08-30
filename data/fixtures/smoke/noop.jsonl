@@ -1,0 +1,10 @@
+{"id": "flood-explicit", "subject_id": "smoke-01", "input": {"text": "there is a FLOOD in our lane and the water is rising"}, "label": {"category": "flood"}, "expect_human_review": false}
+{"id": "landslide-explicit", "subject_id": "smoke-02", "input": {"text": "landslide came down behind the school"}, "label": {"category": "landslide"}, "expect_human_review": false}
+{"id": "collapse-explicit", "subject_id": "smoke-03", "input": {"text": "building collapse near the junction, people inside"}, "label": {"category": "collapse"}, "expect_human_review": false}
+{"id": "flood-mixed-case", "subject_id": "smoke-04", "input": {"text": "Flood water entered the ground floor"}, "label": {"category": "flood"}, "expect_human_review": false}
+{"id": "flood-sinhala-transliterated", "subject_id": "smoke-05", "input": {"text": "gan wathura -- flood -- ape gama duwanawa"}, "label": {"category": "flood"}, "expect_human_review": false}
+{"id": "vague-plea", "subject_id": "smoke-06", "input": {"text": "please help us we are stuck"}, "label": {"category": "flood"}, "expect_human_review": true, "human": {"category": "flood"}}
+{"id": "no-hazard-word", "subject_id": "smoke-07", "input": {"text": "the road to the camp is blocked by mud"}, "label": {"category": "landslide"}, "expect_human_review": true, "human": {"category": "landslide"}}
+{"id": "empty-report", "subject_id": "smoke-08", "input": {"text": ""}, "label": {"category": "unknown"}, "expect_human_review": true, "human": {"category": "unknown"}}
+{"id": "unrelated-text", "subject_id": "smoke-09", "input": {"text": "asking about the pension payment date"}, "label": {"category": "unknown"}, "expect_human_review": true, "human": {"category": "unknown"}}
+{"id": "two-hazards-named", "subject_id": "smoke-10", "input": {"text": "the flood took the bridge and then a landslide blocked the road"}, "label": {"category": "flood"}, "expect_human_review": false}

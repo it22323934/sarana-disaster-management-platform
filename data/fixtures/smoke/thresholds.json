@@ -1,0 +1,5 @@
+{
+  "min_accuracy": 0.9,
+  "max_ece": 0.2,
+  "_why": "The smoke set is ten cases, so one wrong answer moves accuracy by ten points and ECE by more. These are the bars for a set this size: a real regression set (file 28) carries its own, tighter, thresholds. A gate nobody can pass is a gate somebody deletes."
+}
