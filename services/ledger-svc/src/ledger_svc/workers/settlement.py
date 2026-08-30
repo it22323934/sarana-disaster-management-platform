@@ -149,12 +149,18 @@ async def record_reversal(
             "reversal_id": str(entry.id),
             "disbursement_id": str(disbursement_id),
             "entitlement_id": context["entitlement_id"],
+            # The consumer needs this to know who to message. Sent by both writers of this
+            # event - the poller and the endpoint - because one event with two shapes is a
+            # consumer that works until the other path fires.
+            "household_id": context["household_id"],
             "amount_lkr_cents": entry.amount_lkr_cents,
             "reason": entry.reason.value,
             "needs_new_bank_details": entry.reason.needs_new_bank_details,
             "grievance_id": str(grievance_id),
+            "grievance_ref": grievance["public_ref"],
             "seq": stored["seq"],
             "entry_hash": stored["entry_hash"],
+            "simulated": True,
         },
         subject=str(disbursement_id),
     )

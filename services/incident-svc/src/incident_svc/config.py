@@ -51,8 +51,11 @@ class Settings(SharedSettings):
     # In a deployment this comes from the secret store. Locally `make service-token`
     # mints one. Absent, reports are still accepted and simply arrive unplaced, which is
     # the documented degraded behaviour rather than a new failure mode.
-    core_api_service_token: str | None = Field(
-        default=None, validation_alias="SARANA_INCIDENT_SERVICE_TOKEN"
+    # The client-credentials grant this service authenticates with. Provisioned by
+    # `tools/seed/service_clients.py`; holds `admin:read` and nothing else.
+    client_id: str = Field(default="incident-svc", validation_alias="SARANA_INCIDENT_CLIENT_ID")
+    client_secret: str | None = Field(
+        default=None, validation_alias="SARANA_INCIDENT_CLIENT_SECRET"
     )
 
 

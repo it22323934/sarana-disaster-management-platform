@@ -39,6 +39,23 @@ class Settings(SharedSettings):
 
     # The CAP <sender>. Must identify the issuing authority, because a consumer decides
     # whether to trust an alert by who sent it.
+    # Where the household directory lives, and the credential that reads it. The secret is
+    # provisioned by `tools/seed/service_clients.py`; without it the directory falls back
+    # to one that resolves nothing and says so on every attempt, so a deployment that
+    # forgot it does not silently stop telling households about their payments.
+    core_api_url: str = Field(
+        default="http://localhost:8001", validation_alias="SARANA_CORE_API_URL"
+    )
+    client_id: str = Field(default="alerting-svc", validation_alias="SARANA_ALERTING_CLIENT_ID")
+    client_secret: str | None = Field(
+        default=None, validation_alias="SARANA_ALERTING_CLIENT_SECRET"
+    )
+    # Zero disables the payment-notice consumer. For tooling and tests that have no
+    # business subscribing to a stream and sending messages.
+    payment_notices_enabled: bool = Field(
+        default=True, validation_alias="SARANA_ALERTING_PAYMENT_NOTICES_ENABLED"
+    )
+
     cap_sender: str = Field(default="dmc@sarana.lk", validation_alias="SARANA_ALERTING_CAP_SENDER")
 
     # A misconfigured area selection that targets all 14,022 divisions must be stopped

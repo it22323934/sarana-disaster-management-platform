@@ -30,7 +30,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -310,3 +310,37 @@ class UserRole(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     scope_type: Mapped[str] = mapped_column(String(16), nullable=False)
     scope_code: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+
+
+class ServiceClient(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """A machine credential for service-to-service calls.
+
+    Replaces the long-lived `SARANA_*_SERVICE_TOKEN` environment variables. A service
+    presents `client_id` and a secret and receives a normal short-lived access token, so
+    the credential is revocable (`active`), least-privilege (`allowed_scopes`, a subset of
+    the SERVICE role), area-scoped like every human grant, and never stored in the clear.
+
+    The human gates are not reachable from here. `SERVICE` is a machine principal and
+    `sarana_shared.auth` refuses `disbursement:release` and `dispatch:commit` to every
+    machine principal, whatever a row in this table says.
+    """
+
+    __tablename__ = "service_client"
+    __table_args__ = (
+        UniqueConstraint("client_id", name="uq_service_client_client_id"),
+        CheckConstraint("scope_type IN ('NATIONAL','DISTRICT','DS','GN')", name="scope_type_known"),
+        # A credential granting nothing looks like it works and does not. Refused at
+        # creation, where somebody is watching.
+        CheckConstraint("array_length(allowed_scopes, 1) > 0", name="grants_something"),
+        {"schema": ADMIN_SCHEMA},
+    )
+
+    client_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    secret_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    allowed_scopes: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
+    scope_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    scope_code: Mapped[str] = mapped_column(String(16), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    last_used_at: Mapped[Any] = mapped_column(DateTime(timezone=True), nullable=True)
+    rotated_at: Mapped[Any] = mapped_column(DateTime(timezone=True), nullable=True)

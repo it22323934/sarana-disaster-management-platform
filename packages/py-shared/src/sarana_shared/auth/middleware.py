@@ -47,6 +47,11 @@ ANONYMOUS_PATHS: Final[frozenset[str]] = frozenset(
         "/api/v1/auth/refresh",
         "/api/v1/auth/otp/request",
         "/api/v1/auth/otp/verify",
+        # The client-credentials grant. Anonymous for the same reason /login is: it is
+        # where a caller *becomes* authenticated, and requiring a token to obtain a token
+        # is a bootstrap nobody can complete. The credential is in the body and the
+        # endpoint refuses everything that does not match it.
+        "/api/v1/auth/token",
         # Enum labels, not data about anyone. The sign-in screen needs its own language
         # picker before there is a token to present, so requiring one here would mean a
         # citizen could not read the page that asks them to log in.
@@ -57,6 +62,9 @@ ANONYMOUS_PATHS: Final[frozenset[str]] = frozenset(
         # aggregated to district and day in SQL - see `ledger_svc.repo.queries`.
         "/api/v1/ledger/public",
         "/api/v1/ledger/anchors",
+        # The compensating entries. Published on the same terms: a feed showing only the
+        # payments that succeeded is not a transparency surface.
+        "/api/v1/ledger/reversals",
         "/api/v1/cost-schedules",
     }
 )

@@ -37,6 +37,7 @@ from gov_mock.chaos import (
 from gov_mock.clock import SimulatedClock
 from gov_mock.config import Settings, get_settings
 from gov_mock.state import MockState
+from sarana_shared.auth.service_credentials import ServiceCredentials
 from sarana_shared.db.session import check_connection, create_engine, create_session_factory
 from sarana_shared.events.factory import build_event_bus
 from sarana_shared.service.app import create_service_app
@@ -83,6 +84,21 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         app.state.session_factory = create_session_factory(engine)
         app.state.event_bus = bus
 
+        # The inbound simulator posts a citizen's SMS into incident-svc as the telco
+        # gateway would. The credential holds `incident:write` and nothing else, and it
+        # never reaches the browser - the page posts here and this forwards.
+        credentials = (
+            ServiceCredentials(
+                base_url=resolved.core_api_url,
+                client_id=resolved.client_id,
+                client_secret=resolved.client_secret,
+                scope="incident:write",
+            )
+            if resolved.client_secret
+            else None
+        )
+        app.state.credentials = credentials
+
         health.register("database", lambda: check_connection(engine))
         health.register("event_bus", _redis_probe(redis))
 
@@ -96,6 +112,8 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            if credentials is not None:
+                await credentials.aclose()
             await bus.close()
             await redis.aclose()
             await engine.dispose()

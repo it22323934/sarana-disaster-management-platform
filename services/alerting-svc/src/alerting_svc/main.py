@@ -22,10 +22,12 @@ from alerting_svc.adapters.channels.mock_gateways import (
     MockSmsGateway,
     MockUssdPush,
 )
+from alerting_svc.adapters.households import build_directory
 from alerting_svc.api.internal.dlr import router as dlr_router
 from alerting_svc.api.v1.router import router as v1_router
 from alerting_svc.config import Settings, get_settings
 from alerting_svc.repo import OutboxEvent
+from alerting_svc.workers.payment_notices import PaymentNoticeWorker
 from sarana_shared.auth.middleware import AuthenticationMiddleware
 from sarana_shared.auth.tokens import TokenService
 from sarana_shared.db.session import check_connection, create_engine, create_session_factory
@@ -81,12 +83,38 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         app.state.outbox_publisher = publisher
         app.state.outbox_worker = worker
 
+        # Turns a payment the ledger recorded into a message somebody receives. Without
+        # this consumer the confirmation loop does not exist: the ledger records what the
+        # state believes it paid, and nothing ever asks the household whether it arrived.
+        directory = build_directory(
+            core_api_url=resolved.core_api_url,
+            client_id=resolved.client_id,
+            client_secret=resolved.client_secret,
+        )
+        app.state.household_directory = directory
+
+        notices: PaymentNoticeWorker | None = None
+        if resolved.payment_notices_enabled:
+            notices = PaymentNoticeWorker(
+                app.state.session_factory,
+                bus=bus,
+                directory=directory,
+                # SMS. The one channel a household with a feature phone actually has, and
+                # the one the YES/NO reply comes back on.
+                channel=app.state.channels[0],
+            )
+            notices.start()
+        app.state.payment_notice_worker = notices
+
         health.register("database", lambda: check_connection(engine))
         health.register("event_bus", _redis_probe(redis))
 
         try:
             yield
         finally:
+            if notices is not None:
+                await notices.stop()
+            await directory.aclose()
             await worker.stop()
             await bus.close()
             await redis.aclose()

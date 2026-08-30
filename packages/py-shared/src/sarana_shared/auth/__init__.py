@@ -48,6 +48,10 @@ from sarana_shared.auth.scopes import (
     Scope,
     scopes_for_roles,
 )
+from sarana_shared.auth.service_credentials import (
+    CredentialUnavailable,
+    ServiceCredentials,
+)
 from sarana_shared.auth.tokens import (
     ALGORITHM,
     TokenClaims,
@@ -65,6 +69,7 @@ __all__ = [
     "ROLE_SCOPES",
     "STEP_UP_WINDOW",
     "AuthenticationMiddleware",
+    "CredentialUnavailable",
     "InvalidGrant",
     "JWKSCache",
     "Principal",
@@ -73,6 +78,7 @@ __all__ = [
     "Scope",
     "ScopeGrant",
     "ScopeType",
+    "ServiceCredentials",
     "StepUpRequired",
     "TokenClaims",
     "TokenService",

@@ -346,12 +346,22 @@ class AidDisbursementReleased(EventPayload):
 
     disbursement_id: UUID
     entitlement_id: UUID
+    household_id: UUID = Field(
+        description="Who to tell. The consumer resolves this to a messaging address; the "
+        "event never carries a contact hash, let alone a number."
+    )
     amount_lkr_cents: int = Field(gt=0)
     released_by: UUID
-    released_at: datetime
     payment_rail: str
+    payment_ref: str | None = None
     seq: int = Field(description="Position in the ledger, for the daily Merkle root")
     entry_hash: str
+    confirmation_required: bool = Field(
+        default=True,
+        description="Whether the household should be asked to confirm receipt. The reply "
+        "is the only independent evidence the platform gets that money arrived.",
+    )
+    simulated: bool = Field(default=True, description="Every payment rail in Phase 1 is a mock.")
 
 
 @register(ev.AID_DISBURSEMENT_CITIZEN_CONFIRMED)
@@ -389,6 +399,7 @@ class AidDisbursementReversed(EventPayload):
     reversal_id: UUID
     disbursement_id: UUID
     entitlement_id: UUID
+    household_id: UUID
     amount_lkr_cents: int = Field(gt=0)
     reason: str
     needs_new_bank_details: bool = Field(
@@ -396,8 +407,14 @@ class AidDisbursementReversed(EventPayload):
         "different account, rather than by trying again."
     )
     grievance_id: UUID
+    grievance_ref: str = Field(
+        description="The public case reference. Included so the message to the household "
+        "can tell them where to ask - being told something went wrong with no way to "
+        "follow it up is worse than not being told."
+    )
     seq: int = Field(description="Position in the compensating-entry chain")
     entry_hash: str
+    simulated: bool = Field(default=True, description="Every payment rail in Phase 1 is a mock.")
 
 
 @register(ev.AID_ANOMALY_FLAGGED)

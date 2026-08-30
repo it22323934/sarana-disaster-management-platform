@@ -68,8 +68,12 @@ class Settings(SharedSettings):
     incident_svc_url: str = Field(
         default="http://localhost:8002", validation_alias="SARANA_INCIDENT_SVC_URL"
     )
-    incident_service_token: str | None = Field(
-        default=None, validation_alias="SARANA_INCIDENT_SERVICE_TOKEN"
+    core_api_url: str = Field(
+        default="http://localhost:8001", validation_alias="SARANA_CORE_API_URL"
+    )
+    client_id: str = Field(default="gov-mock", validation_alias="SARANA_GOV_MOCK_CLIENT_ID")
+    client_secret: str | None = Field(
+        default=None, validation_alias="SARANA_GOV_MOCK_CLIENT_SECRET"
     )
 
 

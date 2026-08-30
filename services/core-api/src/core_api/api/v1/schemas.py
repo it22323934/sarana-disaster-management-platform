@@ -25,6 +25,48 @@ class LoginRequest(BaseModel):
     device_platform: str = Field(default="web", max_length=20)
 
 
+class ServiceTokenRequest(BaseModel):
+    """A service asking for an access token with its own credential.
+
+    Deliberately shaped like OAuth 2.0's client-credentials grant. Not because the
+    standard is required here, but because every operator and every library already knows
+    what these three fields mean, and a bespoke shape would be one more thing to explain
+    in a security review.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    grant_type: str = Field(
+        default="client_credentials",
+        description="Only client_credentials. Present so the request is recognisable.",
+    )
+    client_id: str = Field(min_length=1, max_length=64)
+    client_secret: str = Field(min_length=1, max_length=256)
+    scope: str | None = Field(
+        default=None,
+        max_length=1024,
+        description="Space-separated scopes to narrow the token to. Omit for everything "
+        "the credential holds. Asking for more than it holds is not an error - the token "
+        "carries the intersection - so a service that adds a scope before its credential "
+        "is updated degrades rather than failing closed mid-event.",
+    )
+
+
+class ServiceTokenResponse(BaseModel):
+    """A granted machine token. No refresh token: a service re-authenticates."""
+
+    model_config = ConfigDict(frozen=True)
+
+    access_token: str
+    token_type: str = "Bearer"  # noqa: S105 - the OAuth scheme name, not a credential
+    expires_in: int = Field(description="Access token lifetime in seconds")
+    scope: str = Field(
+        description="Space-separated scopes actually granted. Read it: it may be narrower "
+        "than what was asked for, and silently acting as though it were not is how a "
+        "service discovers a missing permission during an incident."
+    )
+
+
 class TokenResponse(BaseModel):
     """What a successful authentication returns."""
 

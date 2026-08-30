@@ -22,6 +22,14 @@ class Scope(StrEnum):
 
     # Reference and common operating picture
     ADMIN_READ = "admin:read"
+    # Reading one household's contact hash, so a message can be addressed to them.
+    #
+    # Separate from ADMIN_READ on purpose. `/admin/households` deliberately selects no
+    # column that identifies a person - "nothing to redact is a stronger guarantee than
+    # redacting" - and folding contact lookup into the same scope would quietly widen
+    # every credential that only ever needed the hierarchy. This is the one permission
+    # that reaches a stable per-person identifier, so it is the one that gets named.
+    HOUSEHOLD_CONTACT_READ = "household:contact_read"
     RESILIENCE_READ = "resilience:read"
     RESILIENCE_WRITE = "resilience:write"
 
@@ -237,6 +245,15 @@ ROLE_SCOPES: Final[dict[Role, frozenset[Scope]]] = {
             Scope.RESILIENCE_READ,
             Scope.RESILIENCE_WRITE,
             Scope.AGENT_INVOKE,
+            # The ceiling, not the grant. An individual credential holds the subset it
+            # needs; `admin.service_client.allowed_scopes` is what narrows it, and
+            # alerting-svc is the only service that should be configured with this one.
+            Scope.HOUSEHOLD_CONTACT_READ,
+            # A telco gateway submitting a citizen's SMS as a report. The sender is
+            # identified by an HMAC of their number, not by a credential, so the gateway
+            # writes on their behalf - and only the gateway credential is configured with
+            # this scope.
+            Scope.INCIDENT_WRITE,
         }
     ),
 }

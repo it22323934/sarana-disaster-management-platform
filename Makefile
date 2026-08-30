@@ -100,6 +100,13 @@ seed: ## Load data/seed reference and scenario data
 	@echo "Restarting core-api to flush the hierarchy cache..."
 	@$(COMPOSE) restart core-api >/dev/null 2>&1 || true
 
+service-clients: ## Provision the machine credentials services authenticate with
+	@# Owner DSN: these rows are administrative and sarana_app cannot write them. The
+	@# secrets print once; put them in .env and restart the stack.
+	$(UV) run python tools/seed/service_clients.py 		--database-url "$${SARANA_OWNER_DATABASE_URL:-postgresql+asyncpg://sarana:sarana@localhost:5432/sarana}"
+
+.PHONY: service-clients
+
 .PHONY: dev
 dev: ## Run web and mobile in watch mode alongside the compose stack
 	pnpm turbo run dev

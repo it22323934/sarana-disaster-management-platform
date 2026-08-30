@@ -8,7 +8,7 @@ platform's whole claim is that it works for people who do not have a smartphone.
 Two things about how it is wired:
 
 **The service token never reaches the browser.** The page posts to gov-mock, and gov-mock
-forwards to incident-svc with `SARANA_INCIDENT_SERVICE_TOKEN`. Putting a long-lived
+forwards to incident-svc with its own client credential. Putting a long-lived
 `INCIDENT_WRITE` credential into a page anybody at a demo can open would be handing out
 the ability to file reports as the telco gateway.
 
@@ -37,6 +37,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from gov_mock.api.deps import SimulatedNowDep, StateDep, mock_json
 from gov_mock.state import InboundMessage, MockState
 from sarana_shared.adapters.gov.base import MOCK_HEADER, MOCK_HEADER_VALUE
+from sarana_shared.auth.service_credentials import (
+    CredentialUnavailable,
+    ServiceCredentials,
+)
 
 _log = structlog.get_logger(__name__)
 
@@ -93,21 +97,26 @@ async def _forward(request: Request, path: str, payload: dict[str, Any]) -> tupl
     stack trace.
     """
     settings = request.app.state.settings
-    token = settings.incident_service_token
-    if not token:
+    credentials: ServiceCredentials | None = getattr(request.app.state, "credentials", None)
+    if credentials is None:
         return 0, {
             "error": (
-                "SARANA_INCIDENT_SERVICE_TOKEN is not set, so the simulator cannot reach "
-                "incident-svc. Mint one with `uv run python tools/seed/service_token.py`."
+                "No gateway credential is configured, so the simulator cannot reach "
+                "incident-svc. Provision one with "
+                "`uv run python tools/seed/service_clients.py` and set "
+                "SARANA_GOV_MOCK_CLIENT_SECRET."
             )
         }
+
+    try:
+        headers = await credentials.authorization()
+    except CredentialUnavailable as error:
+        return 0, {"error": f"could not obtain a gateway token: {error.detail}"}
 
     url = f"{settings.incident_svc_url.rstrip('/')}{path}"
     try:
         async with httpx.AsyncClient(timeout=FORWARD_TIMEOUT) as client:
-            response = await client.post(
-                url, json=payload, headers={"Authorization": f"Bearer {token}"}
-            )
+            response = await client.post(url, json=payload, headers=headers)
     except (httpx.TimeoutException, httpx.TransportError) as error:
         _log.warning("sim_forward_failed", path=path, error=type(error).__name__)
         return 0, {"error": f"incident-svc is unreachable at {url}"}

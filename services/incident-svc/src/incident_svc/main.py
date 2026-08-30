@@ -21,6 +21,7 @@ from incident_svc.config import Settings, get_settings
 from incident_svc.domain.dispatch_gate import NullResumer
 from incident_svc.repo import OutboxEvent
 from sarana_shared.auth.middleware import AuthenticationMiddleware
+from sarana_shared.auth.service_credentials import ServiceCredentials
 from sarana_shared.auth.tokens import TokenService
 from sarana_shared.db.session import check_connection, create_engine, create_session_factory
 from sarana_shared.events.factory import build_event_bus
@@ -59,7 +60,17 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         # path. The client caches and degrades: a report that cannot be placed is kept
         # unplaced rather than refused.
         app.state.core_api = CoreApiClient(
-            resolved.core_api_url, service_token=resolved.core_api_service_token
+            resolved.core_api_url,
+            credentials=(
+                ServiceCredentials(
+                    base_url=resolved.core_api_url,
+                    client_id=resolved.client_id,
+                    client_secret=resolved.client_secret,
+                    scope="admin:read",
+                )
+                if resolved.client_secret
+                else None
+            ),
         )
 
         # Assisted triage is off until the agent runtime exists (build file 12). The queue

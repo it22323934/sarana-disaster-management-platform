@@ -14,7 +14,7 @@ from sqlalchemy import CursorResult, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core_api.domain.auth.sessions import StoredRefreshToken
-from core_api.repo.admin import AppUser, GNDivision, Role, UserRole
+from core_api.repo.admin import AppUser, GNDivision, Role, ServiceClient, UserRole
 from core_api.repo.auth import Device, LoginAttempt, MFAEnrolment, OTPChallenge, RefreshToken
 from sarana_shared.auth.scopes import Role as RoleCode
 from sarana_shared.auth.scopes import RoleAssignment
@@ -348,4 +348,30 @@ async def confirm_mfa_enrolment(session: AsyncSession, user_id: UUID) -> None:
         update(MFAEnrolment)
         .where(MFAEnrolment.user_id == user_id)
         .values(confirmed_at=utc_now(), last_verified_at=utc_now())
+    )
+
+
+async def find_service_client(session: AsyncSession, client_id: str) -> ServiceClient | None:
+    """Look up a machine credential by its public id.
+
+    Returns inactive clients too. The caller checks `active` and refuses with the same
+    message it uses for an unknown client, so a revoked credential and a made-up one are
+    indistinguishable from outside - otherwise this endpoint tells an attacker which
+    client ids are real.
+    """
+    result = await session.execute(
+        select(ServiceClient).where(ServiceClient.client_id == client_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def touch_service_client(session: AsyncSession, client_uuid: UUID) -> None:
+    """Record that a credential was used.
+
+    The only column `sarana_app` may update on this table. It is what makes "which of
+    these credentials is still in use?" answerable before somebody revokes one and finds
+    out the hard way.
+    """
+    await session.execute(
+        update(ServiceClient).where(ServiceClient.id == client_uuid).values(last_used_at=utc_now())
     )

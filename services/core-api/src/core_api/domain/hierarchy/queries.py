@@ -231,3 +231,41 @@ async def list_households(
         {"gn_division_id": gn_division_id, "limit": limit, "offset": offset},
     )
     return [dict(row) for row in result.mappings()]
+
+
+# One household's messaging address, and nothing else.
+#
+# Deliberately a different query from `_HOUSEHOLDS_SQL`, which selects no column that
+# identifies a person. That guarantee is worth keeping intact, so contact lookup is its
+# own query behind its own scope rather than a widening of the listing.
+#
+# What comes back is a keyed HMAC, never a phone number. A messaging gateway resolves the
+# hash to a real address at the edge; nothing in this platform decrypts a number in order
+# to send to it. `preferred_language` rides along because a message in the wrong language
+# is a message that did not arrive.
+_HOUSEHOLD_CONTACT_SQL = """
+SELECT h.id::text                AS household_id,
+       h.reference_code,
+       h.contact_msisdn_hash     AS recipient_ref_hash,
+       h.preferred_language,
+       g.code                    AS gn_division_code
+FROM admin.household h
+JOIN admin.gn_division g ON g.id = h.gn_division_id
+WHERE h.id = :household_id
+"""
+
+
+async def household_contact(session: AsyncSession, *, household_id: UUID) -> dict[str, Any] | None:
+    """How to reach one household, as a keyed hash.
+
+    Row-level security applies, so a caller scoped to one district cannot read a
+    household in another - a machine credential is subject to it on exactly the same
+    terms as a person.
+
+    Returns None both when the household does not exist and when it is out of scope. The
+    caller cannot tell those apart, which is correct: saying "this household exists but
+    is not yours" is itself a disclosure.
+    """
+    result = await session.execute(text(_HOUSEHOLD_CONTACT_SQL), {"household_id": household_id})
+    row = result.mappings().first()
+    return dict(row) if row else None

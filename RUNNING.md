@@ -194,9 +194,10 @@ feature phone: type a number, pick a language, and send an SMS or step through t
 menu. It posts into incident-svc, so a message sent here becomes a real report you can watch
 move through triage.
 
-It needs `SARANA_INCIDENT_SERVICE_TOKEN` in `.env` — mint one with `uv run python
-tools/seed/service_token.py`. The token stays on the server; the page never sees it, and the
-number you type is hashed before it goes anywhere.
+It needs a gateway credential: run `make service-clients`, put the printed
+`SARANA_GOV_MOCK_CLIENT_SECRET` in `.env`, and restart. The credential holds `incident:write`
+and nothing else, it never reaches the browser, and the number you type is hashed before it
+goes anywhere.
 
 ## What is not built yet
 
@@ -238,8 +239,10 @@ Worth knowing before you demo anything:
   `anchor_not_externally_stored`; the `s3_object_lock_uri` is null rather than a
   plausible-looking S3 URI, because an anchor that claims to be under a compliance lock
   and is not would be a lie at the exact point somebody relies on it.
-- **There is no service-to-service credential mechanism.** incident-svc calls core-api with
-  a long-lived token from `SARANA_INCIDENT_SERVICE_TOKEN`.
+- **Machine credentials are short-lived and per-service.** Each service exchanges a client
+  id and secret at `POST /api/v1/auth/token` for a fifteen-minute token scoped to what it
+  actually needs. Run `make service-clients` to provision them; leave one out and that
+  service degrades visibly rather than silently.
 
 ## Checking the ledger yourself
 

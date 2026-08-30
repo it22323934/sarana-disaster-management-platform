@@ -17,6 +17,11 @@ from typing import Any, Final
 import httpx
 import structlog
 
+from sarana_shared.auth.service_credentials import (
+    CredentialUnavailable,
+    ServiceCredentials,
+)
+
 _log = structlog.get_logger(__name__)
 
 CONNECT_TIMEOUT: Final = 2.0
@@ -45,12 +50,16 @@ class CoreApiClient:
         self,
         base_url: str,
         *,
-        service_token: str | None = None,
+        credentials: ServiceCredentials | None = None,
         client: httpx.AsyncClient | None = None,
         cache_size: int = 20_000,
     ) -> None:
         self._base_url = base_url.rstrip("/")
-        self._service_token = service_token
+        # A client-credentials grant, not a long-lived token from an environment file.
+        # It fetches a fifteen-minute token when one is needed and refreshes before
+        # expiry, so revoking this service's credential takes effect within the quarter
+        # hour instead of never.
+        self._credentials = credentials
         self._client = client or httpx.AsyncClient(
             timeout=httpx.Timeout(READ_TIMEOUT, connect=CONNECT_TIMEOUT)
         )
@@ -78,9 +87,25 @@ class CoreApiClient:
         if key in self._cache:
             return self._cache[key]
 
-        # The service credential, unless a caller supplies something more specific.
-        bearer = token or self._service_token
-        headers = {"Authorization": f"Bearer {bearer}"} if bearer else {}
+        # A caller-supplied token wins - a human's own credential is more specific than
+        # the service's, and using it keeps their identity on the audit trail. Otherwise
+        # the service credential, fetched and cached by `ServiceCredentials`.
+        headers: dict[str, str] = {}
+        if token:
+            headers = {"Authorization": f"Bearer {token}"}
+        elif self._credentials is not None:
+            try:
+                headers = await self._credentials.authorization()
+            except CredentialUnavailable:
+                # Same answer as any other failure to resolve: the report is kept and left
+                # unplaced. Losing a citizen's report because a credential could not be
+                # fetched would be the worst trade available here.
+                _log.error(
+                    "core_api_credential_unavailable",
+                    hint="incident-svc could not obtain a service token; reports will be "
+                    "accepted but left unplaced until it can",
+                )
+                return None
         try:
             response = await self._client.get(
                 f"{self._base_url}/api/v1/admin/resolve",
@@ -102,12 +127,15 @@ class CoreApiClient:
             self._remember(key, None)
             return None
         if response.status_code in (401, 403):
+            if self._credentials is not None:
+                self._credentials.invalidate()
             # Named separately from any other failure: this one is a misconfiguration that
             # silently unplaces every report, and it should not look like a bad coordinate.
             _log.error(
                 "core_api_resolve_unauthorised",
                 status=response.status_code,
-                hint="SARANA_INCIDENT_SERVICE_TOKEN is missing, expired, or lacks admin:read",
+                hint="the incident-svc client credential is revoked, rotated, or lacks "
+                "admin:read; check admin.service_client",
             )
             return None
         if response.status_code >= 400:

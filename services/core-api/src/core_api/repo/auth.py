@@ -50,6 +50,10 @@ SECURITY_EVENT_KINDS: tuple[str, ...] = (
     "LEDGER_DENIAL_BURST",
     "TOTP_FAILURE_BURST",
     "CAPABILITY_MISUSE",
+    # A machine credential was refused. Distinct from a human lockout because the response
+    # is different: nobody forgot a password, so a burst here is somebody probing the
+    # client-credentials endpoint or a service running on a revoked credential.
+    "SERVICE_CREDENTIAL_DENIED",
 )
 
 

@@ -29,7 +29,7 @@ strictly sequential. Files 03-11 are complete; the next unstarted file is 12.
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-**1,013 tests passing, 2 skipped.** `ruff check`, `ruff format --check` and `mypy` (261
+**1,051 tests passing, 2 skipped.** `ruff check`, `ruff format --check` and `mypy` (261
 source files) all clean.
 
 ```
@@ -410,11 +410,9 @@ Two replicas would disagree about a claim's status and a poller would watch it f
 
 ### Still placeholder, and honest about it
 
-- **The compensating ledger entry is wired** — see the section above. A failed transfer
-  now produces a chained reversal, a grievance in the household's own language, and a
-  reopened entitlement. What is *not* built is the outbound half: nothing in alerting-svc
-  yet consumes `sarana.aid.disbursement.reversed`, so the case exists and an officer sees
-  it, but the household is not messaged automatically.
+- **The whole payment loop is wired.** A failed transfer produces a chained reversal, a
+  grievance, a reopened entitlement, and an SMS telling the household what to do. The
+  confirmation message after a successful release is sent too — it never had been.
 - **The payment webhook is registered and never called.** Delivering a callback would mean
   the mock reaching into the platform on its own schedule, which makes a scenario replay
   depend on network timing. The ledger polls instead.
@@ -546,6 +544,117 @@ payment has already failed.
 
 ---
 
+## Machine credentials, and the consumer that tells households about their money
+
+Two things closed together, because the second was blocked on the first.
+
+### The long-lived service token is gone
+
+`SARANA_INCIDENT_SERVICE_TOKEN` was a never-expiring `SERVICE` token, minted by a script and
+pasted into an environment file. It could not be rotated without a redeploy, could not be
+revoked at all, granted every scope the SERVICE role had whether the caller needed them or
+not, and anybody who read the file held it forever. It was documented as a workaround from
+the day it was written.
+
+`POST /api/v1/auth/token` replaces it with a client-credentials grant against
+`admin.service_client`. Four properties, each of them one of the things that was wrong:
+
+- **Short-lived.** Fifteen minutes, the same as a person's. There is deliberately no
+  "machines are different" exemption, because that exemption is how a permanent credential
+  comes back. Revoking a client takes effect within the quarter hour.
+- **Revocable.** `active = false` and the next grant fails.
+- **Least privilege.** `allowed_scopes` narrows a credential to a subset of the SERVICE
+  role. incident-svc holds `admin:read` and nothing else; alerting-svc is the only
+  credential in the platform with `household:contact_read`; gov-mock's gateway holds
+  `incident:write` and cannot read anything.
+- **The secret is never stored.** Argon2id, shown once at provisioning, not recoverable.
+
+**The ceiling is in code, not in the database.** A client gets the intersection of what it
+asked for, what it was configured with, and what `Role.SERVICE` grants — and the widest of
+those three is `ROLE_SCOPES`. A row written straight into `admin.service_client` asking for
+`ledger:read` produces a credential that cannot be turned into a legal grant at all, which
+is the property that matters if the database is ever compromised.
+
+**Human gates are closed twice.** `Principal.can` already refuses `disbursement:release`
+and `dispatch:commit` to every machine principal. `ServiceClientConfig` refuses to be
+*configured* with one as well, and that check runs before the ceiling check so the error
+names the real problem. There is no row in that table that releases money.
+
+Every failure — unknown client, revoked client, wrong secret, unsupported grant type —
+returns the same refusal, because distinguishing them turns the endpoint into a way of
+enumerating which services exist and which credentials are live. A test asserts the three
+messages are identical.
+
+Provision with `make service-clients`. The secrets print once; `--rotate` issues new ones
+and the old ones stop working on the next grant.
+
+### `household:contact_read` is its own scope
+
+`/admin/households` deliberately selects no column that identifies a person — "nothing to
+redact is a stronger guarantee than redacting". Folding contact lookup into `admin:read`
+would have quietly widened every credential that only ever needed the hierarchy, so
+`GET /admin/households/{id}/contact` sits behind its own scope and returns a keyed HMAC,
+never a number. The gateway resolves that hash to a real address at the edge.
+
+Absent and out-of-scope return the same 404. Confirming that a household exists but belongs
+to another district is a disclosure in itself.
+
+### alerting-svc consumed nothing at all
+
+This was the surprise. `ledger-svc` publishes `disbursement.released` with a comment saying
+"alerting-svc listens for this and sends the confirmation SMS" — and alerting-svc ran no
+consumer. So the YES/NO reply, which the ledger's own module docstring calls the cheapest
+and highest-signal error detector in the system and the only independent evidence that
+money reached anybody, **had never once been asked for**.
+
+`PaymentNoticeWorker` now handles both payment events:
+
+- `disbursement.released` → "LKR 47,500 has been sent to your account. Reply YES if it
+  arrived, or NO if it did not." A NO already became a grievance automatically; now
+  something actually asks the question.
+- `disbursement.reversed` → the amount, the specific remedy in the household's own
+  language, and the case reference.
+
+Three rules, each guarding a failure mode:
+
+- **A household with no phone is an acknowledged gap.** Not everybody has one, and
+  redelivering the event will not give them one. What it needs is an officer.
+- **A directory outage is *not* acknowledged.** The event comes back. Recording "we could
+  not ask who this is" as "this person cannot be reached" would silently drop a household's
+  message and make the coverage figures wrong in the direction that looks fine. That is the
+  most important test in `tests/alerting/test_payment_notices.py`.
+- **`side_effect_free=False`.** A replay handed to this consumer would message every
+  household about a payment they were told about weeks ago.
+
+### Two contract bugs the consumer found
+
+Both had been latent because nothing consumed these events.
+
+**`AidDisbursementReleased` did not describe what was published.** The contract listed
+`released_at`, which is never sent, and omitted `household_id`, `payment_ref`,
+`confirmation_required` and `simulated`, which always are. `EventPayload` sets
+`extra="forbid"`, so the first consumer to call `parse_payload` would have failed outright
+— which is exactly what happened when one was written.
+
+**My own reversal event had two shapes.** The settlement poller and the internal endpoint
+published different field sets for the same event type. A consumer would have worked
+against one path and failed against the other. Both now publish the same payload, and a
+test parses both against the registered contract.
+
+### Reversal reasons moved to `sarana_shared`
+
+`ReversalReason` and its trilingual text now live in
+`sarana_shared.domain.reversal_reasons`, because three things need the same answer and none
+may import another's code: gov-mock's rail reports the reason, ledger-svc stores it and puts
+the text in a grievance, alerting-svc renders it into the SMS. alerting-svc was briefly
+importing `ledger_svc.domain.reversal` directly, which is a layering violation that mypy
+was happy to allow.
+
+A family told one thing by SMS and something else at the Divisional Secretariat counter is
+a family that stops believing either.
+
+---
+
 ## Things that will bite you
 
 These each cost real debugging time. They are written down so they cost you none.
@@ -654,12 +763,10 @@ holds `incident:write` and deliberately **not** `admin:read`, so the reporter's 
 cannot be forwarded — and citizens are the primary reporters. Every report was landing
 unplaced behind a silent 401.
 
-Worked around with `SARANA_INCIDENT_SERVICE_TOKEN`, a long-lived `SERVICE`-role token
-minted by `tools/seed/service_token.py` into `.env`.
-
-**This needs a real machine-credential flow before production.** File 07 built
-`InternalPrincipalMinter` for the gateway direction only; there is nothing for
-downstream→core-api. Consider a client-credentials endpoint on core-api.
+**Resolved.** `POST /api/v1/auth/token` is a client-credentials grant against
+`admin.service_client`: short-lived, revocable, least-privilege and area-scoped. See the
+section above. `tools/seed/service_token.py` is deleted; `make service-clients` provisions
+the replacements.
 
 ### Delivery states were added to the file 04 schema
 
@@ -708,12 +815,9 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
   needs several assessments today. The pure calculator underneath already handles multiple
   items and the household cap; the endpoint does not yet pass them.
 - **Payment rails are mocks.** Every reference starts `MOCK-`.
-- **A reversed payment does not yet message the household.** The compensating entry, the
-  grievance and the reopened entitlement are all written, and
-  `sarana.aid.disbursement.reversed` is published for alerting-svc — but nothing consumes
-  it, so the household learns about it when an officer contacts them rather than by SMS.
-  The event carries `needs_new_bank_details`, which is what decides whether that message
-  says "we will try again" or "bring us different account details".
+- **Nothing here is delivered to a real handset.** The payment notices go out through
+  `MockSmsGateway`, like every other channel in Phase 1. The message text, the language
+  selection and the delivery accounting are real; the transport is not.
 
 ---
 
@@ -742,7 +846,7 @@ make test                    # full suite
 make lint                    # ruff + mypy + eslint + tsc
 make seed-generate           # regenerate data/seed
 uv run python -m tools.cap_validate artifacts/cap/*.xml
-uv run python tools/seed/service_token.py    # mint a SERVICE token
+make service-clients                         # provision machine credentials
 
 # gov-mock (file 11)
 curl -s localhost:8006/met/v1/warnings | head -1               # XML, with the mock header

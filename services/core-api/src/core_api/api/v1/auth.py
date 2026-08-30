@@ -32,13 +32,15 @@ from core_api.api.v1.schemas import (
     OTPRequestResponse,
     OTPVerifyRequest,
     RefreshRequest,
+    ServiceTokenRequest,
+    ServiceTokenResponse,
     StepUpRequest,
     StepUpResponse,
     TokenResponse,
     TOTPConfirmRequest,
     TOTPEnrolResponse,
 )
-from core_api.domain.auth import capability, lockout, otp, sessions, totp
+from core_api.domain.auth import capability, lockout, otp, service_clients, sessions, totp
 from core_api.repo import auth_queries as q
 from sarana_shared.auth.grants import ScopeType, grants_for_assignments
 from sarana_shared.auth.scopes import Role, Scope
@@ -535,4 +537,121 @@ async def mint_capability_token(
         expires_in=int(capability.CAPABILITY_TTL.total_seconds()),
         gn_division_code=body.gn_division_code,
         permits=sorted(scope.value for scope in capability.CAPABILITY_SCOPES),
+    )
+
+
+@router.post("/token", response_model=ServiceTokenResponse)
+async def service_token(
+    body: ServiceTokenRequest,
+    session: SessionDep,
+    settings: SettingsDep,
+    tokens: TokensDep,
+    passwords: PasswordDep,
+) -> ServiceTokenResponse:
+    """**Client credentials.** How one service authenticates to another.
+
+    This replaces `SARANA_INCIDENT_SERVICE_TOKEN` and the pattern it stood for: a
+    never-expiring token minted by a script and pasted into an environment file, which
+    could not be rotated without a redeploy, could not be revoked at all, and granted every
+    scope the SERVICE role had whether the caller needed it or not.
+
+    What a token from here is instead:
+
+      **Short-lived.** The same fifteen minutes a person gets. Revoking a client takes
+      effect within that window, and there is deliberately no "machines are different"
+      exemption, because that exemption is how a permanent credential comes back.
+
+      **Narrow.** The intersection of what was asked for, what the credential holds, and
+      what the SERVICE role allows. The widest of those three is fixed in code, so
+      compromising `admin.service_client` cannot widen anything.
+
+      **Area-scoped.** Pinned to the client's own `(scope_type, scope_code)`, so row-level
+      security applies to a machine on exactly the same terms as to a person.
+
+      **Not a way to move money.** SERVICE is a machine principal, and `Principal.can`
+      refuses `disbursement:release` and `dispatch:commit` to every machine principal.
+      `ServiceClientConfig` refuses to be *configured* with one as well. There is no row in
+      that table that releases a payment.
+
+    Every failure returns the same refusal. An unknown client, a revoked one and a wrong
+    secret are indistinguishable from outside, because distinguishing them turns this into
+    a way of enumerating which services exist and which credentials are live.
+    """
+    correlation_id = ensure_correlation_id()
+
+    async def refuse(reason: str, *, client_id: str) -> Unauthenticated:
+        # Recorded, then refused. A burst of these is somebody probing the endpoint or a
+        # service running on a credential that was revoked without anybody telling it, and
+        # the two need to be visible to be told apart.
+        await q.record_security_event(
+            session,
+            kind="SERVICE_CREDENTIAL_DENIED",
+            detail={"reason": reason, "client_id": client_id, "correlation_id": correlation_id},
+        )
+        _log.warning("service_credential_denied", reason=reason, client_id=client_id)
+        return Unauthenticated(
+            "Those credentials did not match.", context={"reason": "bad_client_credentials"}
+        )
+
+    if body.grant_type != "client_credentials":
+        raise await refuse("unsupported_grant_type", client_id=body.client_id)
+
+    client = await q.find_service_client(session, body.client_id)
+
+    # The secret is verified even when the client is unknown, against a hash that cannot
+    # match. Skipping it would make an unknown client answer faster than a known one, and
+    # the difference is measurable.
+    secret_ok = passwords.verify(client.secret_hash if client else None, body.client_secret)
+
+    if client is None or not secret_ok:
+        raise await refuse("bad_credentials", client_id=body.client_id)
+    if not client.active:
+        raise await refuse("revoked", client_id=body.client_id)
+
+    try:
+        config = service_clients.ServiceClientConfig(
+            client_id=client.client_id,
+            allowed_scopes=service_clients.parse_scopes(client.allowed_scopes),
+            scope_type=ScopeType(client.scope_type),
+            scope_code=client.scope_code,
+            active=client.active,
+        )
+    except (service_clients.ClientRefused, ValueError) as error:
+        # The stored row cannot be turned into a legal grant. That is a configuration
+        # fault on our side, not a bad credential, so it is logged at error - but the
+        # caller still gets the same refusal, because the shape of a misconfiguration is
+        # not something to publish.
+        _log.error(
+            "service_client_misconfigured",
+            client_id=client.client_id,
+            problem=str(error),
+        )
+        raise await refuse("misconfigured", client_id=body.client_id) from error
+
+    requested = service_clients.parse_scopes(body.scope.split()) if body.scope else None
+    granted = service_clients.granted_scopes(config, requested)
+    if not granted:
+        raise await refuse("no_overlapping_scopes", client_id=body.client_id)
+
+    await q.touch_service_client(session, client.id)
+
+    token = tokens.issue(
+        str(client.id),
+        roles=frozenset({Role.SERVICE}),
+        grants=service_clients.grants_for(config, granted),
+        # The claim that makes every human gate refuse this token, wherever it is
+        # presented, without any service having to check what kind of caller it is.
+        machine=True,
+    )
+    _log.info(
+        "service_token_issued",
+        client_id=client.client_id,
+        scopes=sorted(scope.value for scope in granted),
+        scope_code=client.scope_code,
+    )
+
+    return ServiceTokenResponse(
+        access_token=token,
+        expires_in=settings.access_token_ttl_seconds,
+        scope=" ".join(sorted(scope.value for scope in granted)),
     )

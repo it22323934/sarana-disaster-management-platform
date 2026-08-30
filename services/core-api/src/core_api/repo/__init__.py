@@ -12,6 +12,7 @@ from core_api.repo.admin import (
     Household,
     Province,
     Role,
+    ServiceClient,
     UserRole,
 )
 from core_api.repo.audit import ACTOR_TYPES, AuditEntry
@@ -73,5 +74,6 @@ __all__ = [
     "RefreshToken",
     "Role",
     "SecurityEvent",
+    "ServiceClient",
     "UserRole",
 ]

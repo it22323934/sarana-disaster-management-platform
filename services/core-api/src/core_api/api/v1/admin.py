@@ -13,7 +13,7 @@ from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from core_api.api.deps import SessionDep
 from core_api.cache import (
@@ -40,6 +40,11 @@ _log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/admin", tags=["hierarchy"])
 
 ReadPrincipal = Depends(require(Scope.ADMIN_READ))
+
+# Reading a household's contact hash is the one hierarchy call that reaches a stable
+# per-person identifier, so it gets its own scope. In practice one credential holds it:
+# the service that sends the messages.
+ContactPrincipal = Depends(require(Scope.HOUSEHOLD_CONTACT_READ))
 
 
 class AreaSummary(BaseModel):
@@ -344,3 +349,51 @@ async def get_households(
     return await hierarchy.list_households(
         session, gn_division_id=gn_division_id, limit=limit, offset=offset
     )
+
+
+class HouseholdContact(BaseModel):
+    """Where to send a message for one household.
+
+    `recipient_ref_hash` is a keyed HMAC of the contact number, never the number. A
+    messaging gateway resolves it to a real address at the edge, so the platform can
+    address a household without ever holding a phone number that could be exported.
+
+    It is still a stable per-person identifier, which is why it sits behind its own scope
+    rather than behind `admin:read`.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    household_id: str
+    reference_code: str
+    recipient_ref_hash: str | None = Field(
+        description="Null for a household with no contact number on file. That is a real "
+        "and common state - not everybody has a phone - and a caller must treat it as "
+        "'cannot be messaged' rather than as an error."
+    )
+    preferred_language: str
+    gn_division_code: str
+
+
+@router.get("/households/{household_id}/contact", response_model=HouseholdContact)
+async def get_household_contact(
+    household_id: UUID,
+    session: SessionDep,
+    principal: Principal = ContactPrincipal,
+) -> Any:
+    """How to reach one household, for a service that has something to tell them.
+
+    Behind `household:contact_read` rather than `admin:read`, and held by one credential:
+    the messaging service. Every other reader of the hierarchy - the console, the
+    dashboard, the agents - keeps the weaker scope and cannot reach a per-person
+    identifier at all.
+
+    Never cached. This is per-household and scope-sensitive, and a shared cache keyed by
+    URL would serve one caller's authorised answer to another.
+    """
+    found = await hierarchy.household_contact(session, household_id=household_id)
+    if found is None:
+        # Absent and out-of-scope are the same answer on purpose. Confirming that a
+        # household exists but belongs to another district is a disclosure in itself.
+        raise NotFound("No such household.")
+    return found
