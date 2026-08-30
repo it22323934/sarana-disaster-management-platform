@@ -246,3 +246,43 @@ def test_ordinary_fields_survive() -> None:
     )
 
     assert set(cleaned) == {"incident_id", "gn_division_code", "confidence", "reasoning"}
+
+
+# --------------------------------------------------------------------------------------
+# The checkpointer's DSN
+# --------------------------------------------------------------------------------------
+
+
+def test_the_sqlalchemy_driver_is_stripped_for_psycopg() -> None:
+    """The bug that made durable checkpoints unbootable in any real deployment.
+
+    The service is configured with one database URL and everything else reaches Postgres
+    through SQLAlchemy, so it names a driver. LangGraph's checkpointer is psycopg-based and
+    cannot parse that scheme: it reports `missing "=" in connection info string`, which
+    reads like a malformed password and sends whoever hits it looking in the wrong place.
+    """
+    from agent_svc.runtime.checkpoint import psycopg_dsn
+
+    assert (
+        psycopg_dsn("postgresql+asyncpg://sarana:pw@db:5432/sarana")
+        == "postgresql://sarana:pw@db:5432/sarana"
+    )
+
+
+def test_a_dsn_with_no_driver_is_left_alone() -> None:
+    from agent_svc.runtime.checkpoint import psycopg_dsn
+
+    plain = "postgresql://sarana:pw@db:5432/sarana"
+
+    assert psycopg_dsn(plain) == plain
+
+
+def test_a_password_containing_a_plus_is_not_mangled() -> None:
+    """The split is on the scheme, not on the whole string. A password with a `+` in it is
+    ordinary, and corrupting it would produce an authentication failure nobody would trace
+    back to here."""
+    from agent_svc.runtime.checkpoint import psycopg_dsn
+
+    assert psycopg_dsn("postgresql+asyncpg://sarana:a+b@db:5432/sarana").endswith(
+        "a+b@db:5432/sarana"
+    )

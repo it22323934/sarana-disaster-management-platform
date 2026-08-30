@@ -25,6 +25,7 @@ suite that needs Postgres to run a graph is one nobody runs.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, Final
@@ -103,6 +104,24 @@ def check_payload_size(state: dict[str, Any]) -> int:
     return size
 
 
+def psycopg_dsn(url: str) -> str:
+    """A SQLAlchemy database URL, as psycopg needs it.
+
+    The service is configured with one database URL and everything else here reaches
+    Postgres through SQLAlchemy, so that URL names a driver: `postgresql+asyncpg://`.
+    LangGraph's checkpointer is psycopg-based, and psycopg cannot parse that scheme at all
+    - it reports `missing "=" in connection info string`, which reads like a malformed
+    password and sends whoever hits it looking in the wrong place entirely.
+
+    Converted here rather than by asking a deployment for a second URL, because two URLs
+    for one database is two things to get out of step.
+    """
+    scheme, separator, rest = url.partition("://")
+    if not separator:
+        return url
+    return f"{scheme.split('+', 1)[0]}{separator}{rest}"
+
+
 @asynccontextmanager
 async def durable_checkpointer(dsn: str) -> AsyncIterator[Any]:
     """A Postgres checkpointer, set up and ready.
@@ -112,10 +131,28 @@ async def durable_checkpointer(dsn: str) -> AsyncIterator[Any]:
     up rather than fail on the first interrupt.
 
     Imported lazily so a test importing this module does not need the driver.
+
+    Raises:
+        RuntimeError: when the process is on an event loop psycopg cannot use. Windows
+            defaults asyncio to the Proactor loop and psycopg's async mode refuses it; the
+            driver's own message never mentions SARANA, so the operator who runs the
+            service natively on Windows gets a stack trace with no way in. Raised rather
+            than degraded to an in-process saver: losing every paused approval on the next
+            restart is not a fallback, it is a silent loss of the human gates.
     """
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-    async with AsyncPostgresSaver.from_conn_string(dsn) as saver:
+    if isinstance(asyncio.get_running_loop(), getattr(asyncio, "ProactorEventLoop", ())):
+        raise RuntimeError(
+            "Durable checkpoints need an event loop psycopg can use, and this process is "
+            "on Windows' ProactorEventLoop. Run the service in Docker (which is what "
+            "production does), or start it with "
+            "asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy()). "
+            "Setting SARANA_AGENT_DURABLE_CHECKPOINTS=false also starts, but every run "
+            "paused on a human decision is then lost on restart."
+        )
+
+    async with AsyncPostgresSaver.from_conn_string(psycopg_dsn(dsn)) as saver:
         await saver.setup()
         _log.info("checkpointer_ready", kind="postgres")
         yield saver

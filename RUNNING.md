@@ -131,7 +131,16 @@ make reset    # DESTRUCTIVE: delete volumes, rebuild empty, migrate, seed
 make test                       # full suite; spins up throwaway Postgres containers
 uv run pytest tests/core_api    # one area
 make lint                       # ruff + mypy + eslint + tsc
+make eval AGENT=noop            # score an agent against labelled fixtures
 ```
+
+`make eval` writes a markdown report to `artifacts/eval/` — accuracy, calibration, latency,
+cost and how often a human changed the answer. It reaches no model provider and no network,
+so it runs anywhere the tests do.
+
+On Windows, the root `conftest.py` switches asyncio to the Selector event loop. psycopg's
+async mode refuses to run on the default Proactor loop, so without it every test that boots
+agent-svc with durable checkpoints fails locally while passing in CI and in Docker.
 
 The suite uses testcontainers. If a run dies with a port-mapping error from
 `testcontainers-ryuk`, a previous run left a reaper behind:
@@ -201,11 +210,14 @@ goes anywhere.
 
 ## What is not built yet
 
-The five backend services are complete and the stack boots. Above them, most of the
+All six backend services are complete and the stack boots. Above them, most of the
 product is not there. Working backwards from the build files:
 
-- **No agents.** No LangGraph runtime, no forecasting, warning, intake, triage or anomaly
-  agent. Files 12–18.
+- **The agent runtime is built; the agents are not.** agent-svc runs LangGraph graphs,
+  pauses them on a human decision, survives a restart with the decision still pending, and
+  scores itself against labelled fixtures. What it hosts is one reference agent that
+  classifies with three keywords. No forecasting, warning, intake, triage or anomaly agent
+  exists, and nothing calls a model. Files 13–18.
 - **The three frontends are framework scaffolds** — one page each. Files 19–24.
 - **No AWS infrastructure, observability wiring or CI.** Files 25–29.
 
@@ -229,11 +241,17 @@ Worth knowing before you demo anything:
   household with no contact number is targeted and recorded as `NO_CHANNEL`, so it shows up
   in `/alerts/{id}/delivery/gaps` rather than being quietly dropped from the denominator.
   Needs `SARANA_ALERTING_CLIENT_SECRET`; without it the alert reaches nobody and says so.
-- **A reversed payment does not message the household.** The mock rail fails about 3% of
-  transfers, and ledger-svc's settlement poller now turns each one into a compensating
-  ledger entry, a grievance in the household's own language and a reopened entitlement —
-  but nothing yet consumes the event that would send the SMS, so they hear about it from an
-  officer rather than a message.
+- **A reversed payment does message the household**, through the same mock SMS gateway as
+  everything else. The rail fails about 3% of transfers; the settlement poller turns each
+  one into a compensating ledger entry, a grievance in the household's own language, a
+  reopened entitlement and an event, and alerting-svc sends the notice. The message text,
+  the language and the delivery accounting are real; the transport is not.
+- **Agent runs are visible but nothing starts them automatically.** The event trigger table
+  in `agent_svc/consumers/triggers.py` has one row and it is disabled: the reference agent
+  would fill the approval inbox with questions no officer can answer. Start a run by hand
+  with `POST /api/v1/agents/noop/runs`, then look at
+  `GET /api/v1/agents/threads?status=interrupted` — that is the approval inbox the ops
+  console will render.
 - **Anchors are not externally stored** unless an object store is configured. Without one
   the anchor job records the Merkle root in the database and logs
   `anchor_not_externally_stored`; the `s3_object_lock_uri` is null rather than a

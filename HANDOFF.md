@@ -1,6 +1,6 @@
 # SARANA — handoff
 
-State of the build as of 2026-08-29. Written for whoever picks this up next.
+State of the build as of 2026-08-31. Written for whoever picks this up next.
 
 Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 
@@ -9,7 +9,7 @@ Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 ## Where the build has got to
 
 The repository is organised around 30 numbered build files in `.claude/`. Progress is
-strictly sequential. Files 03-11 are complete; the next unstarted file is 12.
+strictly sequential. Files 03-12 are complete; the next unstarted file is 13.
 
 | File | Area | State |
 |---|---|---|
@@ -21,24 +21,24 @@ strictly sequential. Files 03-11 are complete; the next unstarted file is 12.
 | 08 | incident-svc | Done — 20 endpoints |
 | 09 | alerting-svc | Done — 15 endpoints. Targeting is a placeholder. |
 | 10 | ledger-svc | Done — 28 endpoints, publicly verifiable ledger |
-| 11 | gov-mock | Done — 35 endpoints, 7 mocked systems, inbound simulator |
-| **12** | **LangGraph runtime** | **Not started — start here** |
-| 13–18 | Agents | Not started |
+| 11 | gov-mock | Done — 31 endpoints, 7 mocked systems, inbound simulator |
+| 12 | LangGraph runtime | Done — runtime, HTTP surface, event triggers, eval harness |
+| **13–18** | **Agents** | **Not started — start here** |
 | 19–21 | Web (design system, ops console, public dashboard) | Scaffolds only |
 | 22–24 | Mobile (foundation, citizen, field companion) | Scaffold only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-**1,066 tests passing, 2 skipped.** `ruff check`, `ruff format --check` and `mypy` (261
+**1,182 tests passing, 2 skipped.** `ruff check`, `ruff format --check` and `mypy` (286
 source files) all clean.
 
 ```
-core-api        29 endpoints,  6,483 lines
-incident-svc    20 endpoints,  4,615 lines
-alerting-svc    15 endpoints,  3,357 lines
-ledger-svc      29 endpoints,  6,900 lines
-gov-mock        35 endpoints,  4,900 lines   <- 7 mocked systems + control plane
-agent-svc        0 endpoints,    575 lines   <- schema only
+core-api        32 endpoints,  7,055 lines
+incident-svc    20 endpoints,  4,657 lines
+alerting-svc    15 endpoints,  4,177 lines
+ledger-svc      30 endpoints,  7,149 lines
+gov-mock        31 endpoints,  4,865 lines   <- 7 mocked systems + control plane
+agent-svc        6 endpoints,  4,007 lines   <- runtime, one reference agent, eval harness
 ```
 
 The jump from 680 is file 11's suite plus `tests/alerting/test_seeded_templates.py`, which
@@ -672,6 +672,169 @@ a family that stops believing either.
 
 ---
 
+## File 12 is done — the agent runtime, and the decisions inside it
+
+`services/agent-svc` now has a working LangGraph runtime, an HTTP surface, event-triggered
+runs and an evaluation harness. One reference agent, `noop`, exercises all of it without
+touching a model provider.
+
+```bash
+uv run pytest tests/agent_svc                              # 117 tests
+uv run python -m agent_svc.runtime.eval --agent noop --fixtures data/fixtures/smoke
+make eval AGENT=noop                                       # writes artifacts/eval/
+```
+
+### A node re-executes from the top when it resumes — plan the graph around it
+
+This is the single fact that decides how every agent in files 13-18 is shaped. When a node
+calls `interrupt()` and a person answers days later, LangGraph **re-runs that node from its
+first line**. Everything above the `interrupt()` happens twice.
+
+So the side effect goes in a *separate node downstream of the interrupt*, never after it in
+the same function. `agents/noop/graph.py` is laid out that way deliberately —
+`approve` pauses, `record` writes the audit entry — and the comment saying why is in the
+node itself, because the next person to add a line to an approving node will not have read
+this file.
+
+`tests/agent_svc/runtime/test_interrupt_resume.py` proves both halves: the pre-interrupt
+code ran twice and the post-interrupt side effect ran once.
+
+### The version numbers in the build file do not resolve
+
+File 12 pins `langgraph-checkpoint-postgres ^2.0`. That does not install: the 2.x line
+requires `langgraph<1.2`, and `langgraph` 1.2.3 was itself yanked upstream for a merge
+regression. The 3.x line is the one that supports langgraph 1.2.
+
+What is actually pinned, and resolved: langgraph 1.2.11, langgraph-checkpoint-postgres
+3.1.2, langchain-core 1.6.1, openai 2.54.0. `langgraph.prebuilt` is deprecated in this line
+— use `StateGraph` and `langgraph.types.interrupt` / `Command` directly.
+
+### Two scopes, not one: `agent:invoke` and `agent:review`
+
+`agent:invoke` *starts* an agent. Machines hold it, because nearly every real run is
+triggered by an event rather than by somebody clicking.
+
+`agent:review` sees and answers what an agent is waiting on. It is held by DS_APPROVER,
+DISTRICT_APPROVER, DMC_OPERATOR and DISPATCHER, and by **no machine role** — with
+`allow_machine=False` on the dependency as belt and braces. An agent resuming its own
+approval would make every human gate in the platform decorative.
+
+The split was added after noticing that the approval inbox was readable only by ADMIN,
+which would have left the dispatchers and approvers who actually answer these unable to
+open the queue.
+
+### `GET /agents/threads?status=interrupted` needs the graph, not the checkpoint table
+
+The approval inbox returned `[]` while runs sat paused. The state field named
+`interrupt_payload` is never written, because the pause is LangGraph's mechanism rather than
+ours: only `graph.aget_state()` knows, via `snapshot.interrupts`.
+
+So the endpoint lists thread ids from the checkpointer and then asks the graph about each.
+**That is N+1 by construction.** Fine while live threads are few; a deployment with
+thousands of pending approvals wants an index on the checkpoint table instead, and the first
+cyclone is the wrong time to discover the inbox is O(threads). The comment is on the
+function.
+
+An inbox that is quietly empty is the worst failure a human-gate design can have: the gates
+hold, and nobody can see what they are holding.
+
+### Starting a run that is already in flight rejoins it
+
+`runtime/run.py` exists for one reason. LangGraph takes fresh input on an interrupted thread
+as a new update from `START`: the graph re-enters at the top, every pre-interrupt node runs
+again, and the approval an officer is halfway through answering is rebuilt underneath them.
+
+A retried webhook, a redelivered event and an impatient second click must all land on the
+pending run and leave it alone. `start_run` checks `snapshot.next` and returns the pending
+state untouched. A *finished* run does re-run — rejoining applies to work in flight, not
+work that is over, or a subject could never be reprocessed after a fix.
+
+Both the HTTP surface and the event consumers go through it, because two copies of this
+logic would drift and the drift would show up as "it works when I click it".
+
+### Events start agents through one declarative table
+
+`consumers/triggers.py` maps event type → agent. One file, so the answer to "what happens
+when a report arrives?" is not spread across six directories. Three fields per row have no
+sensible default: where the subject id is, which payload fields the run may carry, and
+whether the row is enabled.
+
+`carry` is the one worth knowing about. A checkpoint outlives the run and goes to a trace
+exporter that leaves the country (ADR-011), so an event payload copied wholesale into agent
+state is how a phone number ends up in one. **A field not named in `carry` does not reach
+the agent.**
+
+The subscription declares `side_effect_free=False`. Agents draft alerts, propose dispatches
+and flag disbursements; replaying a week of incident events into this consumer would re-run
+every one of those, so the bus refuses to hand it a replay at all.
+
+Every routing refusal — no subject, unknown agent, unroutable type — *acknowledges* the
+event and logs loudly. A message that will never succeed being redelivered forever is a
+poison pill that blocks everything queued behind it, and the outage it produces looks
+nothing like its cause. Only a genuine transient failure propagates.
+
+**The one row in the table today is disabled on purpose.** `noop` classifies with three
+keywords and asks a person about everything else; pointed at live citizen reports it would
+fill the approval inbox with questions no officer can usefully answer. File 15 replaces that
+row with the intake agent. Flipping `enabled=True` is how you watch the wiring work.
+
+### The eval harness scores the agent and the platform separately
+
+`runtime/eval.py` reports two accuracies, and the gap between them is exactly what the human
+gates are buying:
+
+- **as delivered** — what came out, review included. The number a ministry cares about.
+- **agent alone** — what the agent got right before anybody looked at it.
+
+Calibration is scored on the second. Scoring a reviewed case as a hit for the model would
+report every agent that routes to a human as *perfectly calibrated* — which would make ECE,
+the number that justifies using `confidence` as a gate at all, meaningless in exactly the
+direction nobody would notice. The first version of the harness did this, and the smoke set
+scored ECE 0.31; correcting it gives 0.11.
+
+The human-review rate is reported alongside how often review **changed** the outcome, because
+both halves are needed to read a gate. Review that never changes anything is a queue burning
+operator attention; review that changes everything means the agent routes well and is wrong
+whenever it hesitates. Neither shows up in accuracy.
+
+Thresholds live in `thresholds.json` beside the fixtures, not in the code: the bar for a
+ten-case smoke set and a thousand-case regression set are not the same bar, and a gate
+nobody can pass is a gate somebody deletes.
+
+### Three bugs the tests found, all of them real
+
+**ledger-svc and agent-svc never mounted `AuthenticationMiddleware`.** Both services'
+`deps.py` carried a comment saying the principal is "set by AuthenticationMiddleware", and
+neither app factory added it. ledger-svc's entire authenticated surface — 30 endpoints
+including the disbursement human gate — returned 401 against a valid token. Domain and
+schema tests cannot see this; only an HTTP-level test can.
+
+**The checkpointer was handed a DSN psycopg cannot parse.** The service is configured with
+one database URL and everything else reaches Postgres through SQLAlchemy, so it names a
+driver: `postgresql+asyncpg://`. LangGraph's checkpointer is psycopg-based and reports
+`missing "=" in connection info string` — which reads like a malformed password and sends
+you looking in entirely the wrong place. `runtime.checkpoint.psycopg_dsn` strips the driver.
+**Durable checkpoints could never have booted in a real deployment before this.**
+
+**LangGraph's `add_node` rejected a `Callable` type alias.** A `Callable[[AgentState], ...]`
+alias erases the parameter *name*, and LangGraph's own `_Node` Protocol names it `state`.
+`runtime.nodes.Node` is a matching Protocol for that reason.
+
+### Windows needs the Selector event loop, and the root `conftest.py` sets it
+
+psycopg's async mode refuses to run on Windows' default Proactor loop, so every test that
+boots agent-svc with durable checkpoints failed locally while passing in CI and in the
+Docker image, both of which are Linux. A suite that fails only on the machines the team
+actually types on is a suite people learn to ignore.
+
+The root `conftest.py` selects `WindowsSelectorEventLoopPolicy` on win32 and is a no-op
+everywhere else. The service itself now refuses to start with a sentence naming the cause
+and the fix, rather than surfacing the driver's message — and it refuses rather than
+degrading to an in-process saver, because losing every paused approval on the next restart
+is not a fallback, it is a silent loss of the human gates.
+
+---
+
 ## Things that will bite you
 
 These each cost real debugging time. They are written down so they cost you none.
@@ -815,9 +978,19 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
   is not implemented.
 - **Perf gate (file 07)** — `tests/perf/resolve.js` is written to spec (p99 < 20 ms at 200
   rps) but has never been run. k6 is not installed and the target is unverified.
-- **Agent seams** — `incident_svc.domain.dispatch_gate.NullResumer` stands in for the
-  LangGraph runtime. Every safety property of the gate holds without it; the response
-  reports `graph_resumed: false` so nothing mistakes it for a completed agent decision.
+- **The dispatch gate is not yet wired to the runtime (files 12/16).**
+  `incident_svc.domain.dispatch_gate.NullResumer` still stands in. agent-svc now has a real
+  resume endpoint, but no dispatch agent exists to resume — that is file 16. Every safety
+  property of the gate holds without it; the response reports `graph_resumed: false` so
+  nothing mistakes it for a completed agent decision.
+- **No agent calls a model yet (file 12).** `runtime/models.py` routes tiers, tracks spend
+  and retries, and nothing exercises it against a real provider: the only agent is `noop`,
+  which is deterministic by design. The first agent that calls OpenAI is file 13, and it
+  will be the first real test of the budget breaker and the retry policy.
+- **Nothing triggers an agent from an event in a running stack (file 12).** The consumer,
+  the trigger table and the idempotency are all built and tested; the single row in
+  `consumers/triggers.py` is disabled, because pointing the reference agent at live citizen
+  reports would fill the approval inbox with unanswerable questions. File 15 turns it on.
 - **Seed data below district level is synthetic.** Provinces and districts are real
   (official codes and names). DS and GN divisions are generated rectangles around real
   district centroids. Never present them as survey boundaries.
@@ -873,7 +1046,17 @@ curl -X POST localhost:8006/mock/v1/chaos -d '{"timeout_pct":100}'
 curl -s localhost:8006/mock/v1/state | jq .clock
 open http://localhost:8006/telco/sim                           # the inbound simulator
 uv run pytest tests/gov_mock
+
+# agent-svc (file 12)
+make eval AGENT=noop                                           # -> artifacts/eval/*.md
+uv run python -m agent_svc.runtime.eval --agent noop --fixtures data/fixtures/smoke
+uv run pytest tests/agent_svc services/agent-svc/tests
+curl -s localhost:8005/api/v1/agents -H "Authorization: Bearer $TOKEN"
+curl -s "localhost:8005/api/v1/agents/threads?status=interrupted" -H "Authorization: Bearer $TOKEN"
 ```
+
+`agent:invoke` starts a run; `agent:review` opens the approval inbox and answers an
+interrupt. No machine role holds the second one.
 
 Demo accounts and the port map are in [RUNNING.md](RUNNING.md). Password for all of them
 is `sarana-demo-passphrase`.

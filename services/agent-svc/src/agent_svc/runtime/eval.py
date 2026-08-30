@@ -253,7 +253,7 @@ def load_cases(path: Path) -> list[Case]:
 
     cases: list[Case] = []
     for file in files:
-        for index, line in enumerate(file.read_text(encoding="utf-8").splitlines()):
+        for line in file.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
             if not stripped or stripped.startswith("//"):
                 continue
@@ -348,7 +348,7 @@ async def run_case(graph: Any, spec: AgentSpec, case: Case) -> CaseResult:
             agent_correct=_matches(before_review, case.label),
             # The confidence the *agent* stated, before a person overrode it. Scoring
             # calibration on a post-review value would measure the reviewer, not the model.
-            confidence=float(before_review.get("confidence", output.get("confidence", 0.0))),
+            confidence=_stated_confidence(before_review, output),
             reviewed=reviewed,
             review_changed_outcome=reviewed and not _same_answer(before_review, output),
             latency_ms=elapsed,
@@ -374,6 +374,17 @@ async def run_case(graph: Any, spec: AgentSpec, case: Case) -> CaseResult:
             gate_matched_expectation=not case.expect_human_review,
             error=f"{type(exc).__name__}: {exc}",
         )
+
+
+def _stated_confidence(before: dict[str, Any], after: dict[str, Any]) -> float:
+    """The confidence the *agent* stated, before a person overrode it.
+
+    Read from the pre-review output, because scoring calibration on a post-review value
+    would measure the reviewer rather than the model. A non-numeric value scores 0 rather
+    than raising: a malformed output is a case the agent got wrong, not a crashed eval run.
+    """
+    value = before.get("confidence", after.get("confidence", 0.0))
+    return float(value) if isinstance(value, int | float) else 0.0
 
 
 def _same_answer(before: dict[str, Any], after: dict[str, Any]) -> bool:
@@ -474,7 +485,7 @@ def render_markdown(report: Report) -> str:
     ]
     for low, high, count, stated, actual in report.bins:
         bar = "█" * round(actual * 20)
-        lines.append(f"| {low:.1f}–{high:.1f} | {count} | {stated:.2f} | {actual:.2f} | `{bar}` |")
+        lines.append(f"| {low:.1f}-{high:.1f} | {count} | {stated:.2f} | {actual:.2f} | `{bar}` |")
     if not report.bins:
         lines.append("| — | 0 | — | — | |")
 
@@ -551,25 +562,25 @@ def main(argv: list[str] | None = None) -> int:
     except (KeyError, FileNotFoundError) as exc:
         # The two mistakes anyone actually makes on this command line. Reported as a
         # sentence, not a traceback.
-        print(f"error: {exc}", file=sys.stderr)
+        sys.stderr.write(f"error: {exc}\n")
         return 2
 
     if args.no_write:
-        print(render_markdown(report))
+        sys.stdout.write(render_markdown(report))
     else:
         path = write_report(report, args.out)
-        print(f"wrote {path}")
+        sys.stdout.write(f"wrote {path}\n")
 
-    print(
+    sys.stdout.write(
         f"{args.agent}: accuracy {report.accuracy:.1%} "
         f"(agent alone {report.agent_accuracy:.1%}, gate {report.min_accuracy:.0%}), "
         f"ECE {report.ece:.3f} "
-        f"(gate {report.max_ece:.2f}), review rate {report.review_rate:.1%}"
+        f"(gate {report.max_ece:.2f}), review rate {report.review_rate:.1%}\n"
     )
     if not report.passed:
         # Non-zero so CI fails on a regression rather than filing a report nobody opens.
         for failure in report.errors:
-            print(f"  {failure.case_id}: {failure.error}", file=sys.stderr)
+            sys.stderr.write(f"  {failure.case_id}: {failure.error}\n")
         return 1
     return 0
 
