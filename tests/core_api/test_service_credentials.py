@@ -395,3 +395,91 @@ def test_a_generated_secret_clears_the_minimum() -> None:
     from core_api.domain.auth.service_clients import MIN_SECRET_LENGTH
 
     assert len(secrets.token_urlsafe(32)) >= MIN_SECRET_LENGTH
+
+
+# --------------------------------------------------------------------------------------
+# The contact endpoints
+# --------------------------------------------------------------------------------------
+
+
+async def test_admin_read_alone_cannot_read_a_contact(
+    client: AsyncClient, schema_engine: AsyncEngine
+) -> None:
+    """The reason `household:contact_read` is its own scope.
+
+    `/admin/households` deliberately selects no column identifying a person. Folding
+    contact lookup into `admin:read` would have quietly widened every credential that only
+    ever needed the hierarchy - the console, the dashboard, the agents.
+    """
+    secret = await make_client(schema_engine, client_id="hier-svc", scopes=["admin:read"])
+    token = (await grant(client, "hier-svc", secret)).json()["access_token"]
+
+    response = await client.get(
+        f"/api/v1/admin/households/{uuid7()}/contact",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 403
+
+
+async def test_the_contact_scope_reaches_the_endpoint(
+    client: AsyncClient, schema_engine: AsyncEngine
+) -> None:
+    """A credential holding it gets past authorisation.
+
+    404 rather than 200 because the household does not exist - which is the right answer
+    and proves the scope check passed.
+    """
+    secret = await make_client(
+        schema_engine,
+        client_id="msg-svc",
+        scopes=["admin:read", "household:contact_read"],
+    )
+    token = (await grant(client, "msg-svc", secret)).json()["access_token"]
+
+    response = await client.get(
+        f"/api/v1/admin/households/{uuid7()}/contact",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404
+
+
+async def test_a_bulk_contact_read_needs_the_same_scope(
+    client: AsyncClient, schema_engine: AsyncEngine
+) -> None:
+    """The fan-out path is not a weaker door than the single lookup."""
+    secret = await make_client(schema_engine, client_id="bulk-svc", scopes=["admin:read"])
+    token = (await grant(client, "bulk-svc", secret)).json()["access_token"]
+
+    response = await client.get(
+        "/api/v1/admin/households/contacts",
+        params={"gn_division_code": "LK-21-01-001"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 403
+
+
+async def test_a_bulk_read_refuses_an_unbounded_area(
+    client: AsyncClient, schema_engine: AsyncEngine
+) -> None:
+    """A caller naming half the country pages, rather than holding one connection open.
+
+    A national alert covers ~14,000 divisions; a single query over all of them would tie
+    up a connection during the one event when it must not.
+    """
+    secret = await make_client(
+        schema_engine,
+        client_id="greedy-bulk",
+        scopes=["admin:read", "household:contact_read"],
+    )
+    token = (await grant(client, "greedy-bulk", secret)).json()["access_token"]
+
+    response = await client.get(
+        "/api/v1/admin/households/contacts",
+        params={"gn_division_code": [f"LK-21-01-{n:03d}" for n in range(1, 400)]},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422

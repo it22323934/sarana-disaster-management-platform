@@ -46,6 +46,11 @@ ReadPrincipal = Depends(require(Scope.ADMIN_READ))
 # the service that sends the messages.
 ContactPrincipal = Depends(require(Scope.HOUSEHOLD_CONTACT_READ))
 
+# How many divisions one bulk contact request may name. A national alert covers ~14,000,
+# and a single query over all of them would hold a connection long enough to matter during
+# the one event when it must not. The caller pages; this is the ceiling on one page.
+MAX_DIVISIONS_PER_REQUEST = 200
+
 
 class AreaSummary(BaseModel):
     """A hierarchy node, without geometry."""
@@ -397,3 +402,55 @@ async def get_household_contact(
         # household exists but belongs to another district is a disclosure in itself.
         raise NotFound("No such household.")
     return found
+
+
+class DivisionContacts(BaseModel):
+    """Every messaging address in a set of divisions, one page at a time."""
+
+    model_config = ConfigDict(frozen=True)
+
+    contacts: list[HouseholdContact]
+    next_offset: int | None = Field(
+        default=None,
+        description="Pass as `offset` to continue. Null when the last page is reached.",
+    )
+
+
+@router.get("/households/contacts", response_model=DivisionContacts)
+async def get_division_contacts(
+    session: SessionDep,
+    principal: Principal = ContactPrincipal,
+    gn_division_code: Annotated[list[str], Query()] = ...,  # type: ignore[assignment]
+    limit: int = Query(default=2000, ge=1, le=5000),
+    offset: int = Query(default=0, ge=0),
+) -> Any:
+    """Messaging addresses for a whole area, for an alert fan-out.
+
+    The bulk form of the single-household lookup, behind the same scope. Warning a district
+    one household at a time would be thousands of round trips during the minutes when this
+    service is busiest and the warning is most time-critical.
+
+    **Households with no contact number are returned, not filtered.** `recipient_ref_hash`
+    is null for them. That is the answer an operator needs — "480 households here, 63 of
+    whom cannot be reached by SMS" — and filtering would report the division as fully
+    covered when a sixth of it is unreachable.
+
+    Never cached. Scope-sensitive and per-division; a shared cache keyed by URL would serve
+    one caller's authorised answer to another.
+    """
+    if not gn_division_code:
+        raise ValidationFailed("Name at least one gn_division_code.")
+    if len(gn_division_code) > MAX_DIVISIONS_PER_REQUEST:
+        raise ValidationFailed(
+            f"At most {MAX_DIVISIONS_PER_REQUEST} divisions per request; page through larger areas."
+        )
+
+    rows = await hierarchy.division_contacts(
+        session, gn_division_codes=list(gn_division_code), limit=limit, offset=offset
+    )
+    return {
+        "contacts": rows,
+        # A full page means there may be more. One extra empty request at the end is
+        # cheaper than a fan-out that silently stopped at a page boundary.
+        "next_offset": (offset + limit) if len(rows) == limit else None,
+    }

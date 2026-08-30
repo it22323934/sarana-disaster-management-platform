@@ -29,7 +29,7 @@ strictly sequential. Files 03-11 are complete; the next unstarted file is 12.
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-**1,051 tests passing, 2 skipped.** `ruff check`, `ruff format --check` and `mypy` (261
+**1,066 tests passing, 2 skipped.** `ruff check`, `ruff format --check` and `mypy` (261
 source files) all clean.
 
 ```
@@ -54,21 +54,38 @@ than 13 tests that had silently never executed.
 
 File 09 is otherwise complete. This is the piece that was left, and it is load-bearing.
 
-### Real targeting — still open, but no longer blocked on data
+### Real targeting — done
 
-`alerting_svc.api.v1.alerts._targets_for()` is a **placeholder**. It returns one synthetic
-target per GN division so the fan-out, delivery accounting and gaps logic above it are
-exercised with the right shape. It does not read a single real household.
+`_targets_for()` reads `admin.household` through core-api under a credential holding
+`household:contact_read` and nothing else. Before this, it returned one synthetic target
+per GN division: a division of 400 households counted as **one person** in every delivery
+figure the platform published, so "1,203 unconfirmed, 865 no channel available" described
+an area with four synthetic people in it.
 
-Real targeting means reading `admin.household` — `contact_msisdn_hash`,
-`preferred_language`, `gn_division_id` — which lives behind core-api and needs the
-service-credential flow described below. Until then every delivery number is structurally
-correct and factually meaningless.
+Three decisions inside it:
 
-**File 11 removed the other half of the problem.** gov-mock now serves households by GN
-division and per-division coverage that degrades as cell sites lose power, so there is
-realistic data to target against and a real reason for a delivery gap to appear. What is
-left is the credential.
+**Unreachable households are targeted anyway.** A household with no contact number comes
+back with no hash, gets a stable identity keyed on its own id, and the fan-out records
+`NO_CHANNEL` against it. They are the people who need a vehicle with a loudhailer, and
+`/alerts/{id}/delivery/gaps` can only name them if targeting keeps them. Filtering them out
+would report a division as fully covered when a sixth of it cannot be reached.
+
+**Two households sharing a handset are one target.** Common in a village, and sending the
+same evacuation order twice to one phone is noise at the moment attention is scarcest. The
+delivery accounting already counted by contact hash, so they collapsed in the figures
+either way — deduplicating here means the message is *sent* once rather than merely counted
+once. Unreachable households key on their own id and never collapse, because each one is a
+separate person somebody has to go and find.
+
+**A directory outage stops the dispatch.** `DirectoryUnavailable` propagates rather than
+being caught. A fan-out over whichever households happened to resolve, reported as a
+completed dispatch, is worse than one that refused: the alert looks sent and the people it
+missed are invisible.
+
+`GET /admin/households/contacts` is the bulk read behind it — paged, area-scoped, capped at
+200 divisions per request, and behind the same scope as the single-household lookup. A
+national alert covers ~14,000 divisions and pages through them; one query over all of them
+would hold a connection open during the single event when it must not.
 
 ### The twelve templates load as DRAFT, and that is deliberate
 

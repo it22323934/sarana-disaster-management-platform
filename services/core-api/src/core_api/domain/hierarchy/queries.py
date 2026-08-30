@@ -269,3 +269,49 @@ async def household_contact(session: AsyncSession, *, household_id: UUID) -> dic
     result = await session.execute(text(_HOUSEHOLD_CONTACT_SQL), {"household_id": household_id})
     row = result.mappings().first()
     return dict(row) if row else None
+
+
+# Every messaging address in one division, for an alert fan-out.
+#
+# The bulk form of `_HOUSEHOLD_CONTACT_SQL`, and behind the same scope. Targeting a
+# district one household at a time would be thousands of round trips during exactly the
+# minutes when core-api is busiest and a warning is most time-critical.
+#
+# Ordered by reference so paging is stable: a fan-out that re-read a page mid-dispatch and
+# got a different slice would send twice to some households and never to others.
+#
+# `contact_msisdn_hash` may be NULL. Those rows are returned rather than filtered, because
+# "this division has 480 households and 63 of them cannot be reached by SMS" is the answer
+# an operator needs; filtering would report the division as fully covered.
+_DIVISION_CONTACTS_SQL = """
+SELECT h.id::text                AS household_id,
+       h.reference_code,
+       h.contact_msisdn_hash     AS recipient_ref_hash,
+       h.preferred_language,
+       g.code                    AS gn_division_code
+FROM admin.household h
+JOIN admin.gn_division g ON g.id = h.gn_division_id
+WHERE g.code = ANY(CAST(:gn_division_codes AS text[]))
+ORDER BY g.code, h.reference_code
+LIMIT :limit OFFSET :offset
+"""
+
+
+async def division_contacts(
+    session: AsyncSession,
+    *,
+    gn_division_codes: list[str],
+    limit: int = 5000,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    """Messaging addresses for every household in these divisions.
+
+    Row-level security applies, so a caller scoped to one district gets that district's
+    rows and nothing else - which is what makes an alerting service's reach a property of
+    its credential rather than of its own restraint.
+    """
+    result = await session.execute(
+        text(_DIVISION_CONTACTS_SQL),
+        {"gn_division_codes": gn_division_codes, "limit": limit, "offset": offset},
+    )
+    return [dict(row) for row in result.mappings()]

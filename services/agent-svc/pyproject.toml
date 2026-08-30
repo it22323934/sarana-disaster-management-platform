@@ -7,6 +7,18 @@ dependencies = [
     "sarana-shared",
     "uvicorn[standard]>=0.34",
     "httpx>=0.28",
+    # The 1.x API differs from the patterns still all over the internet:
+    # langgraph.prebuilt is deprecated, HITL is langgraph.types.interrupt, and a node
+    # re-executes from the top when resumed. See runtime/graph.py.
+    "langgraph>=1.2,<2",
+    # Build file 12 pins ^2.0. That does not resolve: the 2.x line requires langgraph<1.2,
+    # and 1.2.3 itself was yanked upstream for a merge regression. The 3.x line is the one
+    # that supports langgraph 1.2, so the checkpointer is pinned there instead. The
+    # AsyncPostgresSaver API the spec describes is unchanged.
+    "langgraph-checkpoint-postgres>=3.1,<4",
+    "langchain-core>=1.4,<2",
+    "langchain-openai>=1.0,<2",
+    "openai>=2.0,<3",
 ]
 
 [dependency-groups]

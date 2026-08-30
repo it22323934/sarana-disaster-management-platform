@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from alerting_svc.adapters.channels.base import Target
+from alerting_svc.adapters.households import HouseholdDirectory
 from alerting_svc.api.deps import CorrelationDep, SessionDep
 from alerting_svc.domain import cap, delivery, templates
 from alerting_svc.repo import queries
@@ -247,7 +248,7 @@ async def dispatch_alert(
         ) from error
 
     channels = request.app.state.channels
-    targets = await _targets_for(alert)
+    targets = await _targets_for(alert, request.app.state.household_directory)
 
     if body.dry_run:
         # Cannot send: `dry_run` takes no transport at all.
@@ -439,17 +440,59 @@ async def alert_feed(session: SessionDep, limit: int = Query(default=50, ge=1, l
     return Response(content=feed, media_type="application/atom+xml")
 
 
-async def _targets_for(alert: dict[str, Any]) -> list[Target]:
-    """Who this alert is aimed at.
+async def _targets_for(alert: dict[str, Any], directory: HouseholdDirectory) -> list[Target]:
+    """Who this alert is aimed at: every household in the area, resolved for real.
 
-    Placeholder resolution: one synthetic target per division. Real targeting reads
-    `admin.household` through core-api, which needs the service-credential flow described
-    in HANDOFF.md. The shape is right so the delivery accounting above it is exercised.
+    Until the service-credential flow existed this returned one synthetic target per
+    division, so every delivery number the platform produced was structurally correct and
+    factually meaningless. It now reads `admin.household` through core-api under a
+    credential holding `household:contact_read` and nothing else.
+
+    **Households with no contact number are targeted anyway.** They come back with no
+    hash, the fan-out records `NO_CHANNEL` against them, and they appear in
+    `/alerts/{id}/delivery/gaps` as people who need a vehicle with a loudhailer. Dropping
+    them here would report a division as fully covered when part of it cannot be reached
+    at all, which is the precise failure the gaps endpoint exists to surface.
+
+    **`preferred_language` comes from the household, not from their name.** Inferring
+    language from a name is unreliable and goes wrong in exactly the communities most
+    likely to be missed - the Ditwah failure this platform was built after.
     """
-    return [
-        Target(target_ref_hash=f"{code}:target", gn_division_code=str(code))
-        for code in alert["area_gn_division_ids"]
-    ]
+    codes = [str(code) for code in alert["area_gn_division_ids"]]
+    contacts = await directory.contacts_for(codes)
+
+    if not contacts:
+        # An area with no households resolved. Almost always a misconfigured credential or
+        # an area selection that matched nothing, and either way dispatching to nobody
+        # while reporting success is the worst available outcome.
+        _log.warning(
+            "alert_targets_empty",
+            divisions=len(codes),
+            impact="this alert would reach nobody; check the area selection and that "
+            "alerting-svc holds a household:contact_read credential",
+        )
+
+    # Deduplicated by contact hash. Two households sharing one handset - a common
+    # arrangement in a village - are one phone, and sending the same evacuation order to it
+    # twice is noise at the moment attention is scarcest. The delivery accounting already
+    # counts by `target_ref_hash`, so the two would have collapsed there anyway; doing it
+    # here means the message is sent once rather than counted once.
+    #
+    # Unreachable households key on their own id instead, so they never collapse: each one
+    # is a separate person somebody has to go and find, and the gaps figure has to say how
+    # many.
+    seen: dict[str, Target] = {}
+    for contact in contacts:
+        key = contact.recipient_ref_hash or f"unreachable:{contact.household_id}"
+        seen.setdefault(
+            key,
+            Target(
+                target_ref_hash=key,
+                gn_division_code=contact.gn_division_code,
+                preferred_language=contact.preferred_language,
+            ),
+        )
+    return list(seen.values())
 
 
 def _summarise_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:

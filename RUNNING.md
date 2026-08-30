@@ -225,10 +225,10 @@ Worth knowing before you demo anything:
 
 - **Every payment rail is a mock**, and every payment reference starts `MOCK-`. Nothing
   moves money.
-- **Alert targeting is a placeholder.** `alerting_svc`'s `_targets_for()` returns a fixed
-  set, so delivery counts are structurally correct and factually meaningless. gov-mock now
-  serves real-shaped households and per-division coverage, so what is missing is the
-  credential to read `admin.household`, not the data.
+- **Alert targeting reads real households.** Delivery counts describe actual people. A
+  household with no contact number is targeted and recorded as `NO_CHANNEL`, so it shows up
+  in `/alerts/{id}/delivery/gaps` rather than being quietly dropped from the denominator.
+  Needs `SARANA_ALERTING_CLIENT_SECRET`; without it the alert reaches nobody and says so.
 - **A reversed payment does not message the household.** The mock rail fails about 3% of
   transfers, and ledger-svc's settlement poller now turns each one into a compensating
   ledger entry, a grievance in the household's own language and a reopened entitlement —

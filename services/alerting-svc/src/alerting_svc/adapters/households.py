@@ -25,7 +25,7 @@ that holds it.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final, Protocol
+from typing import Any, Final, Protocol
 from uuid import UUID
 
 import httpx
@@ -43,6 +43,12 @@ READ_TIMEOUT: Final = 5.0
 # updates their number, which is rare; re-asking core-api for it on every message during a
 # national fan-out is a self-inflicted load spike on the service everything depends on.
 CACHE_SIZE: Final = 50_000
+
+# One page of a bulk read, and how many pages a single area may take. The ceiling
+# exists so a caller that names half the country gets a refusal rather than a fan-out
+# that silently covered the first fifty thousand households and stopped.
+PAGE_SIZE: Final = 2_000
+MAX_PAGES: Final = 200
 
 
 class DirectoryUnavailable(UpstreamUnavailable):
@@ -87,6 +93,20 @@ class HouseholdDirectory(Protocol):
             DirectoryUnavailable: if the directory could not be reached. Never returns
                 None for an outage — that would silently turn "we could not ask" into
                 "this person does not exist".
+        """
+        ...
+
+    async def contacts_for(self, gn_division_codes: list[str]) -> list[HouseholdContact]:
+        """Every messaging address in these divisions, for an alert fan-out.
+
+        Households with no contact number are included with `recipient_ref_hash` None.
+        They are the delivery gap, and dropping them here would report a division as fully
+        covered when part of it cannot be reached at all.
+
+        Raises:
+            DirectoryUnavailable: if the directory could not be reached. Never a partial
+                list - a fan-out over half a district, silently, is worse than one that
+                refused.
         """
         ...
 
@@ -175,6 +195,73 @@ class CoreApiDirectory:
         self._remember(key, contact)
         return contact
 
+    async def contacts_for(self, gn_division_codes: list[str]) -> list[HouseholdContact]:
+        """Page through every household in these divisions."""
+        if not gn_division_codes:
+            return []
+
+        try:
+            headers = await self._credentials.authorization()
+        except CredentialUnavailable as error:
+            raise DirectoryUnavailable(
+                "No service credential is available to read household contacts."
+            ) from error
+
+        found: list[HouseholdContact] = []
+        offset = 0
+        for _ in range(MAX_PAGES):
+            body = await self._contacts_page(gn_division_codes, headers, offset)
+            found.extend(
+                HouseholdContact(
+                    household_id=row["household_id"],
+                    recipient_ref_hash=row.get("recipient_ref_hash"),
+                    preferred_language=row.get("preferred_language", "en"),
+                    gn_division_code=row["gn_division_code"],
+                )
+                for row in body["contacts"]
+            )
+            next_offset = body.get("next_offset")
+            if next_offset is None:
+                return found
+            offset = int(next_offset)
+
+        # A division set this large is a caller bug, not a paging problem. Raising beats
+        # returning a truncated list that a fan-out would treat as the whole area.
+        raise DirectoryUnavailable(
+            f"more than {MAX_PAGES} pages of households for {len(gn_division_codes)} "
+            "divisions; narrow the area rather than warning part of it"
+        )
+
+    async def _contacts_page(
+        self, codes: list[str], headers: dict[str, str], offset: int
+    ) -> dict[str, Any]:
+        try:
+            response = await self._client.get(
+                f"{self._base_url}/api/v1/admin/households/contacts",
+                params={"gn_division_code": codes, "limit": PAGE_SIZE, "offset": offset},
+                headers=headers,
+            )
+        except (httpx.TimeoutException, httpx.TransportError) as error:
+            _log.warning("household_bulk_unreachable", error=type(error).__name__)
+            raise DirectoryUnavailable("core-api is unreachable.") from error
+
+        if response.status_code == 401:
+            self._credentials.invalidate()
+            _log.error(
+                "household_bulk_unauthorised",
+                hint="the alerting-svc credential was rotated, revoked, or lacks "
+                "household:contact_read",
+            )
+            raise DirectoryUnavailable("core-api refused this service's credential.")
+        if response.status_code >= 400:
+            _log.warning("household_bulk_failed", status=response.status_code)
+            raise DirectoryUnavailable(
+                f"core-api returned {response.status_code} for a bulk contact read."
+            )
+
+        page: dict[str, Any] = response.json()
+        return page
+
     def _remember(self, key: str, value: HouseholdContact | None) -> None:
         if len(self._cache) >= CACHE_SIZE:
             # Crude, and deliberately so. An LRU would be better and this is a mock-adjacent
@@ -201,6 +288,15 @@ class NullDirectory:
             "and restart, or run tools/seed/service_clients.py to provision one",
         )
         return None
+
+    async def contacts_for(self, gn_division_codes: list[str]) -> list[HouseholdContact]:
+        _log.warning(
+            "household_directory_not_configured",
+            divisions=len(gn_division_codes),
+            impact="this alert will reach nobody; set SARANA_ALERTING_CLIENT_SECRET and "
+            "restart, or run tools/seed/service_clients.py to provision one",
+        )
+        return []
 
     async def aclose(self) -> None:
         return None
