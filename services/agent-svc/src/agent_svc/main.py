@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from redis.asyncio import Redis
 
 from agent_svc import SERVICE_DESCRIPTION, __version__
-from agent_svc.agents.noop import SPEC as NOOP_SPEC
+from agent_svc.agents import SPECS
 from agent_svc.api.v1.router import router as v1_router
 from agent_svc.config import Settings, get_settings
 from agent_svc.consumers import AgentTriggerWorker
@@ -93,8 +93,9 @@ def build_app(settings: Settings | None = None) -> FastAPI:
             )
         app.state.checkpointer = checkpointer
 
-        if NOOP_SPEC.name not in REGISTRY.names():
-            REGISTRY.register(NOOP_SPEC)
+        for spec in SPECS:
+            if spec.name not in REGISTRY.names():
+                REGISTRY.register(spec)
         REGISTRY.compile_all(checkpointer)
         app.state.agents = REGISTRY
 

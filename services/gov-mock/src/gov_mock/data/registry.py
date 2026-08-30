@@ -25,7 +25,7 @@ import re
 from dataclasses import dataclass
 from typing import Final
 
-from gov_mock.data.derive import bucket, falls_within
+from gov_mock.data.derive import bucket, falls_within, seed_for
 from gov_mock.data.districts import (
     DISTRICTS,
     DS_PER_DISTRICT,
@@ -97,7 +97,7 @@ class Household:
 
 def _rng(seed: int, *parts: str | int) -> random.Random:
     """A generator keyed to one entity, so its record is stable across requests."""
-    return random.Random((seed, *parts).__hash__())  # noqa: S311 - synthetic data, not a secret
+    return random.Random(seed_for(seed, *parts))  # noqa: S311 - synthetic data, not a secret
 
 
 def officers_for(gn_division_code: str, *, seed: int) -> list[Officer]:

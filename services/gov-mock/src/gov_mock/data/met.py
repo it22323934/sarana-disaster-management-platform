@@ -30,6 +30,7 @@ import random
 from dataclasses import dataclass
 from typing import Final
 
+from gov_mock.data.derive import seed_for
 from gov_mock.data.districts import DISTRICTS, District
 
 
@@ -184,7 +185,7 @@ def _rng_for(seed: int, station_id: str, hour_bucket: int) -> random.Random:
     millimetres. A shared stream would make every reading depend on how many other
     requests happened first.
     """
-    return random.Random((seed, station_id, hour_bucket).__hash__())  # noqa: S311 - synthetic
+    return random.Random(seed_for(seed, station_id, hour_bucket))  # noqa: S311 - synthetic
 
 
 def rainfall_mm_24h(station: Station, *, hours_since_landfall: float, seed: int) -> float:

@@ -68,3 +68,24 @@ def choose[T](value: str, options: tuple[T, ...], *, salt: str) -> T:
     if not options:
         raise ValueError("cannot choose from an empty tuple of options")
     return options[bucket(value, buckets=len(options), salt=salt)]
+
+
+def seed_for(*parts: str | int) -> int:
+    """A stable seed for `random.Random`, from any mix of identifiers.
+
+    Every synthetic series in the mocks is documented as a pure function of its inputs -
+    "the same simulated hour produces the same reading on every machine and every replay".
+    Seeding from `hash()` breaks that claim silently: **Python randomises string hashing per
+    process**, so `random.Random((seed, station_id, hour).__hash__())` draws a different
+    number after every restart while looking entirely deterministic.
+
+    That shipped here and was caught by an agent asking the mock for the same hour twice and
+    getting 67.9 mm, then 54.4 mm. Nothing raised. The demo simply showed different weather
+    each time it was booted, and any test that pinned a value would have been quietly flaky.
+
+    So the seed comes from a digest, which is stable across processes, restarts and Python
+    versions. Used for its stability and distribution, not for any security property.
+    """
+    joined = "\x1f".join(str(part) for part in parts)
+    digest = hashlib.sha256(f"seed:{joined}".encode()).digest()
+    return int.from_bytes(digest[:_DIGEST_BYTES], "big")

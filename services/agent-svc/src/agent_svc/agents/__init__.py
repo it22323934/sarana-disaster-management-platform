@@ -8,6 +8,7 @@ afterthought does not have one.
 
 from typing import Final
 
+from agent_svc.agents.forecast import SPEC as FORECAST_SPEC
 from agent_svc.agents.noop import SPEC as NOOP_SPEC
 from agent_svc.runtime.registry import AgentSpec
 
@@ -15,7 +16,7 @@ from agent_svc.runtime.registry import AgentSpec
 # trigger table all discover agents the same way. An agent added to `agents/` but not to
 # this tuple is one that exists in the tree and nowhere else - which is a failure mode with
 # no symptom at all until somebody asks why it never runs.
-SPECS: Final[tuple[AgentSpec, ...]] = (NOOP_SPEC,)
+SPECS: Final[tuple[AgentSpec, ...]] = (NOOP_SPEC, FORECAST_SPEC)
 
 
 def spec_named(name: str) -> AgentSpec:

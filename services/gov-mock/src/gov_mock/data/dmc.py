@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Final
 
+from gov_mock.data.derive import seed_for
 from gov_mock.data.districts import DISTRICTS, District, ds_codes
 from gov_mock.data.met import exposure_at
 
@@ -178,7 +179,7 @@ def modelled_occupancy(location: SafetyLocation, *, hours_since_landfall: float,
     if location.district_code not in AFFECTED_DISTRICTS:
         return 0
 
-    rng = random.Random((seed, location.location_id).__hash__())  # noqa: S311 - synthetic
+    rng = random.Random(seed_for(seed, location.location_id))  # noqa: S311 - synthetic
     # Per-location scatter, drawn once and stable: two schools a kilometre apart do not
     # fill at the same rate, and the one on the wrong side of a flooded road fills first.
     scatter = rng.uniform(0.7, 1.15)
@@ -228,7 +229,7 @@ def situation_reports(
     if hours_since_landfall < 0:
         return []
 
-    rng = random.Random((seed, "sitrep").__hash__())  # noqa: S311 - synthetic
+    rng = random.Random(seed_for(seed, "sitrep"))  # noqa: S311 - synthetic
     reports: list[SituationReport] = []
     issued_hour = 0.0
     sequence = 1

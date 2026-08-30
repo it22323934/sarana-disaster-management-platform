@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
+from gov_mock.data.derive import seed_for
 from gov_mock.data.districts import GN_PER_DS, district_for
 from gov_mock.data.dmc import AFFECTED_DISTRICTS
 
@@ -132,7 +133,7 @@ def baseline_coverage_pct(gn_division_code: str) -> float:
 
 
 def _sites(gn_division_code: str, *, seed: int) -> int:
-    rng = random.Random((seed, "sites", gn_division_code).__hash__())  # noqa: S311 - synthetic
+    rng = random.Random(seed_for(seed, "sites", gn_division_code))  # noqa: S311 - synthetic
     return rng.randrange(SITES_MIN, SITES_MAX + 1)
 
 
@@ -168,7 +169,7 @@ def coverage_for(gn_division_code: str, *, hours_since_landfall: float, seed: in
             sites_down=0,
         )
 
-    rng = random.Random((seed, "power", gn_division_code).__hash__())  # noqa: S311 - synthetic
+    rng = random.Random(seed_for(seed, "power", gn_division_code))  # noqa: S311 - synthetic
     # Sites do not all fail together. Each carries its own offset, so a division degrades
     # in steps rather than falling off a cliff — which is what an operator watching a
     # coverage map actually sees.
@@ -207,7 +208,7 @@ def coverage_for(gn_division_code: str, *, hours_since_landfall: float, seed: in
 
 def _operators_for(gn_division_code: str, *, seed: int) -> tuple[Operator, ...]:
     """Which operators serve a division. Rural divisions are not served by all three."""
-    rng = random.Random((seed, "ops", gn_division_code).__hash__())  # noqa: S311 - synthetic
+    rng = random.Random(seed_for(seed, "ops", gn_division_code))  # noqa: S311 - synthetic
     if rng.random() < 0.65:
         return (Operator.DIALOG, Operator.MOBITEL, Operator.HUTCH)
     if rng.random() < 0.6:
@@ -222,7 +223,7 @@ def operator_for(recipient_ref_hash: str, *, seed: int) -> Operator:
     Drawing it per message would make a delivery gap look random instead of showing that
     one operator's subscribers are the ones being missed.
     """
-    rng = random.Random((seed, "op", recipient_ref_hash).__hash__())  # noqa: S311 - synthetic
+    rng = random.Random(seed_for(seed, "op", recipient_ref_hash))  # noqa: S311 - synthetic
     draw = rng.random()
     cumulative = 0.0
     for profile in PROFILES.values():
@@ -258,7 +259,7 @@ def outcome_for(message_id: str, recipient_ref_hash: str, *, seed: int) -> Outco
     """
     operator = operator_for(recipient_ref_hash, seed=seed)
     profile = PROFILES[operator]
-    rng = random.Random((seed, "msg", message_id).__hash__())  # noqa: S311 - synthetic
+    rng = random.Random(seed_for(seed, "msg", message_id))  # noqa: S311 - synthetic
 
     draw = rng.random()
     if draw < profile.silent_drop_rate:

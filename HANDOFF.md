@@ -679,7 +679,7 @@ runs and an evaluation harness. One reference agent, `noop`, exercises all of it
 touching a model provider.
 
 ```bash
-uv run pytest tests/agent_svc                              # 117 tests
+uv run pytest tests/agent_svc services/agent-svc/tests      # 123 tests
 uv run python -m agent_svc.runtime.eval --agent noop --fixtures data/fixtures/smoke
 make eval AGENT=noop                                       # writes artifacts/eval/
 ```

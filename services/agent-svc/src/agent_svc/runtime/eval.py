@@ -240,14 +240,25 @@ class Report:
         return self.accuracy >= self.min_accuracy and self.ece <= self.max_ece and not self.errors
 
 
-def load_cases(path: Path) -> list[Case]:
-    """Read every `.jsonl` case under a fixture directory, or one file.
+def load_cases(path: Path, *, agent: str | None = None) -> list[Case]:
+    """Read one agent's cases from a fixture directory, or one file.
+
+    A directory holding `noop.jsonl` and `forecast.jsonl` must not feed both sets to
+    whichever agent was named: the cases are labelled for one agent's output, and scoring
+    an agent against another's labels reports a confident 0%. So `{agent}.jsonl` wins when
+    it exists, and only a directory with no file for this agent falls back to everything
+    in it.
 
     Raises:
         FileNotFoundError: naming the path. A harness that silently reports 0 cases as a
             pass is one that goes green after somebody moves the fixtures.
     """
-    files = sorted(path.glob("*.jsonl")) if path.is_dir() else [path]
+    if not path.is_dir():
+        files = [path]
+    elif agent and (path / f"{agent}.jsonl").exists():
+        files = [path / f"{agent}.jsonl"]
+    else:
+        files = sorted(path.glob("*.jsonl"))
     if not files or not any(f.exists() for f in files):
         raise FileNotFoundError(f"No .jsonl fixtures at {path}")
 
@@ -418,7 +429,7 @@ async def evaluate(
     registry.compile_all(memory_checkpointer())
     graph = registry.graph(agent)
 
-    cases = load_cases(fixtures)
+    cases = load_cases(fixtures, agent=agent)
     file_accuracy, file_ece = load_thresholds(fixtures)
 
     results = [await run_case(graph, spec, case) for case in cases]

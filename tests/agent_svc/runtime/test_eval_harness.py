@@ -393,3 +393,33 @@ def test_a_crashing_case_counts_as_a_failure_rather_than_disappearing() -> None:
 
     assert scored.accuracy == 0.5
     assert not scored.passed
+
+
+def test_one_agents_fixtures_are_not_fed_to_another(tmp_path: Path) -> None:
+    """A fixture directory holds a file per agent.
+
+    Cases are labelled for one agent's output; scoring an agent against another's labels
+    reports a confident 0% and reads like a broken agent rather than a broken harness.
+    """
+    (tmp_path / "noop.jsonl").write_text(
+        json.dumps({"id": "mine", "input": {"text": "flood"}, "label": {"category": "flood"}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "forecast.jsonl").write_text(
+        json.dumps({"id": "theirs", "input": {}, "label": {"impact_class": 3}}),
+        encoding="utf-8",
+    )
+
+    cases = load_cases(tmp_path, agent="noop")
+
+    assert [case.id for case in cases] == ["mine"]
+
+
+def test_a_directory_with_no_file_for_this_agent_still_loads(tmp_path: Path) -> None:
+    """So a single-file fixture set does not have to be renamed to be usable."""
+    (tmp_path / "cases.jsonl").write_text(
+        json.dumps({"id": "only", "input": {"text": "flood"}, "label": {"category": "flood"}}),
+        encoding="utf-8",
+    )
+
+    assert [case.id for case in load_cases(tmp_path, agent="noop")] == ["only"]
