@@ -448,3 +448,47 @@ def test_a_rule_naming_an_action_the_schema_rejects_fails_at_construction() -> N
         trigger_rules.TriggerRule(
             id="bad", action="NOTIFY_DS_PREPOSITION", scope="national", description="x"
         )
+
+
+# =======================================================================================
+# The evaluation seam
+# =======================================================================================
+
+
+async def test_the_forecast_agent_meets_its_calibration_gate() -> None:
+    """Build file 13: confidence calibration on the fixture set, ECE below 0.15.
+
+    `confidence` drives real decisions, so it has to mean something. This is the number
+    that says whether it does, and it is the reason the fixture set deliberately contains
+    cases the engine cannot get right - a gauge blackout, an unsurveyed division. Without
+    them the low-confidence bins are empty and the calibration figure is vacuous.
+    """
+    from agent_svc.runtime.eval import evaluate
+
+    report = await evaluate("forecast", Path("data/fixtures/smoke"))
+
+    assert report.ece <= 0.15, f"ECE {report.ece:.3f}"
+    assert report.passed
+
+
+async def test_low_confidence_marks_the_forecasts_that_are_actually_wrong() -> None:
+    """A confidence that does not fall when the inputs fail is decoration.
+
+    Both blind-gauge cases are wrong, and both state 0.25. That is the bin doing its job.
+    """
+    from agent_svc.runtime.eval import evaluate
+
+    report = await evaluate("forecast", Path("data/fixtures/smoke"))
+
+    blind = [result for result in report.results if result.confidence < 0.3]
+    assert blind, "no low-confidence cases; the calibration set has nothing to calibrate"
+    assert not any(result.agent_correct for result in blind)
+
+
+def test_the_eval_graph_is_not_the_production_graph() -> None:
+    """The production graph talks to the Met Department, NBRO and core-api. A harness that
+    had to stand all three up is a harness nobody runs before pushing."""
+    from agent_svc.agents.forecast import SPEC
+
+    assert SPEC.eval_build is not None
+    assert SPEC.eval_build is not SPEC.build

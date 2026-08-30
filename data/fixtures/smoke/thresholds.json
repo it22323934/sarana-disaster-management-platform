@@ -1,5 +1,12 @@
 {
   "min_accuracy": 0.9,
   "max_ece": 0.2,
-  "_why": "The smoke set is ten cases, so one wrong answer moves accuracy by ten points and ECE by more. These are the bars for a set this size: a real regression set (file 28) carries its own, tighter, thresholds. A gate nobody can pass is a gate somebody deletes."
+  "_why": "The smoke set is small, so one wrong answer moves accuracy by several points and ECE by more. These are the bars for a set this size: the real regression set (file 28) carries its own, tighter ones. A gate nobody can pass is a gate somebody deletes.",
+  "agents": {
+    "forecast": {
+      "min_accuracy": 0.75,
+      "max_ece": 0.15,
+      "_why": "Four of the eighteen cases are ones the engine is designed to get wrong: it cannot see through a gauge blackout, it cannot know an unsurveyed division's hazard zone, and it has no elevation or waterway input so a riverside division can flood without any slope signal. Those cases are in the set on purpose - without them the low-confidence bins are empty and the calibration number means nothing. So the accuracy bar sits below them and ECE is the real gate, at the 0.15 build file 13 requires."
+    }
+  }
 }

@@ -275,19 +275,30 @@ def load_cases(path: Path, *, agent: str | None = None) -> list[Case]:
     return cases
 
 
-def load_thresholds(path: Path) -> tuple[float, float]:
-    """The pass mark for this fixture set.
+def load_thresholds(path: Path, *, agent: str | None = None) -> tuple[float, float]:
+    """The pass mark for this fixture set, and for this agent within it.
 
     Beside the fixtures rather than in the code, because the bar for a ten-case smoke set
     and a thousand-case regression set are not the same bar.
+
+    Per-agent under `agents`, because agents in the same directory are not comparable. A
+    deterministic classifier over three keywords should be near-perfect; a threshold engine
+    whose fixture set deliberately includes cases it cannot see - a gauge blackout, an
+    unsurveyed division - must not be, or its low-confidence bin would be empty and the
+    calibration number would mean nothing. Holding both to one accuracy bar would force
+    somebody to delete the cases that make the calibration honest.
     """
     file = (path if path.is_dir() else path.parent) / "thresholds.json"
     if not file.exists():
         return DEFAULT_MIN_ACCURACY, DEFAULT_MAX_ECE
+
     data = json.loads(file.read_text(encoding="utf-8"))
+    settings = dict(data)
+    if agent:
+        settings.update(data.get("agents", {}).get(agent, {}))
     return (
-        float(data.get("min_accuracy", DEFAULT_MIN_ACCURACY)),
-        float(data.get("max_ece", DEFAULT_MAX_ECE)),
+        float(settings.get("min_accuracy", DEFAULT_MIN_ACCURACY)),
+        float(settings.get("max_ece", DEFAULT_MAX_ECE)),
     )
 
 
@@ -430,7 +441,7 @@ async def evaluate(
     graph = registry.graph(agent)
 
     cases = load_cases(fixtures, agent=agent)
-    file_accuracy, file_ece = load_thresholds(fixtures)
+    file_accuracy, file_ece = load_thresholds(fixtures, agent=agent)
 
     results = [await run_case(graph, spec, case) for case in cases]
 

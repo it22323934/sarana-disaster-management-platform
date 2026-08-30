@@ -131,9 +131,7 @@ async def score_one(state: AgentState) -> dict[str, Any]:
             "expected_households_affected": score.expected_households_affected,
             "confidence": score.confidence,
             "reasoning": "; ".join(
-                f"{driver.factor}={driver.value}"
-                for driver in score.drivers
-                if driver.contribution
+                f"{driver.factor}={driver.value}" for driver in score.drivers if driver.contribution
             )
             or "no factor moved the class",
             "needs_human_review": False,
