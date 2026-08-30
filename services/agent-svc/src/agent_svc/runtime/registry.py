@@ -41,6 +41,15 @@ class AgentSpec:
     degraded_note: str
     gated: bool = False
 
+    # How to compile this agent for the evaluation harness, when running it for real needs
+    # dependencies an eval cannot have. The forecast agent is the case: its graph talks to
+    # the Met Department, NBRO and core-api, and a harness that had to stand all three up
+    # would be a harness nobody runs before pushing.
+    #
+    # An agent supplying one is saying "this is the part of me with a confidence worth
+    # calibrating". None means the ordinary graph is evaluable as it stands.
+    eval_build: Callable[[Any], Any] | None = None
+
     def __post_init__(self) -> None:
         if not self.degraded_note.strip():
             raise ValueError(
@@ -63,15 +72,19 @@ class AgentRegistry:
         self.specs[spec.name] = spec
         return spec
 
-    def compile_all(self, checkpointer: Any) -> None:
+    def compile_all(self, checkpointer: Any, *, for_eval: bool = False) -> None:
         """Build every graph once, at boot.
 
         Failing here is right: a graph that cannot compile should stop the service from
         coming up, not 500 on the first citizen report that reaches it.
+
+        `for_eval` uses each spec's `eval_build` where it has one. The harness sets it; the
+        service never does, so a mistake in an eval-only graph can never reach a citizen.
         """
         for name, spec in self.specs.items():
-            self._graphs[name] = spec.build(checkpointer)
-        _log.info("agent_graphs_compiled", agents=sorted(self.specs))
+            builder = spec.eval_build if for_eval and spec.eval_build else spec.build
+            self._graphs[name] = builder(checkpointer)
+        _log.info("agent_graphs_compiled", agents=sorted(self.specs), for_eval=for_eval)
 
     def graph(self, name: str) -> Any:
         """The compiled graph for one agent.

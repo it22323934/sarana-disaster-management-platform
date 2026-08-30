@@ -696,6 +696,13 @@ class _RefusingDirectory:
         return {}
 
 
+def _eval_build(checkpointer: Any) -> Any:
+    """Imported lazily so the production graph does not depend on the eval one."""
+    from agent_svc.agents.forecast.evaluation import build as build_eval
+
+    return build_eval(checkpointer)
+
+
 SPEC: Final = AgentSpec(
     name=AGENT,
     subject_type=SUBJECT_TYPE,
@@ -713,4 +720,5 @@ SPEC: Final = AgentSpec(
         "Nothing about the forecast changes except the written English."
     ),
     gated=False,
+    eval_build=_eval_build,
 )

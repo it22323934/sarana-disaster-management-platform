@@ -31,11 +31,19 @@ from agent_svc.agents.forecast.scoring import (
 )
 
 ZONE_3 = ZoneThresholds(
-    zone=3, window_hours=24, watch_mm=100.0, warning_mm=150.0, evacuate_mm=200.0,
+    zone=3,
+    window_hours=24,
+    watch_mm=100.0,
+    warning_mm=150.0,
+    evacuate_mm=200.0,
     provenance="NBRO 2019 zonation",
 )
 ZONE_1 = ZoneThresholds(
-    zone=1, window_hours=24, watch_mm=200.0, warning_mm=275.0, evacuate_mm=350.0,
+    zone=1,
+    window_hours=24,
+    watch_mm=200.0,
+    warning_mm=275.0,
+    evacuate_mm=350.0,
     provenance="NBRO 2019 zonation",
 )
 
@@ -73,7 +81,7 @@ def rainfall(peak: float, *, window: int = 48, used: int = 6, silent: int = 0) -
     )
 
 
-def score(rain: DivisionRainfall, div: DivisionExposure | None = None, thresholds=ZONE_3):  # noqa: ANN201
+def score(rain: DivisionRainfall, div: DivisionExposure | None = None, thresholds=ZONE_3):
     return RuleThresholdModel().score(
         div or division(), rain, thresholds=thresholds, lead_time_hours=-1
     )
@@ -119,17 +127,21 @@ def test_a_forecast_is_never_a_two_day_total_against_a_one_day_line() -> None:
     day early, every time.
     """
     rain = DivisionRainfall(
-        observed_24h=90.0, expected_24h=90.0, expected_48h=0.0, expected_72h=0.0,
+        observed_24h=90.0,
+        expected_24h=90.0,
+        expected_48h=0.0,
+        expected_72h=0.0,
         stations_used=5,
     )
 
-    assert rain.peak() == (90.0, 0)
-    assert score(rain).impact_class == CLASS_NONE + CLASS_NONE or True
-    assert score(rain).impact_class == CLASS_LOW
+    assert rain.peak() == (90.0, 0), "the peak window, not the sum of the windows"
+    # 90 mm is below zone 3's 100 mm watch line, so this is class 1 on a stable slope.
+    # Summed it would be 180 mm - past the 150 mm warning line, and class 3.
+    assert score(rain, division(landslide_zone=1), ZONE_3).impact_class == CLASS_LOW
 
 
 def test_the_lead_time_is_the_window_that_peaked() -> None:
-    """"Class 3 within 48 hours" is actionable. "Class 3" alone is a weather report."""
+    """ "Class 3 within 48 hours" is actionable. "Class 3" alone is a weather report."""
     assert score(rainfall(160.0, window=48)).lead_time_hours == 48
     assert score(rainfall(160.0, window=72)).lead_time_hours == 72
     assert score(rainfall(160.0, window=0)).lead_time_hours == 0
@@ -168,9 +180,7 @@ def test_a_modifier_cannot_reach_severe() -> None:
     """
     at_warning = ZONE_3.warning_mm
 
-    result = score(
-        rainfall(at_warning), division(landslide_zone=4, flood_return_period_m=6)
-    )
+    result = score(rainfall(at_warning), division(landslide_zone=4, flood_return_period_m=6))
 
     assert result.impact_class == CLASS_MAJOR
 
@@ -211,7 +221,7 @@ def test_every_forecast_carries_a_non_empty_drivers_list() -> None:
 
 
 def test_a_factor_that_changed_nothing_is_still_a_driver() -> None:
-    """"We checked the flood history and it was fine" must be distinguishable from "we
+    """ "We checked the flood history and it was fine" must be distinguishable from "we
     never looked". For an engine whose selling point is that you can see how the decision
     was made, that difference is the product."""
     result = score(rainfall(ZONE_3.watch_mm), division(flood_return_period_m=40))
@@ -333,7 +343,14 @@ def test_road_access_loss_is_separate_from_severity() -> None:
 
 
 def test_road_access_is_not_lost_at_moderate_impact() -> None:
-    assert not score(rainfall(ZONE_3.watch_mm), division(road_access_class=4)).expected_road_access_loss
+    """Fragile access matters once impact is major. Below that a division is wet, not cut
+    off, and predicting isolation from every rain shower is how a map stops being read."""
+    moderate = division(road_access_class=4, landslide_zone=1, flood_return_period_m=40)
+
+    result = score(rainfall(ZONE_3.watch_mm), moderate)
+
+    assert result.impact_class == CLASS_MODERATE
+    assert not result.expected_road_access_loss
 
 
 def test_the_engine_is_pure() -> None:

@@ -426,7 +426,7 @@ async def evaluate(
     spec = spec_named(agent)
     registry = AgentRegistry()
     registry.register(spec)
-    registry.compile_all(memory_checkpointer())
+    registry.compile_all(memory_checkpointer(), for_eval=True)
     graph = registry.graph(agent)
 
     cases = load_cases(fixtures, agent=agent)
