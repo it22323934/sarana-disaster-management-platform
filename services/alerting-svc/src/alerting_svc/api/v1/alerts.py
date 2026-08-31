@@ -37,12 +37,6 @@ ApprovePrincipal = Depends(require(Scope.ALERT_APPROVE))
 DispatchPrincipal = Depends(require(Scope.ALERT_DISPATCH))
 
 
-# CAP wants Titlecase; the schema stores upper-case. Converted at the boundary rather than
-# stored twice, so the two can never disagree.
-def _cap_case(value: str) -> str:
-    return value.capitalize() if value != "STORM_SURGE" else "Storm surge"
-
-
 class AlertRequest(BaseModel):
     """A drafted alert: a template, its parameters, and an area."""
 
@@ -228,9 +222,9 @@ async def dispatch_alert(
         scope="Public",
         event=alert["headline"].get("en", "Alert"),
         category="Met",
-        severity=_cap_case(alert["severity"]),
-        urgency=_cap_case(alert["urgency"]),
-        certainty=_cap_case(alert["certainty"]),
+        severity=cap.cap_case(alert["severity"]),
+        urgency=cap.cap_case(alert["urgency"]),
+        certainty=cap.cap_case(alert["certainty"]),
         headline=alert["headline"],
         description=alert["description"],
         instruction=alert["instruction"],
