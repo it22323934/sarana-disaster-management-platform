@@ -9,13 +9,21 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
+from typing import Any
 
 import structlog
 from fastapi import FastAPI
 from redis.asyncio import Redis
 
 from agent_svc import SERVICE_DESCRIPTION, __version__
+from agent_svc.adapters.forecast import (
+    CoreApiDivisions,
+    GovHazardFeeds,
+    SqlForecastStore,
+)
 from agent_svc.agents import SPECS
+from agent_svc.agents.forecast import graph as forecast_graph
+from agent_svc.agents.forecast.ports import HazardWindow
 from agent_svc.api.v1.router import router as v1_router
 from agent_svc.config import Settings, get_settings
 from agent_svc.consumers import AgentTriggerWorker
@@ -31,6 +39,7 @@ from agent_svc.runtime.tracing import configure_tracing
 from sarana_shared.auth.middleware import AuthenticationMiddleware
 from sarana_shared.auth.tokens import TokenService
 from sarana_shared.db.session import check_connection, create_engine, create_session_factory
+from sarana_shared.domain.time import utc_now
 from sarana_shared.events.factory import build_event_bus
 from sarana_shared.events.outbox import OutboxPublisher, OutboxWorker
 from sarana_shared.service.app import create_service_app
@@ -97,6 +106,16 @@ def build_app(settings: Settings | None = None) -> FastAPI:
             if spec.name not in REGISTRY.names():
                 REGISTRY.register(spec)
         REGISTRY.compile_all(checkpointer)
+
+        # The forecast agent is the one agent whose graph needs live dependencies to be
+        # useful, so it is recompiled here with them. Built after `compile_all` rather than
+        # instead of it: every other agent gets its ordinary graph, and a failure to wire
+        # this one leaves the refusing stand-ins in place, which say what is missing on the
+        # first run rather than reporting a quiet day during a cyclone.
+        forecast = _build_forecast(resolved, app.state.session_factory, exit_stack)
+        if forecast is not None:
+            REGISTRY.replace_graph("forecast", forecast(checkpointer))
+
         app.state.agents = REGISTRY
 
         # Most runs start here rather than from a click: an event arrives and an agent
@@ -151,6 +170,62 @@ def build_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(v1_router, prefix="/api/v1")
     return app
+
+
+def _build_forecast(
+    settings: Settings, session_factory: Any, exit_stack: AsyncExitStack
+) -> Callable[[Any], Any] | None:
+    """A builder for the forecast graph with its real dependencies, or None.
+
+    None when the credential is missing. The agent then keeps the refusing stand-ins from
+    its own module, which raise a sentence naming what to run - rather than scoring every
+    division against a default hazard zone and producing a forecast that is confidently
+    wrong about which slopes are fragile.
+    """
+    if not settings.client_secret:
+        _log.warning(
+            "forecast_agent_unconfigured",
+            reason="no SARANA_AGENT_CLIENT_SECRET",
+            impact="the forecast agent refuses to run; run `make service-clients` and set "
+            "the printed secret",
+        )
+        return None
+
+    from sarana_shared.adapters.gov.met import MetMockClient
+    from sarana_shared.adapters.gov.nbro import NbroMockClient
+    from sarana_shared.auth.service_credentials import ServiceCredentials
+
+    feeds = GovHazardFeeds(
+        met=MetMockClient(settings.gov_mock_url),
+        nbro=NbroMockClient(settings.gov_mock_url),
+    )
+    directory = CoreApiDivisions(
+        settings.core_api_url,
+        credentials=ServiceCredentials(
+            base_url=settings.core_api_url,
+            client_id=settings.client_id,
+            client_secret=settings.client_secret,
+            scope="admin:read",
+        ),
+    )
+    store = SqlForecastStore(session_factory)
+    exit_stack.push_async_callback(feeds.aclose)
+    exit_stack.push_async_callback(directory.aclose)
+
+    def build(checkpointer: Any) -> Any:
+        # `window.now` is set per run by the API, not here. A graph compiled once at boot
+        # with a fixed clock would forecast against the moment the process started for as
+        # long as it stayed up.
+        return forecast_graph.build(
+            checkpointer,
+            feeds=feeds,
+            directory=directory,
+            store=store,
+            window=HazardWindow("pending", "CYCLONE", utc_now()),
+        )
+
+    _log.info("forecast_agent_wired", core_api=settings.core_api_url, feeds=settings.gov_mock_url)
+    return build
 
 
 def _redis_probe(redis: Redis) -> Callable[[], Awaitable[bool]]:

@@ -86,6 +86,22 @@ class AgentRegistry:
             self._graphs[name] = builder(checkpointer)
         _log.info("agent_graphs_compiled", agents=sorted(self.specs), for_eval=for_eval)
 
+    def replace_graph(self, name: str, graph: Any) -> None:
+        """Swap in a graph built with live dependencies.
+
+        The forecast agent needs the Met Department, NBRO and core-api to be useful, and
+        those are not available where `compile_all` runs - it is called by the eval harness
+        and by tests as well as by the service. So the service builds that one again with
+        its real ports and puts it here.
+
+        Raises:
+            KeyError: for an unregistered agent, because replacing a graph nobody asked for
+                would leave the intended agent running its stand-ins with nothing to say so.
+        """
+        if name not in self.specs:
+            raise KeyError(f"{name} is not registered; cannot replace its graph")
+        self._graphs[name] = graph
+
     def graph(self, name: str) -> Any:
         """The compiled graph for one agent.
 

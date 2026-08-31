@@ -116,7 +116,7 @@ async def test_an_authenticated_request_reaches_the_handler(
     response = await client.get("/api/v1/agents", headers=header(tokens, Role.DISPATCHER))
 
     assert response.status_code == 200
-    assert [agent["name"] for agent in response.json()] == ["noop"]
+    assert "noop" in [agent["name"] for agent in response.json()]
 
 
 async def test_every_agent_says_what_it_does_in_a_blackout(

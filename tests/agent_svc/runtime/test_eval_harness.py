@@ -325,7 +325,7 @@ async def test_the_report_carries_a_portable_fixture_path() -> None:
 
 
 def test_the_smoke_set_is_loadable_and_labelled() -> None:
-    cases = load_cases(SMOKE)
+    cases = load_cases(SMOKE, agent="noop")
 
     assert len(cases) == 10
     for case in cases:
@@ -335,7 +335,7 @@ def test_the_smoke_set_is_loadable_and_labelled() -> None:
 
 def test_every_case_that_expects_review_supplies_the_answer() -> None:
     """Otherwise the reviewed path is the part of the graph nobody measures."""
-    for case in load_cases(SMOKE):
+    for case in load_cases(SMOKE, agent="noop"):
         if case.expect_human_review:
             assert case.human is not None, f"{case.id} expects review but answers nothing"
 
@@ -343,7 +343,7 @@ def test_every_case_that_expects_review_supplies_the_answer() -> None:
 def test_subject_ids_are_unique_across_the_set() -> None:
     """The thread id is derived from the subject, so two cases sharing one would land on
     the same thread and the second would rejoin the first's run."""
-    subjects = [case.subject_id for case in load_cases(SMOKE)]
+    subjects = [case.subject_id for case in load_cases(SMOKE, agent="noop")]
 
     assert len(subjects) == len(set(subjects))
 

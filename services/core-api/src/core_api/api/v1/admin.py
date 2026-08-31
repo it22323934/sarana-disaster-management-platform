@@ -92,6 +92,33 @@ class GNDivisionDetail(GNDivisionSummary):
     province_code: str
 
 
+class GNDivisionExposure(BaseModel):
+    """One division's exposure attributes, without its parents or its geometry.
+
+    Deliberately flatter than `GNDivisionDetail`: this is fetched several hundred rows at a
+    time by the forecast agent, and province and DS ids it never reads would be bytes on
+    the wire every generation, several times an hour, during the event.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    code: str
+    name: dict[str, str]
+    ds_division_code: str
+    district_code: str
+    centroid_lon: float | None = None
+    centroid_lat: float | None = None
+    population: int
+    household_count: int
+    elderly_pct: float | None = None
+    under5_pct: float | None = None
+    landslide_zone: int | None = None
+    flood_return_period_m: int | None = None
+    road_access_class: int | None = None
+    cell_coverage_pct: float | None = None
+
+
 class ResolvedArea(BaseModel):
     """The division a coordinate falls in."""
 
@@ -235,6 +262,49 @@ def _parse_bbox(raw: str | None) -> tuple[float, float, float, float] | None:
     if outside:
         raise ValidationFailed("bbox does not overlap Sri Lanka", context={"bbox": raw})
     return min_lon, min_lat, max_lon, max_lat
+
+
+@router.get("/gn-divisions/exposure", response_model=list[GNDivisionExposure])
+async def get_gn_exposure(
+    request: Request,
+    response: Response,
+    session: SessionDep,
+    principal: Principal = ReadPrincipal,
+    districts: str = Query(
+        description="Comma-separated district codes, e.g. LK-21,LK-22. What a Met warning names.",
+        max_length=512,
+    ),
+    limit: int = Query(default=5000, ge=1, le=20000),
+) -> Any:
+    """Every GN division in these districts, with the exposure denominators, in one call.
+
+    Built for the forecast agent, which scores per division and needs all of them at once.
+    The per-division endpoint would be one round trip each - several hundred per generation,
+    several generations an hour - and a forecast that arrives after the rain is not a
+    forecast.
+
+    The limit is high on purpose: a national cyclone warning names every district in Sri
+    Lanka, and 14,022 rows of counts and percentages is a few megabytes. Truncating it
+    silently would drop divisions from the forecast with nothing to show it happened.
+    """
+    codes = [code.strip().upper() for code in districts.split(",") if code.strip()]
+    if not codes:
+        raise ValidationFailed(
+            "districts must name at least one district code, e.g. districts=LK-21",
+            context={"districts": districts},
+        )
+
+    rows = await hierarchy.list_gn_exposure(session, district_codes=codes, limit=limit)
+    if len(rows) >= limit:
+        # A silently truncated exposure list produces a forecast that quietly omits
+        # divisions, which is indistinguishable from those divisions being safe.
+        _log.warning(
+            "gn_exposure_truncated",
+            districts=codes,
+            limit=limit,
+            impact="divisions beyond the limit were not returned and will not be forecast",
+        )
+    return _cached_list(request, response, rows)
 
 
 @router.get("/gn-divisions/{division_id}", response_model=GNDivisionDetail)

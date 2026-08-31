@@ -103,8 +103,6 @@ def test_the_seed_helper_is_stable_across_processes() -> None:
 
 def test_different_inputs_give_different_seeds() -> None:
     """A stable seed that ignored its arguments would pass every test above."""
-    seeds = {
-        derive.seed_for(42, "MET-006", hour) for hour in range(-48, 48, 6)
-    }
+    seeds = {derive.seed_for(42, "MET-006", hour) for hour in range(-48, 48, 6)}
 
     assert len(seeds) == 16

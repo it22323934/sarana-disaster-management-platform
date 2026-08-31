@@ -9,7 +9,7 @@ Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 ## Where the build has got to
 
 The repository is organised around 30 numbered build files in `.claude/`. Progress is
-strictly sequential. Files 03-12 are complete; the next unstarted file is 13.
+strictly sequential. Files 03-13 are complete; the next unstarted file is 14.
 
 | File | Area | State |
 |---|---|---|
@@ -23,22 +23,23 @@ strictly sequential. Files 03-12 are complete; the next unstarted file is 13.
 | 10 | ledger-svc | Done — 28 endpoints, publicly verifiable ledger |
 | 11 | gov-mock | Done — 31 endpoints, 7 mocked systems, inbound simulator |
 | 12 | LangGraph runtime | Done — runtime, HTTP surface, event triggers, eval harness |
-| **13–18** | **Agents** | **Not started — start here** |
+| 13 | Forecast & impact agent | Done — rule-threshold engine, Ditwah replay, eval |
+| **14–18** | **Agents** | **Not started — start here** |
 | 19–21 | Web (design system, ops console, public dashboard) | Scaffolds only |
 | 22–24 | Mobile (foundation, citizen, field companion) | Scaffold only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-**1,182 tests passing, 2 skipped.** `ruff check`, `ruff format --check` and `mypy` (286
+**1,278 tests passing, 2 skipped.** `ruff check`, `ruff format --check` and `mypy` (297
 source files) all clean.
 
 ```
-core-api        32 endpoints,  7,055 lines
+core-api        33 endpoints,  7,171 lines
 incident-svc    20 endpoints,  4,657 lines
 alerting-svc    15 endpoints,  4,177 lines
 ledger-svc      30 endpoints,  7,149 lines
 gov-mock        31 endpoints,  4,865 lines   <- 7 mocked systems + control plane
-agent-svc        6 endpoints,  4,007 lines   <- runtime, one reference agent, eval harness
+agent-svc        6 endpoints,  7,564 lines   <- runtime, 2 agents, replay + eval harness
 ```
 
 The jump from 680 is file 11's suite plus `tests/alerting/test_seeded_templates.py`, which
@@ -680,6 +681,7 @@ touching a model provider.
 
 ```bash
 uv run pytest tests/agent_svc services/agent-svc/tests      # 123 tests
+uv run pytest tests/agents/forecast                        # 81 tests
 uv run python -m agent_svc.runtime.eval --agent noop --fixtures data/fixtures/smoke
 make eval AGENT=noop                                       # writes artifacts/eval/
 ```
@@ -835,6 +837,171 @@ is not a fallback, it is a silent loss of the human gates.
 
 ---
 
+## File 13 is done — the forecast agent, and the decisions inside it
+
+The first real agent. It turns "150 mm of rain in Kandy district" into "these divisions lose
+road access within 48 hours; this many of those households contain someone over 70".
+
+```bash
+uv run pytest tests/agents/forecast                                    # 81 tests
+make eval AGENT=forecast                                               # -> artifacts/eval/
+uv run python -m agent_svc.agents.forecast.replay --scenario ditwah --assert-lead-time 24
+```
+
+### The headline claim is a test, and it passes with 48 hours to spare
+
+`LK-21 first reached impact class 3 48 hours before landfall.` Build file 13 says this must
+be a test rather than a hope, so it is one: the replay feeds the committed Ditwah fixture
+through the production nodes and asserts the lead time. No network, no database, no model
+provider.
+
+The second test beside it is the one that stops the first passing for the wrong reason. A
+forecast putting every division in Sri Lanka at major impact three days out has technically
+warned Kandy and has told nobody anything, so `test_the_forecast_does_not_flag_the_whole_
+country` asserts that fewer than 80% of divisions ever produce a row.
+
+### The dimensional error that would have looked exactly like a working early warning
+
+The first version summed the observed 24-hour rainfall and the forecast, then compared the
+total against NBRO's thresholds. **NBRO's thresholds are 24-hour figures.** A two-day total
+measured against a one-day line crosses every evacuate level about a day early, produces a
+plausible table, and from the outside is indistinguishable from an early warning system that
+works.
+
+`DivisionRainfall.peak()` now returns the worst *single* 24-hour accumulation in view and the
+window it falls in — which is also where `lead_time_hours` comes from, so "class 3 within 48
+hours" is a statement the number supports. Caught by doing the arithmetic against the Ditwah
+curve by hand before building anything on top of it.
+
+### Only NBRO's own evacuate line produces class 4
+
+The modifiers — a fragile slope, a division that floods more often than annually — can lift a
+division to major. They cannot lift it to severe. Class 4 is what an evacuation advisory is
+written against, and moving families out of their homes has to rest on the published
+threshold the country already agreed to, not on our judgement that a slope looked fragile.
+
+`MODIFIER_CEILING` is that rule, and `test_a_modifier_cannot_reach_severe` is the guard.
+
+### A model is used twice, and neither use decides anything
+
+**`reconcile_sources`** writes the explanation when Met and NBRO disagree. It cannot lower
+the hazard level: `apply_floor` takes the most severe source and is applied to the model's
+output *after* the call, not requested in the prompt. A rule that lives only in a prompt is
+one the model may decline to follow on the one input that matters, and a fluent paragraph
+arguing Amber over NBRO's EVACUATE is exactly the failure mode. Over-warning costs a
+preposition; under-warning costs the thing the platform exists to prevent.
+
+The degraded path is the same function as the floor, so losing the provider changes the
+rationale and never the level.
+
+**`explain`** writes the trilingual narrative. Output containing a number that is not in the
+drivers is discarded whole — not flagged, discarded — and the static template is published
+instead. A fabricated figure here reaches a GN officer as a specific claim about their own
+village, attributed to the government, at the hour they are deciding whether to move people.
+The check is blunt and has false positives; a sentence is cheap.
+
+A narrative missing Tamil is a failed generation, not two-thirds of a success.
+
+### Confidence is about the inputs, and the fixture set proves it means something
+
+A rule engine's thresholds either were or were not crossed; what varies is how much to trust
+the number compared against them. So confidence falls with gauge outages and with a missing
+NBRO survey.
+
+The outage penalty is scaled by the **share** of nearby gauges that are silent, not the
+count. At Ditwah's peak roughly a fifth of the national network is down; a per-station
+penalty read that as forty separate failures and drove every division in the country to 0.37
+confidence at the exact hour the forecast mattered most. Two silent gauges out of three
+nearby is a real problem; six out of thirty is a Tuesday.
+
+**The eval fixture set deliberately contains cases the engine cannot get right** — a gauge
+blackout, an unsurveyed high-hazard division, a riverside division with no elevation input.
+Without them the low-confidence bins are empty and ECE is vacuous. With them:
+
+| Confidence | Cases | Stated | Actual |
+|---|---|---|---|
+| 0.2–0.3 | 2 | 0.25 | 0.00 |
+| 0.7–0.8 | 3 | 0.70 | 0.67 |
+| 0.8–0.9 | 13 | 0.85 | 0.92 |
+
+ECE 0.086, against build file 13's requirement of 0.15. Accuracy is 77.8% and the bar is set
+at 75% for this agent alone, because four of the eighteen cases are ones it is *designed* to
+be wrong about — and deleting them to reach 90% would make the calibration number meaningless.
+That is what per-agent thresholds in `thresholds.json` are for.
+
+### Two schema contradictions, and the database won both
+
+**`drivers` is a JSONB object, not a list.** `hazard.impact_forecast` has a CHECK requiring
+`jsonb_typeof(drivers) = 'object'`; build file 13 describes `list[Driver]`.
+`ImpactScore.drivers_as_object()` keys by factor name, which also enforces one entry per
+factor — something a list cannot.
+
+**`method` is `RULE_THRESHOLD`, not `RULE_THRESHOLD_v1`.** The CHECK allows `RULE_THRESHOLD`
+and `MODEL` only, and `model_version` is a separate column. Same fact, split the way the
+schema splits it.
+
+Also: build file 13's trigger example reads `landslide_zone <= 2` for a high-hazard rule and
+names the action `NOTIFY_DS_PREPOSITION`. NBRO zone 4 is the *very high* hazard zone, and
+`TRIGGER_ACTIONS` has no such action — the equivalent is `PREPOSITION_REQUESTED`. Both are
+documented at the top of `exposure.py` and `triggers.py`.
+
+### Two attribute directions were decisions, not facts
+
+`landslide_zone` higher-is-worse comes from NBRO. `road_access_class` had a range and no
+stated direction anywhere in the schema or the seed, so it is fixed in `exposure.py` to match
+— higher is worse throughout — because two adjacent columns counting in opposite directions is
+a bug waiting in whichever one somebody reads second. `flood_return_period_m` is read as
+months between floods, lower being worse.
+
+### What the engine cannot see, and does not pretend to
+
+Build file 13 lists elevation and distance to the nearest waterway among the inputs.
+`admin.gn_division` carries neither. Deriving them from a centroid would produce a number
+that looks like terrain data and is not, so they are absent — and the consequence is in the
+eval set as `riverside-flood-no-slope-signal`, a case the engine gets wrong for a reason
+that is written down.
+
+### gov-mock was not reproducible, and its own docstrings said it was
+
+Nine call sites across four modules seeded `random.Random` from `hash()` of a tuple
+containing a string. **Python randomises string hashing per process**, so the same station at
+the same simulated hour returned 67.9 mm, then 54.4 mm, then 48.6 mm in three consecutive
+runs. Nothing raised. Every mock's docstring claims "the same simulated hour produces the
+same reading on every machine and every replay"; none of them did.
+
+`derive.seed_for()` fixes it with a SHA-256 digest — in the same module whose docstring
+already warned that `hash()` is randomised per process. `tests/gov_mock/test_reproducibility.py`
+runs each derivation in **subprocesses**, because within one interpreter `hash()` is perfectly
+stable, which is exactly why 122 existing tests over these mocks never saw it.
+
+The demo would have shown different weather on every boot, and the Ditwah replay would have
+been unrepeatable.
+
+### The eval harness needed two fixes to host a second agent
+
+**Fixtures were globbed.** `load_cases` read every `*.jsonl` in the directory, so `make eval
+AGENT=forecast` would have scored the forecast agent against `noop`'s labels and reported a
+confident 0%. Now `{agent}.jsonl` wins when it exists.
+
+**Thresholds were shared.** A deterministic three-keyword classifier and a threshold engine
+whose fixture set deliberately includes cases it cannot see are not comparable, and one
+accuracy bar across both would force somebody to delete the cases that make the calibration
+honest. `thresholds.json` now takes an `agents` block.
+
+**`AgentSpec.eval_build`** is the third piece. The forecast agent's production graph talks to
+the Met Department, NBRO and core-api; a harness that had to stand all three up is a harness
+nobody runs before pushing. The spec supplies a one-node graph over the scoring engine
+instead — which is the part with a confidence worth calibrating — and says so in its own
+docstring. The service never uses it.
+
+### `GET /admin/gn-divisions/exposure` is new on core-api
+
+Every division in the named districts, with the exposure attributes, in one call. The
+per-division endpoint would be one round trip each, several hundred per generation, several
+generations an hour. No geometry, ever.
+
+---
+
 ## Things that will bite you
 
 These each cost real debugging time. They are written down so they cost you none.
@@ -983,10 +1150,16 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
   resume endpoint, but no dispatch agent exists to resume — that is file 16. Every safety
   property of the gate holds without it; the response reports `graph_resumed: false` so
   nothing mistakes it for a completed agent decision.
-- **No agent calls a model yet (file 12).** `runtime/models.py` routes tiers, tracks spend
-  and retries, and nothing exercises it against a real provider: the only agent is `noop`,
-  which is deterministic by design. The first agent that calls OpenAI is file 13, and it
-  will be the first real test of the budget breaker and the retry policy.
+- **No agent has called a real model yet (files 12/13).** `runtime/models.py` routes tiers,
+  tracks spend and retries, and nothing has exercised it against a live provider. The
+  forecast agent has two model call sites and both are optional by design — every test and
+  every deployment without a key takes the deterministic path. The budget breaker and the
+  retry policy are still unproven against a real 429.
+- **The forecast agent has never run against the live stack.** Its ports, adapters, replay
+  and eval all work; `GET /admin/gn-divisions/exposure` is tested against a real Postgres.
+  What has not happened is one `POST /api/v1/agents/forecast/runs` against a booted
+  gov-mock and core-api, so the wiring in `main._build_forecast` is reviewed rather than
+  exercised.
 - **Nothing triggers an agent from an event in a running stack (file 12).** The consumer,
   the trigger table and the idempotency are all built and tested; the single row in
   `consumers/triggers.py` is disabled, because pointing the reference agent at live citizen
@@ -1053,6 +1226,11 @@ uv run python -m agent_svc.runtime.eval --agent noop --fixtures data/fixtures/sm
 uv run pytest tests/agent_svc services/agent-svc/tests
 curl -s localhost:8005/api/v1/agents -H "Authorization: Bearer $TOKEN"
 curl -s "localhost:8005/api/v1/agents/threads?status=interrupted" -H "Authorization: Bearer $TOKEN"
+
+# forecast agent (file 13)
+make eval AGENT=forecast
+uv run python -m agent_svc.agents.forecast.replay --scenario ditwah --assert-lead-time 24
+uv run python -m tools.seed.ditwah     # regenerate the replay fixture from gov-mock's curve
 ```
 
 `agent:invoke` starts a run; `agent:review` opens the approval inbox and answers an

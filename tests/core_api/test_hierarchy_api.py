@@ -14,6 +14,8 @@ from tests.core_api.conftest import (
     BOUNDARY_LON,
     GN_EAST,
     GN_WEST,
+    KANDY_DISTRICT,
+    KANDY_DS,
     NORTH_LAT,
     SOUTH_LAT,
 )
@@ -375,3 +377,143 @@ async def test_the_household_list_carries_no_personal_data(
         assert "head_name_encrypted" not in row
         assert "contact_msisdn_encrypted" not in row
         assert "contact_msisdn_hash" not in row
+
+
+# --------------------------------------------------------------------------------------
+# Bulk exposure, for the forecast agent
+# --------------------------------------------------------------------------------------
+
+
+async def test_exposure_returns_every_division_in_a_district_at_once(
+    client: AsyncClient,
+    operator_header: dict[str, str],
+    hierarchy_fixture: dict[str, str],
+) -> None:
+    """The forecast agent scores per division and needs all of them in one call.
+
+    The per-division endpoint would be one round trip each - several hundred per
+    generation, several generations an hour - and a forecast that arrives after the rain is
+    not a forecast.
+    """
+    response = await client.get(
+        "/api/v1/admin/gn-divisions/exposure",
+        headers=operator_header,
+        params={"districts": KANDY_DISTRICT},
+    )
+
+    assert response.status_code == 200
+    codes = {row["code"] for row in response.json()}
+    assert {GN_WEST, GN_EAST} <= codes
+
+
+async def test_exposure_carries_the_attributes_the_scoring_engine_reads(
+    client: AsyncClient,
+    operator_header: dict[str, str],
+    hierarchy_fixture: dict[str, str],
+) -> None:
+    """A missing attribute is not the same as a zero one.
+
+    `landslide_zone` absent means the NBRO survey does not cover this division, and the
+    engine scores it against the least hazardous zone and says so. `landslide_zone` of 0
+    would be a measurement, and there is no zone 0.
+    """
+    response = await client.get(
+        "/api/v1/admin/gn-divisions/exposure",
+        headers=operator_header,
+        params={"districts": KANDY_DISTRICT},
+    )
+
+    row = next(row for row in response.json() if row["code"] == GN_WEST)
+    for field in (
+        "landslide_zone",
+        "flood_return_period_m",
+        "road_access_class",
+        "cell_coverage_pct",
+        "elderly_pct",
+        "under5_pct",
+        "centroid_lon",
+        "centroid_lat",
+    ):
+        assert field in row, f"the scoring engine reads {field} and it is not returned"
+    assert row["household_count"] >= 0
+    assert row["ds_division_code"] == KANDY_DS
+    assert row["district_code"] == KANDY_DISTRICT
+
+
+async def test_exposure_names_the_division_in_three_languages(
+    client: AsyncClient,
+    operator_header: dict[str, str],
+    hierarchy_fixture: dict[str, str],
+) -> None:
+    """The narrative names the division to a GN officer, and non-negotiable #2 does not
+    stop applying because the text came from a reference table."""
+    response = await client.get(
+        "/api/v1/admin/gn-divisions/exposure",
+        headers=operator_header,
+        params={"districts": KANDY_DISTRICT},
+    )
+
+    row = next(row for row in response.json() if row["code"] == GN_WEST)
+    assert set(row["name"]) == {"si", "ta", "en"}
+
+
+async def test_exposure_carries_no_geometry(
+    client: AsyncClient,
+    operator_header: dict[str, str],
+    hierarchy_fixture: dict[str, str],
+) -> None:
+    """A payload carrying 14,022 polygons is one nobody can use and everybody pays for.
+
+    A responder wanting a boundary asks for one division's by id.
+    """
+    response = await client.get(
+        "/api/v1/admin/gn-divisions/exposure",
+        headers=operator_header,
+        params={"districts": KANDY_DISTRICT},
+    )
+
+    assert "geom" not in response.json()[0]
+    assert "geometry" not in response.json()[0]
+
+
+async def test_exposure_refuses_an_empty_district_list(
+    client: AsyncClient, operator_header: dict[str, str]
+) -> None:
+    """Rather than returning the whole country to a caller that asked for nothing."""
+    response = await client.get(
+        "/api/v1/admin/gn-divisions/exposure",
+        headers=operator_header,
+        params={"districts": " , "},
+    )
+
+    assert response.status_code == 422
+
+
+async def test_exposure_ignores_a_district_that_does_not_exist(
+    client: AsyncClient,
+    operator_header: dict[str, str],
+    hierarchy_fixture: dict[str, str],
+) -> None:
+    """A warning naming a district with no seeded divisions is a real state during a
+    partial import, and it must not take the rest of the forecast down with it."""
+    response = await client.get(
+        "/api/v1/admin/gn-divisions/exposure",
+        headers=operator_header,
+        params={"districts": f"{KANDY_DISTRICT},LK-99"},
+    )
+
+    assert response.status_code == 200
+    assert {row["code"] for row in response.json()} >= {GN_WEST, GN_EAST}
+
+
+async def test_exposure_is_not_readable_by_a_citizen(
+    client: AsyncClient, citizen_header: dict[str, str]
+) -> None:
+    """It is a map of who is vulnerable, division by division, for the whole country."""
+    response = await client.get(
+        "/api/v1/admin/gn-divisions/exposure",
+        headers=citizen_header,
+        params={"districts": KANDY_DISTRICT},
+    )
+
+    assert response.status_code == 403

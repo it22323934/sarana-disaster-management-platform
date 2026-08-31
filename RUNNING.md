@@ -132,11 +132,19 @@ make test                       # full suite; spins up throwaway Postgres contai
 uv run pytest tests/core_api    # one area
 make lint                       # ruff + mypy + eslint + tsc
 make eval AGENT=noop            # score an agent against labelled fixtures
+make eval AGENT=forecast
+uv run python -m agent_svc.agents.forecast.replay --scenario ditwah --assert-lead-time 24
 ```
 
 `make eval` writes a markdown report to `artifacts/eval/` — accuracy, calibration, latency,
 cost and how often a human changed the answer. It reaches no model provider and no network,
 so it runs anywhere the tests do.
+
+The replay is the platform's headline claim, made checkable: it feeds the committed Ditwah
+rainfall curve through the forecast agent and asserts that Kandy's fragile slopes reach major
+impact well before landfall. It currently reports 48 hours. Regenerate the fixture with
+`uv run python -m tools.seed.ditwah` after any change to gov-mock's curve, and re-read the
+forecast tests when you do.
 
 On Windows, the root `conftest.py` switches asyncio to the Selector event loop. psycopg's
 async mode refuses to run on the default Proactor loop, so without it every test that boots
@@ -213,11 +221,15 @@ goes anywhere.
 All six backend services are complete and the stack boots. Above them, most of the
 product is not there. Working backwards from the build files:
 
-- **The agent runtime is built; the agents are not.** agent-svc runs LangGraph graphs,
-  pauses them on a human decision, survives a restart with the decision still pending, and
-  scores itself against labelled fixtures. What it hosts is one reference agent that
-  classifies with three keywords. No forecasting, warning, intake, triage or anomaly agent
-  exists, and nothing calls a model. Files 13–18.
+- **One of the six agents exists.** The forecast agent turns rainfall into per-division
+  impact predictions with lead time, confidence and the drivers that produced them, and
+  fires pre-agreed anticipatory triggers. No warning, intake, triage, anomaly or supervisor
+  agent exists yet. Files 14–18.
+
+  It is a **documented rule-based threshold engine, not a trained model**, and everything
+  says so: every row carries `method: RULE_THRESHOLD`, the eval report repeats it, and the
+  demo should say it out loud. Phase 1 has no historical dataset. The seam for a real model
+  is `scoring.ImpactModel` and it is the only thing a trained one would have to satisfy.
 - **The three frontends are framework scaffolds** — one page each. Files 19–24.
 - **No AWS infrastructure, observability wiring or CI.** Files 25–29.
 
@@ -252,6 +264,12 @@ Worth knowing before you demo anything:
   with `POST /api/v1/agents/noop/runs`, then look at
   `GET /api/v1/agents/threads?status=interrupted` — that is the approval inbox the ops
   console will render.
+- **The forecast agent needs a machine credential to run in the stack.** Run
+  `make service-clients`, put the printed `SARANA_AGENT_CLIENT_SECRET` in `.env` and
+  restart. Without it the agent refuses on its first node with a sentence saying so, rather
+  than scoring every division against a default hazard zone — a forecast that is confidently
+  wrong about which slopes are fragile is worse than no forecast. The replay and the eval
+  need none of this; they run offline.
 - **Anchors are not externally stored** unless an object store is configured. Without one
   the anchor job records the Merkle root in the database and logs
   `anchor_not_externally_stored`; the `s3_object_lock_uri` is null rather than a

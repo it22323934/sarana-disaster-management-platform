@@ -63,6 +63,19 @@ class Settings(SharedSettings):
         default=True, validation_alias="SARANA_AGENT_DURABLE_CHECKPOINTS"
     )
 
+    # Where the forecast agent reads its inputs, and the credential that opens core-api.
+    # The secret is provisioned by `tools/seed/service_clients.py`; without it the agent
+    # refuses to run rather than scoring every division against a default hazard zone, so
+    # a deployment that forgot it fails visibly instead of forecasting confidently wrong.
+    core_api_url: str = Field(
+        default="http://localhost:8001", validation_alias="SARANA_CORE_API_URL"
+    )
+    gov_mock_url: str = Field(
+        default="http://localhost:8006", validation_alias="SARANA_GOV_MOCK_URL"
+    )
+    client_id: str = Field(default="agent-svc", validation_alias="SARANA_AGENT_CLIENT_ID")
+    client_secret: str | None = Field(default=None, validation_alias="SARANA_AGENT_CLIENT_SECRET")
+
     langsmith_api_key: str | None = Field(default=None, validation_alias="LANGSMITH_API_KEY")
     langsmith_project: str = Field(default="sarana", validation_alias="LANGSMITH_PROJECT")
     tracing: bool = Field(default=False, validation_alias="LANGSMITH_TRACING")

@@ -65,6 +65,23 @@ ORDER BY g.code
 LIMIT :limit OFFSET :offset
 """
 
+_GN_EXPOSURE_SQL = """
+SELECT g.id::text, g.code, g.name,
+       g.population, g.household_count, g.elderly_pct, g.under5_pct,
+       g.landslide_zone, g.flood_return_period_m, g.road_access_class,
+       g.cell_coverage_pct,
+       ST_X(g.centroid) AS centroid_lon,
+       ST_Y(g.centroid) AS centroid_lat,
+       d.code AS ds_division_code,
+       dt.code AS district_code
+FROM admin.gn_division g
+JOIN admin.ds_division d ON d.id = g.ds_division_id
+JOIN admin.district dt ON dt.id = d.district_id
+WHERE dt.code = ANY(CAST(:district_codes AS text[]))
+ORDER BY g.code
+LIMIT :limit
+"""
+
 _GN_DIVISION_SQL = """
 SELECT g.id::text, g.code, g.name, g.ds_division_id::text,
        g.population, g.household_count, g.elderly_pct, g.under5_pct,
@@ -313,5 +330,32 @@ async def division_contacts(
     result = await session.execute(
         text(_DIVISION_CONTACTS_SQL),
         {"gn_division_codes": gn_division_codes, "limit": limit, "offset": offset},
+    )
+    return [dict(row) for row in result.mappings()]
+
+
+async def list_gn_exposure(
+    session: AsyncSession,
+    *,
+    district_codes: list[str],
+    limit: int = 5000,
+) -> list[dict[str, Any]]:
+    """Every division in these districts, with the exposure attributes, in one query.
+
+    The forecast agent needs all of them at once: it scores per division and the
+    per-division endpoint would be one HTTP round trip per division, several hundred per
+    generation, several generations an hour. That is not a performance nicety - it is the
+    difference between a forecast that arrives before the rain and one that does not.
+
+    Districts rather than a bounding box because that is what a Met warning names, and
+    resolving a warning to a box and back to divisions would lose the districts the
+    Department was actually talking about.
+
+    No geometry, ever. A responder wanting a boundary asks for one division's by id; a
+    payload carrying 14,022 polygons is one nobody can use and everybody pays for.
+    """
+    result = await session.execute(
+        text(_GN_EXPOSURE_SQL),
+        {"district_codes": district_codes, "limit": limit},
     )
     return [dict(row) for row in result.mappings()]

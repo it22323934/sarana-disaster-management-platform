@@ -108,6 +108,8 @@ service-clients: ## Provision the machine credentials services authenticate with
 .PHONY: service-clients
 
 FIXTURES ?= data/fixtures/smoke
+SCENARIO ?= ditwah
+LEAD_TIME ?= 24
 
 .PHONY: dev
 dev: ## Run web and mobile in watch mode alongside the compose stack
@@ -142,6 +144,10 @@ openapi: ## Regenerate the merged OpenAPI spec and the TypeScript client
 eval: ## Score an agent against labelled fixtures. Usage: make eval AGENT=noop [FIXTURES=data/fixtures/smoke]
 	@test -n "$(AGENT)" || (echo "Usage: make eval AGENT=noop" && exit 1)
 	$(UV) run python -m agent_svc.runtime.eval --agent $(AGENT) --fixtures $(FIXTURES)
+
+.PHONY: replay
+replay: ## Replay a scenario through the forecast agent and check its lead time
+	$(UV) run python -m agent_svc.agents.forecast.replay 		--scenario $(SCENARIO) --assert-lead-time $(LEAD_TIME)
 
 .PHONY: verify-events
 verify-events: ## Fail if an event contract change would break a running consumer
