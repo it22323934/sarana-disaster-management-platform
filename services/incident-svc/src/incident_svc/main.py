@@ -10,10 +10,12 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import FastAPI
 from redis.asyncio import Redis
 
 from incident_svc import SERVICE_DESCRIPTION, __version__
+from incident_svc.adapters.agent_runtime import AgentThreadResumer
 from incident_svc.adapters.core_api import CoreApiClient
 from incident_svc.api.internal.channels import router as channels_router
 from incident_svc.api.v1.router import router as v1_router
@@ -28,6 +30,8 @@ from sarana_shared.events.factory import build_event_bus
 from sarana_shared.events.outbox import OutboxPublisher, OutboxWorker
 from sarana_shared.service.app import create_service_app
 from sarana_shared.service.health import HealthRegistry
+
+_log = structlog.get_logger(__name__)
 
 SERVICE_NAME = "incident-svc"
 
@@ -77,7 +81,22 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         # endpoint reports this verbatim, so a dispatcher is never left believing an
         # ordered list came from a model when it came from the published rule.
         app.state.assisted_triage = False
-        app.state.thread_resumer = NullResumer()
+
+        # The dispatch gate's resumer. `NullResumer` accepts the resume and reports
+        # `graph_resumed: false`, which is the honest answer for a deployment with the
+        # agents switched off - a plan proposed without an agent has no thread to resume,
+        # and failing closed would mean the gate could not be used at all.
+        if resolved.resume_agent_threads:
+            app.state.thread_resumer = AgentThreadResumer(resolved.agent_svc_url)
+            _log.info("dispatch_resumer_wired", agent_svc=resolved.agent_svc_url)
+        else:
+            app.state.thread_resumer = NullResumer()
+            _log.info(
+                "dispatch_resumer_not_wired",
+                impact="approving a plan reports graph_resumed: false; the plan is still "
+                "released and every gate still holds. Set "
+                "SARANA_INCIDENT_RESUME_AGENT_THREADS=true once agent-svc is reachable.",
+            )
 
         # Drains this service's outbox onto the bus. The outbox is the source of truth;
         # this is only the transport, so a worker that dies loses nothing - the rows are
@@ -95,6 +114,8 @@ def build_app(settings: Settings | None = None) -> FastAPI:
             yield
         finally:
             await worker.stop()
+            if hasattr(app.state.thread_resumer, "aclose"):
+                await app.state.thread_resumer.aclose()
             await app.state.core_api.aclose()
             await bus.close()
             await redis.aclose()

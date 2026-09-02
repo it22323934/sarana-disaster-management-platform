@@ -58,6 +58,24 @@ class Settings(SharedSettings):
         default=None, validation_alias="SARANA_INCIDENT_CLIENT_SECRET"
     )
 
+    # Where the agent runtime lives, for resuming a dispatch plan's reasoning thread when
+    # a dispatcher decides. No credential goes with it: agent-svc refuses machine
+    # principals on `agent:review`, so the resume forwards the approving dispatcher's own
+    # token. See `adapters/agent_runtime.py`.
+    agent_svc_url: str = Field(
+        default="http://localhost:8005", validation_alias="SARANA_AGENT_SVC_URL"
+    )
+
+    # Off by default, and that is deliberate rather than cautious. A deployment running
+    # without the agents has dispatch plans with no `langgraph_thread_id` at all, and the
+    # gate skips the resume for those anyway - but a deployment that has *some* agent
+    # plans and an unreachable agent-svc would fail every approval on those, which is a
+    # worse failure than reporting `graph_resumed: false`. Turn it on when agent-svc is
+    # reachable and the triage agent is wired.
+    resume_agent_threads: bool = Field(
+        default=False, validation_alias="SARANA_INCIDENT_RESUME_AGENT_THREADS"
+    )
+
 
 def get_settings() -> Settings:
     """Load settings, exiting 78 (EX_CONFIG) if the environment is incomplete."""

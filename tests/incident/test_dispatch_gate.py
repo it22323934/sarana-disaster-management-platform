@@ -191,17 +191,65 @@ async def test_the_step_up_is_checked_before_anything_is_decided() -> None:
 
 
 class _FailingResumer:
-    async def resume(self, thread_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async def resume(
+        self, thread_id: str, payload: dict[str, Any], *, token: str | None = None
+    ) -> dict[str, Any]:
         raise RuntimeError("the graph is unreachable")
 
 
 class _RecordingResumer:
+    """Records the token as well as the payload.
+
+    The token is what makes the resume a human act rather than a machine one - agent-svc
+    refuses machine principals on `agent:review` - so a stub that dropped it would let a
+    regression through silently.
+    """
+
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.tokens: list[str | None] = []
 
-    async def resume(self, thread_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async def resume(
+        self, thread_id: str, payload: dict[str, Any], *, token: str | None = None
+    ) -> dict[str, Any]:
         self.calls.append((thread_id, payload))
+        self.tokens.append(token)
         return {"graph_resumed": True}
+
+
+async def test_the_approvers_token_reaches_the_resumer() -> None:
+    """The resume is performed as the dispatcher, not as incident-svc.
+
+    agent-svc refuses machine principals on `agent:review`, so a resume that arrived
+    without the approving person's token could not authenticate at all - and if it somehow
+    did, the audit trail would say a service answered the agent's question rather than the
+    person who decided.
+    """
+    resumer = _RecordingResumer()
+
+    await dispatch_gate.approve(
+        a_plan(langgraph_thread_id="thread-1"),
+        principal=dispatcher(),
+        resumer=resumer,
+        token="dispatcher-token",
+    )
+
+    assert resumer.tokens == ["dispatcher-token"]
+
+
+async def test_a_rejection_also_carries_the_approvers_token() -> None:
+    resumer = _RecordingResumer()
+
+    await dispatch_gate.reject(
+        a_plan(langgraph_thread_id="thread-1"),
+        principal=dispatcher(),
+        reason=dispatch_gate.RejectionReason.WRONG_PRIORITY,
+        note=None,
+        resumer=resumer,
+        token="dispatcher-token",
+    )
+
+    assert resumer.tokens == ["dispatcher-token"]
 
 
 async def test_a_plan_with_a_thread_resumes_it_before_being_released() -> None:

@@ -1571,6 +1571,58 @@ quoted as though it had been.
 
 ---
 
+## The dispatch gate now resumes a real graph, and forwards a human's token to do it
+
+`incident_svc.adapters.agent_runtime.AgentThreadResumer` replaces `NullResumer`. It closes
+the seam file 08 opened, file 12 could not fill, and file 16 finally gave something to
+resume.
+
+### It forwards the dispatcher's own token, and that is not a shortcut
+
+agent-svc's resume endpoint is `require(Scope.AGENT_REVIEW, allow_machine=False)`. **No
+machine principal in the platform holds `agent:review`** — not `Role.AGENT`, not
+`Role.SERVICE` — because answering an agent's question is a human act. incident-svc
+therefore *cannot* resume the thread with a service credential, and the design does not try
+to.
+
+So `_caller_token(request)` lifts the bearer token off the approving request and passes it
+through `dispatch_gate.approve` to the resumer. `Role.DISPATCHER` and `Role.DMC_OPERATOR`
+both hold `agent:review`, so it works, and agent-svc records the decision against the person
+who made it.
+
+That is the truthful attribution as well as the only one that authenticates. A service
+credential would have produced an audit trail saying incident-svc answered the agent's
+question, which is false — and it would have routed around `allow_machine=False`, which is
+the whole reason that flag is set. `resume()` refuses outright when no token is available
+rather than falling back to anything.
+
+Forwarding a token deserves care, so: it goes to one URL configured at boot, over one
+endpoint, and it is never logged or stored.
+
+### Two vocabularies meet, and the adapter translates
+
+The gate says `decision: approve|reject` because that is what `dispatch_plan` records.
+agent-svc says `approved: bool` because that is what every interrupt asks. `_as_resume_request`
+converts, passes the rejection reason through, identifies the approver by id rather than
+name — the decision lands in a checkpoint, and a checkpoint carries ids — and forwards
+anything else the decision carried, so a dispatcher who trims a responder count while
+approving does not lose it.
+
+### Off by default, deliberately
+
+`SARANA_INCIDENT_RESUME_AGENT_THREADS` defaults to false. A deployment running without the
+agents has plans with no `langgraph_thread_id`, and the gate skips the resume for those
+anyway — but a deployment with *some* agent-made plans and an unreachable agent-svc would
+fail every approval on them, because `approve` treats a failed resume as fatal. That is
+worse than reporting `graph_resumed: false`. Turn it on when agent-svc is reachable.
+
+The asymmetry between approve and reject is unchanged and still deliberate: a failed resume
+on approve stops the release, and on reject it is swallowed, because a rejection that cannot
+reach the graph is still a rejection and leaving a declined plan in the queue looking live
+would be worse.
+
+---
+
 ## Things that will bite you
 
 These each cost real debugging time. They are written down so they cost you none.
@@ -1741,11 +1793,12 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
   is not implemented.
 - **Perf gate (file 07)** — `tests/perf/resolve.js` is written to spec (p99 < 20 ms at 200
   rps) but has never been run. k6 is not installed and the target is unverified.
-- **The dispatch gate is not yet wired to the runtime (files 12/16).**
-  `incident_svc.domain.dispatch_gate.NullResumer` still stands in. agent-svc now has a real
-  resume endpoint, but no dispatch agent exists to resume — that is file 16. Every safety
-  property of the gate holds without it; the response reports `graph_resumed: false` so
-  nothing mistakes it for a completed agent decision.
+- **The dispatch gate is wired to the runtime, and off by default (files 12/16/08).**
+  `AgentThreadResumer` is real and tested; `SARANA_INCIDENT_RESUME_AGENT_THREADS` turns it
+  on and defaults to false. With it off the gate uses `NullResumer` and reports
+  `graph_resumed: false`, which is the honest answer for a deployment with the agents
+  switched off. It has never been run against a booted agent-svc, because the triage agent
+  has no adapters yet and therefore no plan with a real `langgraph_thread_id`.
 - **No agent has called a real model yet (files 12/13).** `runtime/models.py` routes tiers,
   tracks spend and retries, and nothing has exercised it against a live provider. The
   forecast agent has two model call sites and both are optional by design — every test and

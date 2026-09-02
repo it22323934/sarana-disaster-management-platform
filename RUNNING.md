@@ -243,8 +243,13 @@ product is not there. Working backwards from the build files:
   formula, solves routes with OR-Tools, writes a plan in PROPOSED — and then pauses
   indefinitely until a named dispatcher with a second factor releases it. Four independent
   layers stop it releasing anything itself. It has no adapters either, and
-  `incident_svc`'s `NullResumer` is still what the dispatch gate calls, so approving a plan
-  in the running stack still reports `graph_resumed: false`.
+  it has no adapters either.
+
+  **The dispatch gate can now resume it**, though the switch is off by default. Set
+  `SARANA_INCIDENT_RESUME_AGENT_THREADS=true` once agent-svc is reachable and approving a
+  plan will drive its graph past the interrupt — forwarding the approving dispatcher's own
+  token, because agent-svc refuses machine principals on `agent:review`. Left off, the gate
+  reports `graph_resumed: false` and every safety property still holds.
 
   **The warning agent never writes alert text.** It selects among templates two named
   native speakers have signed, fills typed parameters from structured data, and stops for a

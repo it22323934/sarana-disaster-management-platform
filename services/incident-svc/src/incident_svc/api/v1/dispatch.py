@@ -121,6 +121,23 @@ async def get_plan(
     return {**row, "id": str(row["id"])}
 
 
+def _caller_token(request: Request) -> str | None:
+    """The raw bearer token this request arrived with, for forwarding to agent-svc.
+
+    Returns None rather than raising. The middleware has already authenticated the caller
+    by the time either endpoint runs, so an absent header here means a test client or a
+    transport that stripped it - not an authorisation problem - and
+    `AgentThreadResumer.resume` refuses with a sentence saying exactly what is missing.
+
+    Forwarding a token is a thing to do carefully, so: it goes to one URL, configured at
+    boot, over one endpoint that refuses machine principals. It is never logged, never
+    stored, and never sent anywhere the deployment did not name.
+    """
+    header = request.headers.get("Authorization") or ""
+    scheme, _, credential = header.partition(" ")
+    return credential.strip() if scheme.lower() == "bearer" and credential.strip() else None
+
+
 @router.post("/dispatch-plans/{plan_id}/approve", response_model=DecisionResponse)
 async def approve_plan(
     plan_id: UUID,
@@ -149,6 +166,10 @@ async def approve_plan(
             plan,
             principal=principal,
             resumer=request.app.state.thread_resumer,
+            # The dispatcher's own token, forwarded. agent-svc refuses machine principals
+            # on `agent:review`, so the resume is performed as the person who decided -
+            # which is also the truthful attribution.
+            token=_caller_token(request),
         )
     except dispatch_gate.StepUpFailed as error:
         _log.warning("dispatch_step_up_failed", plan_id=str(plan_id), actor=principal.subject_id)
@@ -218,6 +239,7 @@ async def reject_plan(
             reason=body.reason,
             note=body.note,
             resumer=request.app.state.thread_resumer,
+            token=_caller_token(request),
         )
     except dispatch_gate.StepUpFailed as error:
         raise Unauthenticated(str(error), context={"reason": "step_up_required"}) from error

@@ -104,12 +104,24 @@ class GraphResumeFailed(GateRefused):
 class ThreadResumer(Protocol):
     """Resumes a paused LangGraph thread past its interrupt.
 
-    The agent runtime is build file 12 and does not exist yet. This protocol is the seam:
-    the gate calls it, `NullResumer` stands in until the runtime lands, and none of the
-    safety properties above depend on which implementation is present.
+    The seam between the gate and the agent runtime. `NullResumer` stands in for a
+    deployment with the agents switched off, and none of the safety properties above
+    depend on which implementation is present.
+
+    **`token` is the dispatcher's own bearer token, forwarded.** agent-svc's resume
+    endpoint refuses machine principals outright (`allow_machine=False` on
+    `Scope.AGENT_REVIEW`), which is deliberate: answering an agent's question is a human
+    act. So incident-svc does not resume the thread on its own authority - it passes the
+    token of the person who just approved the plan, and agent-svc records the decision
+    against them.
+
+    That is also the truthful attribution. The dispatcher made the decision; incident-svc
+    only carried it.
     """
 
-    async def resume(self, thread_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async def resume(
+        self, thread_id: str, payload: dict[str, Any], *, token: str | None = None
+    ) -> dict[str, Any]:
         """Resume `thread_id`, returning the graph's state after the interrupt."""
         ...
 
@@ -126,7 +138,9 @@ class NullResumer:
     completed agent decision.
     """
 
-    async def resume(self, thread_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async def resume(
+        self, thread_id: str, payload: dict[str, Any], *, token: str | None = None
+    ) -> dict[str, Any]:
         _log.info(
             "dispatch_graph_resume_skipped",
             thread_id=thread_id,
@@ -196,6 +210,7 @@ async def approve(
     *,
     principal: Principal,
     resumer: ThreadResumer,
+    token: str | None = None,
 ) -> GateDecision:
     """Run the gate for an approval.
 
@@ -220,6 +235,7 @@ async def approve(
                     "approver_id": str(approver_id),
                     "at": at.isoformat(),
                 },
+                token=token,
             )
         except Exception as error:
             raise GraphResumeFailed(
@@ -250,6 +266,7 @@ async def reject(
     reason: RejectionReason,
     note: str | None,
     resumer: ThreadResumer,
+    token: str | None = None,
 ) -> GateDecision:
     """Run the gate for a rejection.
 
@@ -281,6 +298,7 @@ async def reject(
                     "reason": reason.value,
                     "at": at.isoformat(),
                 },
+                token=token,
             )
             graph_resumed = bool(state.get("graph_resumed", True))
         except Exception:  # noqa: BLE001 - a rejection stands whatever the graph does
