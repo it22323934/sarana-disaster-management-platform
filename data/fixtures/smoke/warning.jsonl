@@ -1,0 +1,20 @@
+// Template selection for the warning agent. The label is the template code the published
+// catalogue should produce for a hazard at an impact class, or "none" where nothing fits
+// and a DMC operator decides. Read off the catalogue and NBRO's escalation points rather
+// than off the code, so a change that makes class 4 flood select a warning instead of an
+// evacuation order fails this eval.
+{"id": "flood-class-0-sends-nothing", "subject_id": "w-01", "input": {"hazard_type": "FLOOD", "impact_class": 0}, "label": {"template_code": "none"}, "expect_human_review": false}
+{"id": "flood-class-1-is-below-the-alerting-threshold", "subject_id": "w-02", "input": {"hazard_type": "FLOOD", "impact_class": 1}, "label": {"template_code": "none"}, "expect_human_review": false}
+{"id": "flood-class-2-is-a-watch", "subject_id": "w-03", "input": {"hazard_type": "FLOOD", "impact_class": 2}, "label": {"template_code": "FLOOD_WATCH"}, "expect_human_review": false}
+{"id": "flood-class-3-is-a-warning", "subject_id": "w-04", "input": {"hazard_type": "FLOOD", "impact_class": 3}, "label": {"template_code": "FLOOD_WARNING"}, "expect_human_review": false}
+{"id": "flood-class-4-with-a-shelter-evacuates", "subject_id": "w-05", "input": {"hazard_type": "FLOOD", "impact_class": 4, "shelter_name": "Gampola Maha Vidyalaya"}, "label": {"template_code": "FLOOD_EVACUATE_IMMEDIATE"}, "expect_human_review": false}
+{"id": "flood-class-4-without-a-shelter-asks-a-person", "subject_id": "w-06", "input": {"hazard_type": "FLOOD", "impact_class": 4}, "label": {"template_code": "none", "needs_human_review": true}, "expect_human_review": false}
+{"id": "landslide-class-2-is-a-watch", "subject_id": "w-07", "input": {"hazard_type": "LANDSLIDE", "impact_class": 2}, "label": {"template_code": "LANDSLIDE_WATCH"}, "expect_human_review": false}
+{"id": "landslide-class-3-is-a-warning", "subject_id": "w-08", "input": {"hazard_type": "LANDSLIDE", "impact_class": 3, "shelter_name": "Deltota Community Hall"}, "label": {"template_code": "LANDSLIDE_WARNING"}, "expect_human_review": false}
+{"id": "landslide-class-4-uses-the-most-severe-reviewed-landslide-text", "subject_id": "w-09", "input": {"hazard_type": "LANDSLIDE", "impact_class": 4, "shelter_name": "Deltota Community Hall"}, "label": {"template_code": "LANDSLIDE_WARNING"}, "expect_human_review": false}
+{"id": "landslide-warning-without-a-shelter-asks-a-person", "subject_id": "w-10", "input": {"hazard_type": "LANDSLIDE", "impact_class": 3}, "label": {"template_code": "none", "needs_human_review": true}, "expect_human_review": false}
+{"id": "cyclone-class-3-warns", "subject_id": "w-11", "input": {"hazard_type": "CYCLONE", "impact_class": 3}, "label": {"template_code": "CYCLONE_WARNING"}, "expect_human_review": false}
+{"id": "cyclone-class-4-warns", "subject_id": "w-12", "input": {"hazard_type": "CYCLONE", "impact_class": 4}, "label": {"template_code": "CYCLONE_WARNING"}, "expect_human_review": false}
+{"id": "storm-surge-class-4-warns", "subject_id": "w-13", "input": {"hazard_type": "STORM_SURGE", "impact_class": 4, "shelter_name": "Kalutara Rest House"}, "label": {"template_code": "STORM_SURGE_WARNING"}, "expect_human_review": false}
+{"id": "drought-has-no-template-and-asks-a-person", "subject_id": "w-14", "input": {"hazard_type": "DROUGHT", "impact_class": 3}, "label": {"template_code": "none", "needs_human_review": true}, "expect_human_review": false}
+{"id": "a-catalogue-mid-review-asks-a-person-rather-than-downgrading", "subject_id": "w-15", "input": {"hazard_type": "FLOOD", "impact_class": 3, "catalogue": [{"code": "FLOOD_WATCH", "hazard_type": "FLOOD", "severity": "MODERATE", "body": "{gn_division_name}"}]}, "label": {"template_code": "none", "needs_human_review": true}, "expect_human_review": false}

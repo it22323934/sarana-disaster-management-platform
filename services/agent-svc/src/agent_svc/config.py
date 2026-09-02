@@ -73,6 +73,17 @@ class Settings(SharedSettings):
     gov_mock_url: str = Field(
         default="http://localhost:8006", validation_alias="SARANA_GOV_MOCK_URL"
     )
+
+    # Where the warning agent reads the template catalogue and sends alerts. Without it the
+    # agent keeps its refusing stand-ins rather than completing a run that warned nobody.
+    alerting_url: str = Field(
+        default="http://localhost:8003", validation_alias="SARANA_ALERTING_SVC_URL"
+    )
+
+    # Who the CAP documents this service produces say sent them. Matches alerting-svc's own
+    # default: two services disagreeing about the sender of one alert is a consumer
+    # deduplicating two warnings into none.
+    cap_sender: str = Field(default="dmc@sarana.lk", validation_alias="SARANA_ALERTING_CAP_SENDER")
     client_id: str = Field(default="agent-svc", validation_alias="SARANA_AGENT_CLIENT_ID")
     client_secret: str | None = Field(default=None, validation_alias="SARANA_AGENT_CLIENT_SECRET")
 

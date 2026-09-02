@@ -145,6 +145,10 @@ eval: ## Score an agent against labelled fixtures. Usage: make eval AGENT=noop [
 	@test -n "$(AGENT)" || (echo "Usage: make eval AGENT=noop" && exit 1)
 	$(UV) run python -m agent_svc.runtime.eval --agent $(AGENT) --fixtures $(FIXTURES)
 
+.PHONY: sms-check
+sms-check: ## Check every seeded alert template fits in two SMS segments, worst-case (file 14)
+	$(UV) run python -m tools.sms_segment_check
+
 .PHONY: replay
 replay: ## Replay a scenario through the forecast agent and check its lead time
 	$(UV) run python -m agent_svc.agents.forecast.replay 		--scenario $(SCENARIO) --assert-lead-time $(LEAD_TIME)

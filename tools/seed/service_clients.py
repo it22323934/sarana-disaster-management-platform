@@ -69,8 +69,12 @@ CLIENTS: Final[tuple[ClientSpec, ...]] = (
             "Resolves a household to the keyed hash a message is addressed to, for the "
             "payment confirmation and reversal messages, and for real alert targeting."
         ),
-        # The only credential that holds household:contact_read. Everything else that
-        # reads the hierarchy keeps admin:read and cannot reach a per-person identifier.
+        # One of two credentials holding household:contact_read - agent-svc gained it in
+        # file 14, when the warning agent needed to target households itself. Everything
+        # else that reads the hierarchy keeps admin:read alone and cannot reach a
+        # per-person identifier. Two is a number worth keeping small and worth stating:
+        # this scope is the difference between a database dump that is uninteresting and
+        # one that is a list of everybody's phone.
         scopes=frozenset({Scope.ADMIN_READ, Scope.HOUSEHOLD_CONTACT_READ}),
     ),
     ClientSpec(
@@ -87,11 +91,35 @@ CLIENTS: Final[tuple[ClientSpec, ...]] = (
     ClientSpec(
         client_id="agent-svc",
         description=(
-            "Reads the hierarchy and the Resilience Graph, and appends observations to it, "
-            "on behalf of the forecasting and triage agents."
+            "Reads the hierarchy and the Resilience Graph and appends observations to it, "
+            "for the forecasting and triage agents; reads the published alert catalogue "
+            "and resolves households to messaging hashes, for the warning agent."
         ),
+        # The alert scopes arrived with file 14. `alert:dispatch` on a machine looks
+        # alarming and is not: the soft human gate for an alert lives in the alert's own
+        # `requires_human_signoff` column and in the agent's gated tool, not in the token.
+        # The two scopes that genuinely cannot be held by a machine - dispatch:commit and
+        # disbursement:release - are stripped at mint time by `strip_human_gates`, so no
+        # entry in this table can hand an agent either of them.
+        #
+        # `household:contact_read` is the one to think hardest about. The warning agent
+        # needs it because targeting is per household: it deduplicates two households
+        # sharing a handset, routes language per household, and counts the households with
+        # no channel at all - and every one of those is the difference between a delivery
+        # figure that is real and one that is decorative. The cost is that a second service
+        # can now reach a per-person identifier, so this credential is worth rotating on
+        # the same schedule as alerting-svc's.
         scopes=frozenset(
-            {Scope.ADMIN_READ, Scope.RESILIENCE_READ, Scope.RESILIENCE_WRITE, Scope.AGENT_INVOKE}
+            {
+                Scope.ADMIN_READ,
+                Scope.RESILIENCE_READ,
+                Scope.RESILIENCE_WRITE,
+                Scope.AGENT_INVOKE,
+                Scope.HOUSEHOLD_CONTACT_READ,
+                Scope.ALERT_READ,
+                Scope.ALERT_DRAFT,
+                Scope.ALERT_DISPATCH,
+            }
         ),
     ),
 )

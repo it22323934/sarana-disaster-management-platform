@@ -124,8 +124,15 @@ class TemplateChoice:
 
     @property
     def provenance(self) -> str:
-        """`MODEL` or `DETERMINISTIC`, as the audit log and the console read it."""
-        return "MODEL" if self.method == "LLM" else "DETERMINISTIC"
+        """How this was produced, as the audit log and the console read it.
+
+        Three values, not two. A template a person chose is not a template a rule chose,
+        and the officer reading the record afterwards decides differently depending on
+        which - so `HUMAN` is distinguished rather than folded into `DETERMINISTIC`.
+        """
+        if self.method == "LLM":
+            return "MODEL"
+        return "HUMAN" if self.method == "HUMAN" else "DETERMINISTIC"
 
     def rendered(self) -> dict[str, str]:
         """The three language bodies, parameters substituted."""
@@ -199,6 +206,43 @@ def _fill(template: AlertTemplate, facts: dict[str, str]) -> dict[str, str]:
     return {name: facts[name] for name in sorted(template.parameters)}
 
 
+def select_named(
+    code: str, *, catalogue: list[AlertTemplate], facts: SelectionFacts
+) -> TemplateChoice:
+    """Use the template a named person asked for.
+
+    This is the answer to `no_suitable_template`, and it deliberately does not consult the
+    matrix: a DMC operator who knows the district has decided, and the matrix exists to act
+    when nobody has. Their choice outranks it, and the provenance says a human made it.
+
+    Two things still hold. The template must be **published** - a named Sinhala reviewer and
+    a named Tamil reviewer have signed it - and it must be **fillable** from structured
+    data. "The operator picked it" is not a reason to dispatch a message with
+    `{shelter_name}` still in it, and it is not a reason to send unreviewed text.
+
+    Raises:
+        NoSuitableTemplate: if the code is not in the published catalogue, or cannot be
+            filled. The graph asks once more rather than looping.
+    """
+    published = _by_code(catalogue)
+    chosen = published.get(code.upper())
+    if chosen is None:
+        raise NoSuitableTemplate(
+            f"{code!r} is not in the published catalogue. Published templates: "
+            f"{', '.join(sorted(published)) or 'none'}."
+        )
+
+    return TemplateChoice(
+        template=chosen,
+        parameters=_fill(chosen, facts.available()),
+        # A person's decision, and the confidence of one. Not the rule figure: this did not
+        # come from the matrix and reporting it as though it had would hide who chose.
+        confidence=1.0,
+        method="HUMAN",
+        reasoning=f"a DMC operator selected {chosen.code}",
+    )
+
+
 async def select(
     *,
     hazard_type: str,
@@ -244,7 +288,7 @@ async def select(
 
     floor = published[code]
     notes: list[str] = []
-    if hazard == "LANDSLIDE" and impact_class >= 4:  # noqa: PLR2004 - CLASS_SEVERE, named in scoring
+    if hazard == "LANDSLIDE" and impact_class >= 4:
         notes.append(
             "the catalogue has no landslide evacuate-immediate template; this is the most "
             "severe landslide text that has been through native review"
@@ -295,7 +339,7 @@ async def _model_choice(
         >= SEVERITY_RANK.get(floor.severity.upper(), 0)
         and not (template.parameters - set(available))
     ]
-    if len(candidates) < 2:  # noqa: PLR2004 - one candidate is not a choice
+    if len(candidates) < 2:
         return TemplateChoice(
             template=floor,
             parameters=_fill(floor, available),

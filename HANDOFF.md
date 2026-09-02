@@ -1,6 +1,6 @@
 # SARANA — handoff
 
-State of the build as of 2026-08-31. Written for whoever picks this up next.
+State of the build as of 2026-09-02. Written for whoever picks this up next.
 
 Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 
@@ -9,7 +9,7 @@ Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 ## Where the build has got to
 
 The repository is organised around 30 numbered build files in `.claude/`. Progress is
-strictly sequential. Files 03-13 are complete; the next unstarted file is 14.
+strictly sequential. Files 03-14 are complete; the next unstarted file is 15.
 
 | File | Area | State |
 |---|---|---|
@@ -24,14 +24,16 @@ strictly sequential. Files 03-13 are complete; the next unstarted file is 14.
 | 11 | gov-mock | Done — 31 endpoints, 7 mocked systems, inbound simulator |
 | 12 | LangGraph runtime | Done — runtime, HTTP surface, event triggers, eval harness |
 | 13 | Forecast & impact agent | Done — rule-threshold engine, Ditwah replay, eval |
-| **14–18** | **Agents** | **Not started — start here** |
+| 14 | Warning dissemination agent | Done — template selection, targeting, CAP, gaps |
+| **15–18** | **Agents** | **Not started — start here** |
 | 19–21 | Web (design system, ops console, public dashboard) | Scaffolds only |
 | 22–24 | Mobile (foundation, citizen, field companion) | Scaffold only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-**1,278 tests passing, 2 skipped.** `ruff check`, `ruff format --check` and `mypy` (297
-source files) all clean.
+**1,360 tests passing, 2 skipped.** `ruff check`, `ruff format --check` and `mypy` (308
+source files) all clean. File 14 added 122: 76 under `tests/agents/warning`, 46 for the
+SMS segment gate.
 
 ```
 core-api        33 endpoints,  7,171 lines
@@ -39,7 +41,7 @@ incident-svc    20 endpoints,  4,657 lines
 alerting-svc    15 endpoints,  4,177 lines
 ledger-svc      30 endpoints,  7,149 lines
 gov-mock        31 endpoints,  4,865 lines   <- 7 mocked systems + control plane
-agent-svc        6 endpoints,  7,564 lines   <- runtime, 2 agents, replay + eval harness
+agent-svc        6 endpoints, 11,422 lines   <- runtime, 3 agents, replay + eval harness
 ```
 
 The jump from 680 is file 11's suite plus `tests/alerting/test_seeded_templates.py`, which
@@ -582,9 +584,9 @@ the day it was written.
   comes back. Revoking a client takes effect within the quarter hour.
 - **Revocable.** `active = false` and the next grant fails.
 - **Least privilege.** `allowed_scopes` narrows a credential to a subset of the SERVICE
-  role. incident-svc holds `admin:read` and nothing else; alerting-svc is the only
-  credential in the platform with `household:contact_read`; gov-mock's gateway holds
-  `incident:write` and cannot read anything.
+  role. incident-svc holds `admin:read` and nothing else; `household:contact_read` is held
+  by alerting-svc and — since file 14 — by agent-svc, and by nothing else; gov-mock's
+  gateway holds `incident:write` and cannot read anything.
 - **The secret is never stored.** Argon2id, shown once at provisioning, not recoverable.
 
 **The ceiling is in code, not in the database.** A client gets the intersection of what it
@@ -1002,6 +1004,239 @@ generations an hour. No geometry, ever.
 
 ---
 
+## File 14 is done — the warning agent, and the decisions inside it
+
+```
+receive_forecast -> decide_alert_needed -> select_template -> resolve_targets
+-> plan_channels -> validate -> [human_signoff] -> dispatch -> collect_receipts
+-> assess_gaps -> record
+```
+
+Eleven nodes, one interrupt, and the first agent in the platform that is `gated=True`.
+
+```bash
+uv run pytest tests/agents/warning tests/alerting/test_sms_segments.py
+make eval AGENT=warning
+uv run python -m tools.sms_segment_check          # exits 0, tightest pass has +8 units
+```
+
+### The model does not write alert text, and three things enforce it
+
+The constraint is the whole design, so it is worth writing down what actually holds it up
+rather than that it is a rule.
+
+Selection is a lookup over `RULE_MATRIX` in `agents/warning/catalogue.py`, keyed on
+`(hazard_type, impact_class)`. A model is consulted **only when two or more published
+templates sit at or above the matrix's answer** in CAP severity order — otherwise a token
+would be spent choosing between one option. Its answer is then checked, not trusted:
+
+- not a published code for this hazard → discarded, matrix answer used;
+- below the severity floor → discarded, and logged at `error`;
+- provider unreachable or slow → discarded, matrix answer used.
+
+Parameter values are a separate refusal. `validate_parameters()` accepts a proposed value
+only if it appears character for character among the structured facts. A model may say
+which known value fits; it may not supply one. `shelter_name` filled with "the temple on
+the hill" is free text with a template around it, and free text is precisely what the soft
+gate exists to catch.
+
+### An unfillable template asks a person; it never falls back to a weaker one
+
+The sharpest decision in the file. Class 4 flood selects `FLOOD_EVACUATE_IMMEDIATE`, which
+needs `shelter_name`. If no shelter has been named, the run raises `NoSuitableTemplate` and
+interrupts.
+
+It does **not** select `FLOOD_WARNING`. A downgraded evacuation order goes out, reads as
+deliberate, and tells people to prepare when they were meant to leave — a silent failure
+with nothing in the record to show it happened.
+
+There is no safety-location registry wired yet, so `shelter_name` arrives with the run
+(`SUPPLIED_FACTS` in `graph.py`) from the operator or trigger that started it. That is why
+a bare class 4 run correctly pauses: the agent genuinely does not know where to send
+anybody. Wiring the registry is a port and an endpoint and changes no rule here.
+
+### One class band per run, and the band is in the subject
+
+`warning:hazard_event:{event}#c4`. A run alerts on **one** impact class and targets only
+the divisions at that class.
+
+Mixing bands forces a choice between two harms: the class 4 text to everybody tells a
+watch-level division to evacuate; the class 2 text tells a division in severe trouble to
+monitor water levels. Divisions at other bands are named in the output as `deferred_bands`
+and need their own run.
+
+`#c4` rather than a second colon because the resume endpoint splits a thread id on the
+first two colons only — a colon would survive, but a subject that looks like it has
+structure the splitter understands is one somebody eventually splits wrongly. There is a
+test.
+
+### Two dispatch tools, and only one is gated
+
+`dispatch_templated_warning` is ungated. `dispatch_free_text_warning` is
+`requires_human_gate=True`, so `runtime.tools.assert_human_gate` refuses it without a
+decision naming *this* subject. Three independent layers hold the gate:
+
+1. the tool registry refuses the call;
+2. `validate` will not mark a free-text alert dispatchable, so routing reaches
+   `human_signoff` first;
+3. alerting-svc refuses an alert whose `requires_human_signoff` is set and `signed_off_by`
+   is null.
+
+A gate over the *template* path would mean a fully reviewed evacuation order waits for
+somebody to be awake, which is why there are two tools rather than one with a flag.
+
+### A sign-off flips `dispatchable`; it does not re-run `validate`
+
+Re-running validation after an approval would mint a second CAP identifier for one alert
+and set the same signoff flag again. So `human_signoff`, below the interrupt, sets
+`requires_signoff=False, dispatchable=True` — **only when `validate` found no problems**. A
+person approves text; they do not approve a schema violation or an over-cap fan-out.
+
+An operator answering `no_suitable_template` with a template code routes back through
+`select_template`, which honours their choice over the matrix (`select_named`, provenance
+`HUMAN`) — at most once, guarded by `operator_chose_template`. An approval inbox that
+re-asks the same question is one people stop opening.
+
+### An approval is not a channel for new copy
+
+An operator's resume may approve, refuse, or name a template. It may **not** author free
+text. `validate` has already built and checked the CAP document by the time the interrupt
+fires, so text arriving in the decision would reach a district having passed no trilingual
+check, no CAP validation and no segment measurement. `human_signoff` logs it at `error` and
+drops it.
+
+The operator's route for something the templates do not cover already exists and is file
+09's: `POST /api/v1/alerts` with `free_text` lands in `PENDING_SIGNOFF`, where the text is
+validated before anybody signs it. There is a test.
+
+### Targets are not in the checkpoint
+
+A national fan-out is several hundred thousand households and a checkpoint row stays under
+64KB. What travels is division codes and per-division counts.
+
+The cost is that a run reads the directory **three times** — `resolve_targets`, `dispatch`
+and `assess_gaps` — rather than once. That is the trade against a resume that would load
+half a megabyte of contact hashes before it could ask a person a question, and against a
+checkpoint table growing by the population of every warned district. The third read is
+removable: `assess_gaps` only needs denominators and `target_counts` already holds them,
+but it would mean `gaps.assess` taking counts instead of targets, which is the shape its
+unit tests are written against. Worth doing before a real national fan-out; not worth doing
+blind.
+
+### `reachability_confidence` is about the picture, not the delivery
+
+Not "how likely is it these people got the message" but **how much of this division's
+outcome we actually know** — the share of targets with a definite result either way,
+reduced for every channel that failed outright.
+
+A division where every receipt came back UNKNOWN scores `MIN_CONFIDENCE` even if everybody
+got it, because the honest statement is that we cannot tell. A confident 40% confirmed is a
+division to send a vehicle to; an unconfident 90% is a division to send a vehicle to *and*
+fix the receipts on.
+
+### Quiet hours are Colombo local, and the bypass is the point
+
+22:00–05:00, SMS/USSD/PUSH only, released at 06:00. Applied in Colombo local time because
+the rule is about when somebody is asleep and Sri Lanka is UTC+5:30 — in UTC it would
+silence the wrong five and a half hours, which during an overnight landfall is exactly the
+wrong ones.
+
+`impact_class >= 3` bypasses it entirely. The exception is what makes the restriction safe
+to have: a rule that silenced everything at night is one somebody removes the first time it
+matters.
+
+The clock is injected (`build(..., now=)`), not read inside a node — a rule about what the
+agent does at a particular hour cannot be tested by a test that cannot fix the hour.
+
+### CAP moved to `sarana_shared.domain.cap`
+
+`validate` builds and validates the CAP document **before** handing it to alerting-svc, so
+a problem is caught while the graph can still route it to an operator. That needed the CAP
+module somewhere both services reach, so it moved out of alerting-svc;
+`alerting_svc.domain.cap` re-exports it and every file 09 call site is unchanged. Two CAP
+validators disagreeing about whether a warning is dispatchable is not a disagreement
+anybody finds until it matters.
+
+`cap_case()` came along with it, replacing alerting-svc's private `_cap_case` — the copy
+that would have rendered `STORM_SURGE` as `Storm_surge` in whichever service was written
+second.
+
+### An oversized SMS body is recorded, not refused
+
+`sarana_shared.domain.sms` counts segments in UTF-16 code units. Sinhala and Tamil are
+UCS-2, so two segments is 134 units against English's 306.
+
+`tools/sms_segment_check.py` is the CI gate over the **seed**, with worst-case parameter
+values taken from the longest names in `data/seed/reference`. All twelve templates pass;
+the tightest is `FLOOD_EVACUATE_IMMEDIATE` in Tamil at +8 units.
+
+At *dispatch* time an oversized body is logged and carried on `validation.oversized_sms`,
+not blocked. Refusing to send a warning because a long division name pushed it three
+characters over would trade a real warning for a tidy one.
+
+Build file 14's DoD names `data/seed/alert_templates.yaml`. This repository seeds templates
+as JSON at `data/seed/reference/alert_template.json` and has no YAML in the seed at all;
+the checker defaults to the file that exists and takes a path argument.
+
+### The eval calibrates nothing, and says so
+
+`make eval AGENT=warning` scores template selection: 15 cases, 100% accuracy, ECE 0.099.
+
+The ECE is reported and is **not** the gate — accuracy is. Selection is a lookup, so it is
+right by construction whenever the catalogue has the template, and the stated confidence is
+nearly constant. The 0.099 is systematic under-confidence over a rule table, which is the
+honest shape. Manufacturing a spread of confidences so the reliability diagram had an
+interesting diagonal would produce a number that looks like a calibrated safety property
+and is not one.
+
+That is the opposite shape to the forecast agent's thresholds, and `thresholds.json` now
+says why for both.
+
+### agent-svc is now the second credential holding `household:contact_read`
+
+Worth flagging on its own, because it widens a blast radius that file 09 had deliberately
+kept to one service. The warning agent needs per-household targeting to do what file 14
+specifies — deduplicate two households sharing a handset, route language per household,
+count the households with no channel at all — and each of those is the difference between
+a delivery figure that is real and one that is decorative.
+
+The alternative was an endpoint on alerting-svc that resolves targets on the agent's
+behalf, keeping the scope in one place. That is the better shape and it is more work than
+file 14 asks for; it is written down here so the next person choosing between them is
+choosing rather than inheriting.
+
+`alert:dispatch` on a machine is not the same kind of question: the soft gate for an alert
+lives in `requires_human_signoff` and in the gated tool, not in the token, and the two
+scopes a machine genuinely may never hold — `dispatch:commit` and `disbursement:release` —
+are still stripped at mint time by `strip_human_gates`.
+
+### Still placeholder, and honest about it
+
+- **`NullHistory` is wired, so nothing is suppressed for fatigue in a running stack.** The
+  rule, the window and both directions of the escalation test are real and tested; what
+  does not exist is a query over `alerting.alert` per household. The adapter logs a warning
+  on every call, because the failure mode — the same watch-level message every fifteen
+  minutes for three days — looks like the platform working hard rather than broken.
+- **`AlertingDispatcher.receipts` expands `/delivery`'s aggregate counts into synthetic
+  per-target receipts.** That endpoint groups by channel and status and does not list
+  targets, so per-division arithmetic in a live stack is currently right in aggregate and
+  not attributable per household. A `GET /alerts/{id}/receipts` on alerting-svc closes it;
+  the port already has the right shape.
+- **`_dominant_languages` reads a `language_pct` field core-api does not yet return**, so
+  in a live stack every division falls back to the default language order. Household
+  `preferred_language` — which routes most messages — is real and comes from
+  `admin.household`.
+- **The warning agent has never run against the live stack.** The same position file 13 was
+  in: the ports, the graph and the eval all work against fakes, and `main._build_warning`
+  is reviewed rather than exercised.
+- **No event starts it.** `consumers/triggers.py` has no row for `warning`. A forecast
+  generating a class 4 does not currently start a warning run. It is one row, deliberately
+  not added until somebody has run the agent by hand against a booted stack once —
+  pointing it at live forecasts before that would fan out to real targets on the first
+  generation.
+
+---
+
 ## Things that will bite you
 
 These each cost real debugging time. They are written down so they cost you none.
@@ -1177,6 +1412,13 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
   values the assessment's single category. A household with damage in several categories
   needs several assessments today. The pure calculator underneath already handles multiple
   items and the household cap; the endpoint does not yet pass them.
+- **Nothing starts the warning agent from an event (file 14).** `consumers/triggers.py`
+  has no row for it. A forecast reaching class 4 does not currently draft an alert; the
+  agent runs from `POST /api/v1/agents/warning/runs` only. Adding the row is deliberate
+  work, not an oversight — it fans out to real targets on the first generation.
+- **Alert fatigue is not suppressed in a running stack (file 14).** The rule is real and
+  tested; `NullHistory` is what is wired, because no query over `alerting.alert` per
+  household exists yet. It logs a warning on every call.
 - **Payment rails are mocks.** Every reference starts `MOCK-`.
 - **Nothing here is delivered to a real handset.** The payment notices go out through
   `MockSmsGateway`, like every other channel in Phase 1. The message text, the language
@@ -1231,6 +1473,11 @@ curl -s "localhost:8005/api/v1/agents/threads?status=interrupted" -H "Authorizat
 make eval AGENT=forecast
 uv run python -m agent_svc.agents.forecast.replay --scenario ditwah --assert-lead-time 24
 uv run python -m tools.seed.ditwah     # regenerate the replay fixture from gov-mock's curve
+
+# warning agent (file 14)
+make eval AGENT=warning
+uv run python -m tools.sms_segment_check                       # exits 0 over the seed
+uv run pytest tests/agents/warning tests/alerting/test_sms_segments.py
 ```
 
 `agent:invoke` starts a run; `agent:review` opens the approval inbox and answers an

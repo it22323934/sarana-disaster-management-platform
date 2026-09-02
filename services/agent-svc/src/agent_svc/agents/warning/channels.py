@@ -183,7 +183,9 @@ def plan(
     if impact_class >= ALL_CHANNELS_FROM:
         selected = set(available)
         for channel in selected:
-            reasons[channel] = f"impact class {impact_class}: every available channel, no exceptions"
+            reasons[channel] = (
+                f"impact class {impact_class}: every available channel, no exceptions"
+            )
     else:
         for channel in MODERATE_CHANNELS:
             if channel in available:

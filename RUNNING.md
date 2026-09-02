@@ -133,6 +133,8 @@ uv run pytest tests/core_api    # one area
 make lint                       # ruff + mypy + eslint + tsc
 make eval AGENT=noop            # score an agent against labelled fixtures
 make eval AGENT=forecast
+make eval AGENT=warning
+make sms-check                  # every seeded template fits two SMS segments, worst-case
 uv run python -m agent_svc.agents.forecast.replay --scenario ditwah --assert-lead-time 24
 ```
 
@@ -221,10 +223,22 @@ goes anywhere.
 All six backend services are complete and the stack boots. Above them, most of the
 product is not there. Working backwards from the build files:
 
-- **One of the six agents exists.** The forecast agent turns rainfall into per-division
+- **Two of the six agents exist.** The forecast agent turns rainfall into per-division
   impact predictions with lead time, confidence and the drivers that produced them, and
-  fires pre-agreed anticipatory triggers. No warning, intake, triage, anomaly or supervisor
-  agent exists yet. Files 14–18.
+  fires pre-agreed anticipatory triggers. The warning agent turns those forecasts into
+  trilingual CAP alerts: it selects a natively reviewed template, resolves targets and
+  languages, chooses the channel mix, dispatches, and reports which divisions probably did
+  not get it. No intake, triage, anomaly or supervisor agent exists yet. Files 15–18.
+
+  **The warning agent never writes alert text.** It selects among templates two named
+  native speakers have signed, fills typed parameters from structured data, and stops for a
+  DMC operator the moment anything free-text is involved. A model that is available chooses
+  between templates and can widen the channel mix; it cannot pick a less severe template
+  than the rules require, and it cannot supply a parameter value that is not already a
+  structured fact.
+
+  Nothing starts it from an event yet — run it with
+  `POST /api/v1/agents/warning/runs` on a subject like `{hazard_event_id}#c4`.
 
   It is a **documented rule-based threshold engine, not a trained model**, and everything
   says so: every row carries `method: RULE_THRESHOLD`, the eval report repeats it, and the
@@ -264,12 +278,18 @@ Worth knowing before you demo anything:
   with `POST /api/v1/agents/noop/runs`, then look at
   `GET /api/v1/agents/threads?status=interrupted` — that is the approval inbox the ops
   console will render.
-- **The forecast agent needs a machine credential to run in the stack.** Run
+- **The forecast and warning agents need a machine credential to run in the stack.** Run
   `make service-clients`, put the printed `SARANA_AGENT_CLIENT_SECRET` in `.env` and
-  restart. Without it the agent refuses on its first node with a sentence saying so, rather
-  than scoring every division against a default hazard zone — a forecast that is confidently
-  wrong about which slopes are fragile is worse than no forecast. The replay and the eval
-  need none of this; they run offline.
+  restart. Without it both agents refuse on their first node with a sentence saying so,
+  rather than scoring every division against a default hazard zone or completing a run that
+  warned nobody. Both failures would otherwise be invisible: one is a forecast confidently
+  wrong about which slopes are fragile, the other is indistinguishable from a quiet day.
+  The replay, the evals and the SMS gate need none of this; they run offline.
+- **The warning agent's fatigue suppression is not active in a running stack.** `NullHistory`
+  is wired, so a household can be sent the same watch-level message on every forecast
+  generation. The rule and both directions of the escalation test are real; the query over
+  `alerting.alert` per household is what does not exist. The adapter logs a warning on
+  every call rather than letting it look like the platform working hard.
 - **Anchors are not externally stored** unless an object store is configured. Without one
   the anchor job records the Merkle root in the database and logs
   `anchor_not_externally_stored`; the `s3_object_lock_uri` is null rather than a

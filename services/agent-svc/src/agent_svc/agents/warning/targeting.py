@@ -231,9 +231,7 @@ def build_plan(
     codes = tuple(sorted({target.gn_division_code for target in kept}))
     languages = division_language_order(reach, codes)
 
-    stated = Counter(
-        target.preferred_language for target in kept if target.preferred_language
-    )
+    stated = Counter(target.preferred_language for target in kept if target.preferred_language)
     _log.info(
         "warning_targets_resolved",
         targeted=len(kept),

@@ -18,8 +18,11 @@ completely different numbers on a coverage map and only one of them means somebo
 be sent in a vehicle.
 
 The credential is a client-credentials grant (`sarana_shared.auth.ServiceCredentials`),
-scoped to `household:contact_read` and nothing else — the only credential in the platform
-that holds it.
+scoped to `household:contact_read` and nothing else. It was the only credential in the
+platform holding that scope until file 14, when the warning agent needed to target
+households itself; agent-svc holds it too now. Two is worth keeping small and worth
+saying out loud, because this scope is the difference between a service whose database
+dump is uninteresting and one whose dump is a list of everybody's phone.
 """
 
 from __future__ import annotations

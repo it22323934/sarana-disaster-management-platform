@@ -21,9 +21,17 @@ from agent_svc.adapters.forecast import (
     GovHazardFeeds,
     SqlForecastStore,
 )
+from agent_svc.adapters.warning import (
+    AlertingCatalogue,
+    AlertingDispatcher,
+    CoreApiTargets,
+    NullHistory,
+    SqlForecasts,
+)
 from agent_svc.agents import SPECS
 from agent_svc.agents.forecast import graph as forecast_graph
 from agent_svc.agents.forecast.ports import HazardWindow
+from agent_svc.agents.warning import graph as warning_graph
 from agent_svc.api.v1.router import router as v1_router
 from agent_svc.config import Settings, get_settings
 from agent_svc.consumers import AgentTriggerWorker
@@ -115,6 +123,13 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         forecast = _build_forecast(resolved, app.state.session_factory, exit_stack)
         if forecast is not None:
             REGISTRY.replace_graph("forecast", forecast(checkpointer))
+
+        # The warning agent, for the same reason and with the same failure mode: without
+        # its dependencies it keeps the refusing stand-ins, which say what is missing on
+        # the first run rather than completing a run that sent nothing.
+        warning = _build_warning(resolved, app.state.session_factory, exit_stack)
+        if warning is not None:
+            REGISTRY.replace_graph("warning", warning(checkpointer))
 
         app.state.agents = REGISTRY
 
@@ -225,6 +240,72 @@ def _build_forecast(
         )
 
     _log.info("forecast_agent_wired", core_api=settings.core_api_url, feeds=settings.gov_mock_url)
+    return build
+
+
+def _build_warning(
+    settings: Settings, session_factory: Any, exit_stack: AsyncExitStack
+) -> Callable[[Any], Any] | None:
+    """A builder for the warning graph with its real dependencies, or None.
+
+    None when the credential is missing. The agent then keeps the refusing stand-ins from
+    its own module, which raise a sentence naming what to run - rather than completing a
+    run that warned nobody, which from the outside is indistinguishable from a quiet day.
+    """
+    if not settings.client_secret:
+        _log.warning(
+            "warning_agent_unconfigured",
+            reason="no SARANA_AGENT_CLIENT_SECRET",
+            impact="the warning agent refuses to run; run `make service-clients` and set "
+            "the printed secret",
+        )
+        return None
+
+    from sarana_shared.auth.service_credentials import ServiceCredentials
+
+    # Bound here rather than read inside `credentials`: the guard above narrows it to a
+    # str, and a closure over `settings` would lose that narrowing.
+    secret = settings.client_secret
+
+    def credentials(scope: str) -> ServiceCredentials:
+        return ServiceCredentials(
+            base_url=settings.core_api_url,
+            client_id=settings.client_id,
+            client_secret=secret,
+            scope=scope,
+        )
+
+    # Three grants, kept separate rather than requested as one. They are the same machine
+    # identity, and a token audit that can see this service holds `household:contact_read`
+    # independently of `alert:dispatch` is one somebody can actually reason about.
+    catalogue = AlertingCatalogue(settings.alerting_url, credentials=credentials("alert:read"))
+    targets = CoreApiTargets(
+        settings.core_api_url, credentials=credentials("household:contact_read admin:read")
+    )
+    dispatcher = AlertingDispatcher(
+        settings.alerting_url, credentials=credentials("alert:draft alert:dispatch")
+    )
+    forecasts = SqlForecasts(session_factory)
+
+    for adapter in (catalogue, targets, dispatcher):
+        exit_stack.push_async_callback(adapter.aclose)
+
+    def build(checkpointer: Any) -> Any:
+        # `now` is deliberately not pinned here. The quiet-hours rule is a claim about the
+        # hour a run happens, and a graph compiled once at boot with a fixed clock would
+        # apply whatever hour the process started for as long as it stayed up - which is
+        # exactly the bug that sends a watch-level SMS at 2 a.m.
+        return warning_graph.build(
+            checkpointer,
+            forecasts=forecasts,
+            catalogue=catalogue,
+            directory=targets,
+            dispatcher=dispatcher,
+            history=NullHistory(),
+            sender=settings.cap_sender,
+        )
+
+    _log.info("warning_agent_wired", core_api=settings.core_api_url, alerting=settings.alerting_url)
     return build
 
 

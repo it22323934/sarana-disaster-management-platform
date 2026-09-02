@@ -145,21 +145,29 @@ class WarningState(AgentState, total=False):
 
     **Targets are not in here.** A national fan-out is several hundred thousand households,
     a checkpoint row stays under 64KB, and a checkpoint holds references rather than
-    payloads. What travels is the division codes and the per-division counts;
-    `dispatch` resolves the targets again from the directory in the same run. The cost is
-    one extra directory read; the alternative is a resume that has to load half a megabyte
-    of contact hashes before it can ask a person a question.
+    payloads. What travels is the division codes and the per-division counts.
+
+    The cost is real and worth stating: `dispatch` and `assess_gaps` each resolve the
+    targets again, so a run reads the directory three times rather than once. That is the
+    trade against a resume that would have to load half a megabyte of contact hashes before
+    it could ask a person a question, and against a checkpoint table that grows by the
+    population of every warned district. The third read is removable - `assess_gaps` needs
+    denominators, which `target_counts` already holds - and it has not been removed because
+    it would mean `gaps.assess` taking counts instead of targets, which is the shape the
+    unit tests are written against.
     """
 
     hazard_event_id: str
     hazard_type: str
     impact_class: int
+    supplied_facts: dict[str, str]
     divisions: list[dict[str, Any]]
     deferred_bands: dict[str, int]
 
     alert_needed: bool
     selection: dict[str, Any]
     free_text: dict[str, str] | None
+    operator_chose_template: bool
 
     division_codes: list[str]
     division_ids: list[str]
@@ -237,7 +245,10 @@ def build_nodes(
     what this agent does at a particular hour. A test that could not fix the clock could
     not test the rule that keeps a district asleep.
     """
-    clock = (lambda: now) if now is not None else utc_now
+
+    def clock() -> datetime:
+        """The run's clock. Pinned when one was supplied, otherwise the wall clock."""
+        return now if now is not None else utc_now()
 
     async def receive_forecast(state: WarningState) -> dict[str, Any]:
         """Read the forecast this alert would be written against."""
@@ -257,12 +268,19 @@ def build_nodes(
             hazard_type=hazard_type,
             divisions=len(rows),
             band=band,
+            carries_free_text=bool(supplied.get("free_text")),
         )
         return {
             "hazard_event_id": hazard_event_id,
             "hazard_type": hazard_type,
             "impact_class": band if band is not None else 0,
             "divisions": [_division_as_dict(row) for row in rows],
+            # Free text arrives with the run and is never produced by this agent. It sets
+            # the soft gate, so it is lifted into state here rather than read from the
+            # input dict at each node - a flag that decides whether a person sees the alert
+            # should not depend on which nodes remembered to look for it.
+            "free_text": dict(supplied["free_text"]) if supplied.get("free_text") else None,
+            "supplied_facts": _supplied_facts(supplied),
             "notes": [f"{len(rows)} forecast divisions for {hazard_event_id}"],
         }
 
@@ -288,8 +306,10 @@ def build_nodes(
             )
 
         requested = int(state.get("impact_class") or 0)
-        band = requested if requested >= channel_rules.ALERT_FROM else max(
-            row.impact_class for row in eligible
+        band = (
+            requested
+            if requested >= channel_rules.ALERT_FROM
+            else max(row.impact_class for row in eligible)
         )
         in_band = [row for row in eligible if row.impact_class == band]
 
@@ -341,16 +361,29 @@ def build_nodes(
         rows = [as_division(raw) for raw in state.get("divisions", [])]
 
         published = await catalogue.published(hazard_type=hazard)
-        facts = _facts_for(rows, hazard=hazard, moment=clock())
+        chosen = str(state.get("selection", {}).get("template_code") or "")
+        facts = _facts_for(
+            rows,
+            hazard=hazard,
+            moment=clock(),
+            supplied=dict(state.get("supplied_facts", {})),
+        )
 
         try:
-            choice = await templates.select(
-                hazard_type=hazard,
-                impact_class=band,
-                catalogue=published,
-                facts=facts,
-                call=call,
-            )
+            if chosen:
+                # An operator answered `no_suitable_template` by naming one. Their choice
+                # bypasses the matrix - a named person who knows the district outranks a
+                # lookup table, and the matrix is what acts when nobody has - but it must
+                # still be published and still be fillable.
+                choice = templates.select_named(chosen, catalogue=published, facts=facts)
+            else:
+                choice = await templates.select(
+                    hazard_type=hazard,
+                    impact_class=band,
+                    catalogue=published,
+                    facts=facts,
+                    call=call,
+                )
         except templates.NoSuitableTemplate as error:
             _log.warning(
                 "warning_no_suitable_template",
@@ -381,6 +414,11 @@ def build_nodes(
             notes=list(choice.notes),
         )
         return {
+            "output": {
+                **dict(state.get("output", {})),
+                "needs_human_review": False,
+                "review_reason": None,
+            },
             "selection": {
                 "template_id": choice.template.id,
                 "template_code": choice.template.code,
@@ -635,14 +673,59 @@ def build_nodes(
             carries_free_text=bool(free_text),
         )
 
+        if not approved:
+            # A refusal is a decision, not an absence, and it is not retried. The run ends
+            # saying a person stopped it, which is a different fact from the agent having
+            # decided no alert was needed - and the officer who has to answer for it later
+            # needs the record to say which.
+            return {
+                **_completed(
+                    state,
+                    alert_needed=False,
+                    reason=(
+                        f"{decision.get('decided_by', 'a person')} reviewed this alert and "
+                        "said no. A refusal is a decision and it is not retried."
+                    ),
+                    confidence=1.0,
+                    provenance="HUMAN",
+                ),
+                "human_decision": decision,
+            }
+
+        if free_text:
+            # Refused, deliberately. `validate` has already built and checked the CAP
+            # document by the time this interrupt fires, so text authored in the resume
+            # would reach a district having passed no trilingual check, no CAP validation
+            # and no segment measurement. An approval is an answer to the question that was
+            # asked; it is not a channel for new copy.
+            #
+            # An operator who wants to say something the templates do not cover drafts it
+            # in the console - `POST /api/v1/alerts` with `free_text`, which lands in
+            # PENDING_SIGNOFF and goes through file 09's own gate, where the text is
+            # validated before anybody signs it.
+            _log.error(
+                "warning_signoff_free_text_refused",
+                decided_by=str(decision.get("decided_by")),
+                impact="text supplied in a resume was not dispatched; it had passed no "
+                "CAP or trilingual validation. Draft it in the console instead.",
+            )
+
         update: dict[str, Any] = {
             "human_decision": decision,
-            "notes": [f"human {'approved' if approved else 'refused'} this alert"],
+            "operator_chose_template": bool(chosen_code),
+            "notes": [f"{decision.get('decided_by', 'a person')} approved this alert"],
         }
-        if free_text:
-            update["free_text"] = dict(free_text)
         if chosen_code:
             update["selection"] = {**selection, "template_code": chosen_code}
+
+        # The sign-off is what makes a free-text alert dispatchable, and it is the only
+        # thing that does. Applied here rather than by re-running `validate`, which would
+        # mint a second CAP identifier for one alert and set the same signoff flag again.
+        # Anything `validate` found *wrong* - an invalid document, an over-cap fan-out - is
+        # untouched: a person approves text, they do not approve a schema violation.
+        validation = dict(state.get("validation", {}))
+        if validation and not validation.get("problems"):
+            update["validation"] = {**validation, "requires_signoff": False, "dispatchable": True}
         return update
 
     async def dispatch(state: WarningState) -> dict[str, Any]:
@@ -655,16 +738,9 @@ def build_nodes(
         if not state.get("alert_needed") or not state.get("validation", {}).get("dispatchable"):
             return {}
 
-        decision = state.get("human_decision") or {}
-        if decision and not decision.get("approved", True):
-            return _completed(
-                state,
-                alert_needed=False,
-                reason="a person reviewed this alert and said no; a refusal is a decision",
-                confidence=1.0,
-                provenance="HUMAN",
-            )
-
+        # No refusal check here on purpose: `human_signoff` writes the refusal output and
+        # routing sends it to END, and every other path into this node carries no decision
+        # at all. A second check would be unreachable code that reads like a guard.
         selection = dict(state.get("selection", {}))
         codes = tuple(state.get("division_codes", []))
         found = targeting.deduplicate(await directory.targets_in(codes))
@@ -741,9 +817,9 @@ def build_nodes(
         found = targeting.deduplicate(await directory.targets_in(codes))
         receipts = await dispatcher.receipts(alert_key=identifier)
 
-        outcomes = _outcomes_from(receipts, failed=state.get("dispatched", {}).get(
-            "channels_failed", []
-        ))
+        outcomes = _outcomes_from(
+            receipts, failed=state.get("dispatched", {}).get("channels_failed", [])
+        )
         report = gap_rules.assess(outcomes, found)
 
         return {
@@ -818,9 +894,9 @@ def build_nodes(
                 "reasoning": str(selection.get("reasoning", "")),
                 "needs_human_review": False,
                 "provenance": (
-                    "HUMAN" if state.get("human_decision") else selection.get(
-                        "provenance", "DETERMINISTIC"
-                    )
+                    "HUMAN"
+                    if state.get("human_decision")
+                    else selection.get("provenance", "DETERMINISTIC")
                 ),
             },
         }
@@ -941,28 +1017,62 @@ def _merge_free_text(body: dict[str, str], free_text: dict[str, str] | None) -> 
     if not free_text:
         return dict(body)
     return {
-        language: f"{text} {free_text[language]}".strip()
-        if free_text.get(language)
-        else text
+        language: f"{text} {free_text[language]}".strip() if free_text.get(language) else text
         for language, text in body.items()
     }
 
 
+# The parameter values a run may be started with. Every one is a fact somebody or something
+# outside this agent holds: which shelter has been opened, which road is closed, where aid
+# is being distributed. None of them is a value this agent could derive.
+#
+# **There is no safety-location registry wired yet**, so `shelter_name` arrives this way -
+# from the operator or the trigger that started the run - rather than being looked up. That
+# is why a class 4 flood with no shelter supplied correctly asks a person instead of
+# dispatching: the agent genuinely does not know where to send anybody, and inventing a
+# building name is the one thing it must never do. Wiring the registry is a port and an
+# endpoint, and it does not change any rule here.
+SUPPLIED_FACTS: Final[tuple[str, ...]] = (
+    "shelter_name",
+    "road_name",
+    "distribution_point",
+    "water_level_m",
+    "district_name",
+    "ds_division_name",
+)
+
+
+def _supplied_facts(supplied: dict[str, Any]) -> dict[str, str]:
+    """The parameter values the run was started with, and nothing else.
+
+    Named rather than passing the input through, because everything in here ends up
+    substituted into a message that goes to a district. A key not on this list cannot
+    become part of an alert.
+    """
+    return {
+        name: str(supplied[name])
+        for name in SUPPLIED_FACTS
+        if supplied.get(name) is not None and str(supplied[name]).strip()
+    }
+
+
 def _facts_for(
-    divisions: list[ForecastedDivision], *, hazard: str, moment: datetime
+    divisions: list[ForecastedDivision],
+    *,
+    hazard: str,
+    moment: datetime,
+    supplied: dict[str, str] | None = None,
 ) -> templates.SelectionFacts:
     """The structured values a template may be filled from.
 
     `gn_division_name` is the single division's name when the alert covers one, and the
-    count when it covers several. "6 GN divisions in Kandy District" is accurate; naming
-    one of six in a message going to all six is not, and picking the first alphabetically
-    would put a stranger's village in somebody's evacuation order.
+    count when it covers several. "6 GN divisions" is accurate; naming one of six in a
+    message going to all six is not, and picking the first alphabetically would put a
+    stranger's village in somebody's evacuation order.
     """
     names = [division.names.get("en") for division in divisions if division.names.get("en")]
-    if len(divisions) == 1 and names:
-        area = names[0]
-    else:
-        area = f"{len(divisions)} GN divisions"
+    area = names[0] if len(divisions) == 1 and names else f"{len(divisions)} GN divisions"
+    given = supplied or {}
 
     return templates.SelectionFacts(
         gn_division_name=area,
@@ -970,6 +1080,12 @@ def _facts_for(
         # Colombo local, because it is read by somebody deciding whether they have time.
         deadline_time=moment.astimezone(COLOMBO).strftime("%H:%M"),
         effective_time=moment.astimezone(COLOMBO).strftime("%H:%M"),
+        shelter_name=given.get("shelter_name"),
+        road_name=given.get("road_name"),
+        distribution_point=given.get("distribution_point"),
+        water_level_m=given.get("water_level_m"),
+        district_name=given.get("district_name"),
+        ds_division_name=given.get("ds_division_name"),
     )
 
 
@@ -1020,7 +1136,8 @@ def _after_selection(state: WarningState) -> str:
     Resolving targets for an alert that has no text would read several hundred thousand
     household rows to build a fan-out nothing can be sent over.
     """
-    return "human_signoff" if state.get("output", {}).get("needs_human_review") else "resolve_targets"
+    needs_person = state.get("output", {}).get("needs_human_review")
+    return "human_signoff" if needs_person else "resolve_targets"
 
 
 def _after_validation(state: WarningState) -> str:
@@ -1035,8 +1152,18 @@ def _after_validation(state: WarningState) -> str:
 def _after_signoff(state: WarningState) -> str:
     """Where a signed-off run goes next.
 
-    A run that was interrupted before it had a template goes back through selection with
-    the operator's answer; one interrupted only for free text goes on to dispatch.
+    Three destinations, and the third is the one that needs explaining.
+
+    A refusal ends the run - `human_signoff` has already written the output saying a person
+    stopped it.
+
+    A run interrupted for free text has everything else already done, so it dispatches.
+
+    A run interrupted because **no template fitted** goes back through selection carrying
+    the operator's chosen code. That happens at most once: if their choice does not fit
+    either, `operator_chose_template` is already set and the run ends rather than asking
+    the same officer the same question in a loop. An approval inbox that re-asks is one
+    people stop opening.
     """
     decision = state.get("human_decision") or {}
     if not decision.get("approved"):
@@ -1044,7 +1171,7 @@ def _after_signoff(state: WarningState) -> str:
     if not state.get("selection"):
         return "end"
     if not state.get("validation"):
-        return "resolve_targets"
+        return "select_template" if state.get("operator_chose_template") else "resolve_targets"
     return "dispatch"
 
 
@@ -1113,7 +1240,12 @@ def build(
     builder.add_conditional_edges(
         "human_signoff",
         _after_signoff,
-        {"dispatch": "dispatch", "resolve_targets": "resolve_targets", "end": END},
+        {
+            "dispatch": "dispatch",
+            "resolve_targets": "resolve_targets",
+            "select_template": "select_template",
+            "end": END,
+        },
     )
     builder.add_edge("dispatch", "collect_receipts")
     builder.add_edge("collect_receipts", "assess_gaps")

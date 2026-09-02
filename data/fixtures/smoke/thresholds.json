@@ -7,6 +7,11 @@
       "min_accuracy": 0.75,
       "max_ece": 0.15,
       "_why": "Four of the eighteen cases are ones the engine is designed to get wrong: it cannot see through a gauge blackout, it cannot know an unsurveyed division's hazard zone, and it has no elevation or waterway input so a riverside division can flood without any slope signal. Those cases are in the set on purpose - without them the low-confidence bins are empty and the calibration number means nothing. So the accuracy bar sits below them and ECE is the real gate, at the 0.15 build file 13 requires."
+    },
+    "warning": {
+      "min_accuracy": 0.95,
+      "max_ece": 0.15,
+      "_why": "The opposite shape to the forecast agent's, and for the opposite reason. Template selection is a lookup over a published catalogue, so it is right by construction whenever the catalogue has the template - there is no case here the rules are designed to miss, and with fifteen cases 0.95 means every one of them. Accuracy is the gate. ECE is reported and sits near 0.10 because the agent states 0.90 and is right rather more often than that; that is systematic under-confidence over a rule table, which is the honest shape, and manufacturing a spread of confidences to flatten it would produce a number that looks like a calibrated safety property and is not one."
     }
   }
 }

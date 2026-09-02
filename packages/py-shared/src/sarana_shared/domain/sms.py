@@ -44,7 +44,7 @@ GSM7_BASIC: Final[frozenset[str]] = frozenset(
 
 # The extension table. Each of these is transmitted as an escape plus the character, so it
 # costs two of the seven-bit units rather than one.
-GSM7_EXTENDED: Final[frozenset[str]] = frozenset("^{}\[~]|€")
+GSM7_EXTENDED: Final[frozenset[str]] = frozenset(r"^{}\[~]|€")
 
 # Characters per segment, per alphabet. The concatenated figures are lower because a
 # multipart message carries a User Data Header in every part.
@@ -143,10 +143,8 @@ def count(text: str, *, max_segments: int = MAX_SEGMENTS) -> SegmentCount:
     else:
         single, concatenated = UCS2_SINGLE, UCS2_CONCATENATED
 
-    if units <= single:
-        segments = 1
-    else:
-        segments = -(-units // concatenated)  # ceiling division
+    # Ceiling division: a message one unit over a boundary costs a whole extra segment.
+    segments = 1 if units <= single else -(-units // concatenated)
 
     return SegmentCount(
         text_length=len(text),

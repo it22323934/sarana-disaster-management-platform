@@ -29,9 +29,22 @@ order fails the eval. That makes this a regression gate on the selection rules, 
 what it is for - and calling it skill at choosing warnings would be the same overclaim the
 whole agent is built to avoid.
 
-The `no_suitable_template` cases are in the set on purpose. Without them the low-confidence
-bin is empty, and a calibration number computed over cases the agent is certain about says
-nothing at all.
+## What the calibration number means here, and what it does not
+
+Selection is a lookup over a published catalogue, so it is right by construction whenever
+the catalogue has the template - and the confidence it states is therefore nearly constant.
+The ECE this eval reports is a measure of **systematic under-confidence**: the agent says
+0.90 and is right rather more often than that, which is the honest shape for a rule table
+and is not a defect to tune away.
+
+So accuracy is the gate here, and ECE is reported rather than relied on. Saying otherwise -
+manufacturing a spread of confidences over a lookup so the reliability diagram has an
+interesting diagonal - would produce a number that looks like a calibrated safety property
+and is not one, which is the exact failure `runtime/eval.py` exists to prevent.
+
+The `no_suitable_template` cases are in the set on purpose, but not for calibration: they
+are there because "the catalogue has a gap and a person must decide" is a real outcome with
+a real code path, and an outcome nobody measures is one that regresses quietly.
 """
 
 from __future__ import annotations
@@ -49,6 +62,10 @@ from agent_svc.runtime.state import AgentState
 # templates, as PUBLISHED - which in a real deployment they are not until a named Sinhala
 # reviewer and a named Tamil reviewer have each signed. Reduced to the fields selection
 # reads: the eval is scoring which code comes out, not what the Tamil body says.
+# What the agent states when the catalogue has nothing that fits. See `select_one` for why
+# this is high rather than low.
+NO_TEMPLATE_CONFIDENCE: Final = 0.88
+
 EVAL_CATALOGUE: Final[tuple[tuple[str, str, str, str], ...]] = (
     ("FLOOD_WATCH", "FLOOD", "MODERATE", "{gn_division_name}"),
     ("FLOOD_WARNING", "FLOOD", "SEVERE", "{gn_division_name}"),
@@ -141,9 +158,14 @@ async def select_one(state: AgentState) -> dict[str, Any]:
     except templates.NoSuitableTemplate as error:
         return _answer(
             code="none",
-            # Low, and it should be: this is the agent saying it cannot answer, and the
-            # calibration curve needs the cases where that is true.
-            confidence=0.2,
+            # High, and deliberately so. `confidence` and `needs_human_review` are separate
+            # fields precisely for this case: the agent is *certain* the published
+            # catalogue contains nothing that fits - that is a fact about the catalogue,
+            # not a judgement it is unsure of - and it routes to a person because choosing
+            # what to send instead is a person's decision, not because it is hesitant.
+            # Reporting it as low confidence would make the review queue look like a
+            # symptom of a weak model rather than a designed hand-off.
+            confidence=NO_TEMPLATE_CONFIDENCE,
             reasoning=str(error),
             needs_human_review=True,
             review_reason=f"no_suitable_template: {error}",
