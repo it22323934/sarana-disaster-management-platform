@@ -1,0 +1,31 @@
+// Extraction for the intake agent, scored against the DEGRADED path - keyword matching over
+// the trilingual lexicon, with no model provider. That is deliberate: a fixture whose answer
+// depends on a provider being reachable is one that fails in CI on a bad afternoon.
+//
+// So these labels are what the keyword extractor should produce, and several of them are
+// cases it gets WRONG. Those are in the set on purpose. A report naming both a hospital and
+// a flood is genuinely ambiguous to a keyword list, and an eval containing only the cases
+// the lexicon handles would report a degraded path as though it were the real one.
+{"id": "sinhala-flood", "subject_id": "i-01", "input": {"text": "ගම්පොල ප්‍රදේශයේ ගංවතුර. උදව් අවශ්‍යයි."}, "label": {"incident_type": "FLOOD"}, "expect_human_review": false}
+{"id": "tamil-flood", "subject_id": "i-02", "input": {"text": "வெள்ள நீர் வீட்டிற்குள் வருகிறது. உதவி தேவை."}, "label": {"incident_type": "FLOOD"}, "expect_human_review": false}
+{"id": "english-flood", "subject_id": "i-03", "input": {"text": "The water is rising fast and our house is flooded"}, "label": {"incident_type": "FLOOD"}, "expect_human_review": false}
+{"id": "sinhala-landslide", "subject_id": "i-04", "input": {"text": "නායයෑමක් සිදුවී ඇත. බෑවුම කඩා වැටී ඇත."}, "label": {"incident_type": "LANDSLIDE"}, "expect_human_review": false}
+{"id": "tamil-landslide", "subject_id": "i-05", "input": {"text": "நிலச்சரிவு ஏற்பட்டுள்ளது. சாலை மூடப்பட்டது."}, "label": {"incident_type": "LANDSLIDE"}, "expect_human_review": false}
+{"id": "tamil-collapse-with-children", "subject_id": "i-06", "input": {"text": "வீடு இடிந்து விழுந்தது. இரண்டு குழந்தை உள்ளே."}, "label": {"incident_type": "STRUCTURAL_COLLAPSE", "vulnerable_present": "['children']"}, "expect_human_review": false}
+{"id": "english-medical", "subject_id": "i-07", "input": {"text": "My father is bleeding and unconscious, we need an ambulance"}, "label": {"incident_type": "MEDICAL"}, "expect_human_review": false}
+{"id": "sinhala-missing-person", "subject_id": "i-08", "input": {"text": "අපේ දරුවා අතුරුදහන් වී ඇත"}, "label": {"incident_type": "MISSING_PERSON"}, "expect_human_review": false}
+{"id": "english-supplies", "subject_id": "i-09", "input": {"text": "We have no drinking water and no food since yesterday"}, "label": {"incident_type": "SUPPLIES_NEEDED"}, "expect_human_review": false}
+{"id": "english-infrastructure", "subject_id": "i-10", "input": {"text": "The bridge is down and there is no electricity in the village"}, "label": {"incident_type": "INFRASTRUCTURE"}, "expect_human_review": false}
+{"id": "nothing-recognisable", "subject_id": "i-11", "input": {"text": "thanks for the update, everyone here is fine"}, "label": {"incident_type": "OTHER"}, "expect_human_review": false}
+{"id": "empty-report", "subject_id": "i-12", "input": {"text": ""}, "label": {"incident_type": "OTHER"}, "expect_human_review": false}
+// The keyword extractor cannot see through these, and that is the point of including them.
+// A lexicon has no way to know that "the road to the hospital" is about a road, or that a
+// person trapped on a roof by rising water is a rescue rather than a flood report. A model
+// gets these; the degraded path does not, and the eval says so rather than hiding it.
+{"id": "hospital-road-flooded-reads-as-medical", "subject_id": "i-13", "input": {"text": "The road to the hospital is flooded and no vehicle can pass"}, "label": {"incident_type": "INFRASTRUCTURE"}, "expect_human_review": false}
+{"id": "trapped-on-roof-reads-as-flood", "subject_id": "i-14", "input": {"text": "We are on the roof, the water is up to the windows, please get us out"}, "label": {"incident_type": "TRAPPED"}, "expect_human_review": false}
+{"id": "elderly-evacuation", "subject_id": "i-15", "input": {"text": "My grandmother cannot walk and we need help to leave before the water comes"}, "label": {"incident_type": "EVACUATION_NEEDED", "vulnerable_present": "['disabled', 'elderly']"}, "expect_human_review": false}
+// The people-at-risk post-check, which no other case in this set exercises: the keyword path
+// never produces a count at all, so the case has to supply one and watch it be refused.
+{"id": "unsupported-people-count-is-stripped", "subject_id": "i-16", "input": {"text": "Our house collapsed, two children are inside", "claimed_people_at_risk": 40, "claimed_basis": "forty people are trapped in the building"}, "label": {"incident_type": "STRUCTURAL_COLLAPSE", "people_at_risk": "None", "needs_human_review": true}, "expect_human_review": false}
+{"id": "supported-people-count-survives", "subject_id": "i-17", "input": {"text": "Our house collapsed, two children are inside", "claimed_people_at_risk": 2, "claimed_basis": "two children are inside"}, "label": {"incident_type": "STRUCTURAL_COLLAPSE", "people_at_risk": "2"}, "expect_human_review": false}

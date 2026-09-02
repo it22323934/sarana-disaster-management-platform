@@ -134,6 +134,8 @@ make lint                       # ruff + mypy + eslint + tsc
 make eval AGENT=noop            # score an agent against labelled fixtures
 make eval AGENT=forecast
 make eval AGENT=warning
+make eval AGENT=intake
+uv run python -m agent_svc.agents.intake.bench --reports 200 --assert-p95 45
 make sms-check                  # every seeded template fits two SMS segments, worst-case
 uv run python -m agent_svc.agents.forecast.replay --scenario ditwah --assert-lead-time 24
 ```
@@ -223,12 +225,18 @@ goes anywhere.
 All six backend services are complete and the stack boots. Above them, most of the
 product is not there. Working backwards from the build files:
 
-- **Two of the six agents exist.** The forecast agent turns rainfall into per-division
+- **Three of the six agents exist.** The forecast agent turns rainfall into per-division
   impact predictions with lead time, confidence and the drivers that produced them, and
   fires pre-agreed anticipatory triggers. The warning agent turns those forecasts into
   trilingual CAP alerts: it selects a natively reviewed template, resolves targets and
   languages, chooses the channel mix, dispatches, and reports which divisions probably did
-  not get it. No intake, triage, anomaly or supervisor agent exists yet. Files 15–18.
+  not get it. The intake agent turns raw citizen reports into structured, geolocated,
+  non-duplicate incidents. No triage, anomaly or supervisor agent exists yet. Files 16–18.
+
+  **The intake agent cannot process a real report yet.** Its graph, ports and 79 tests are
+  complete and run against fakes, but it has no adapters — no transcriber, no embedder, no
+  gazetteer, no store — so `main.py` does not wire it. It is the furthest-along agent that
+  is not yet connected to anything.
 
   **The warning agent never writes alert text.** It selects among templates two named
   native speakers have signed, fills typed parameters from structured data, and stops for a

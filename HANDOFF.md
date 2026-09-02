@@ -9,7 +9,7 @@ Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 ## Where the build has got to
 
 The repository is organised around 30 numbered build files in `.claude/`. Progress is
-strictly sequential. Files 03-14 are complete; the next unstarted file is 15.
+strictly sequential. Files 03-15 are complete; the next unstarted file is 16.
 
 | File | Area | State |
 |---|---|---|
@@ -25,15 +25,17 @@ strictly sequential. Files 03-14 are complete; the next unstarted file is 15.
 | 12 | LangGraph runtime | Done — runtime, HTTP surface, event triggers, eval harness |
 | 13 | Forecast & impact agent | Done — rule-threshold engine, Ditwah replay, eval |
 | 14 | Warning dissemination agent | Done — template selection, targeting, CAP, gaps |
-| **15–18** | **Agents** | **Not started — start here** |
+| 15 | Intake & verification agent | Done — extraction, geolocation, dedup. No adapters. |
+| **16–18** | **Agents** | **Not started — start here** |
 | 19–21 | Web (design system, ops console, public dashboard) | Scaffolds only |
 | 22–24 | Mobile (foundation, citizen, field companion) | Scaffold only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-**1,360 tests passing, 2 skipped.** `ruff check`, `ruff format --check` and `mypy` (308
-source files) all clean. File 14 added 122: 76 under `tests/agents/warning`, 46 for the
-SMS segment gate.
+**1,437 tests passing, 2 skipped** (1,439 collected across `tests/` and
+`packages/py-shared/tests`). `ruff check`, `ruff format --check` and `mypy` (318
+source files) all clean. File 14 added 122 (76 under `tests/agents/warning`, 46 for the
+SMS segment gate); file 15 added 79 under `tests/agents/intake`.
 
 ```
 core-api        33 endpoints,  7,171 lines
@@ -41,7 +43,7 @@ incident-svc    20 endpoints,  4,657 lines
 alerting-svc    15 endpoints,  4,177 lines
 ledger-svc      30 endpoints,  7,149 lines
 gov-mock        31 endpoints,  4,865 lines   <- 7 mocked systems + control plane
-agent-svc        6 endpoints, 11,422 lines   <- runtime, 3 agents, replay + eval harness
+agent-svc        6 endpoints, 14,663 lines   <- runtime, 4 agents, replay + eval harness
 ```
 
 The jump from 680 is file 11's suite plus `tests/alerting/test_seeded_templates.py`, which
@@ -1237,6 +1239,166 @@ are still stripped at mint time by `strip_human_gates`.
 
 ---
 
+## File 15 is done — the intake agent, and the decisions inside it
+
+```
+receive_report -> transcribe -> detect_language -> translate -> extract -> geolocate
+-> plausibility -> embed_and_dedup -> [human_review] -> link_or_create -> record
+```
+
+Eleven nodes, one interrupt, `gated=True`.
+
+```bash
+uv run pytest tests/agents/intake
+make eval AGENT=intake
+uv run python -m agent_svc.agents.intake.bench --reports 200 --assert-p95 45
+```
+
+During Ditwah, FloodSupport volunteers phoned each request to verify it, for 300,000+
+people. This agent is the replacement for that phone call, and almost everything in it is a
+refusal to do something a volunteer would not have done.
+
+### Four refusals, and each has a test named after it
+
+**It never invents a people count.** `people_at_risk` is 40% of the deterministic triage
+score, so a number the agent produces decides who a crew reaches first. Every count carries
+`people_at_risk_basis` — the span of source text that justified it — and
+`extraction.enforce_basis` strips any count whose basis is not genuinely a substring of the
+source. Stripped, not corrected, not re-asked: a number whose evidence turned out not to
+exist is not worth keeping. A basis that is more than 90% of the report also fails, because
+quoting everything justifies nothing.
+
+**It never invents a coordinate.** There is no port through which a model can return a
+latitude and longitude. Geocoding is a gazetteer lookup. An ambiguous landmark — two matches
+in different divisions, which is the normal case in Sri Lanka — produces a GN division and
+**no point at all**. A division is a village-sized area and is dispatchable; a pin picked
+from three equally good matches is a guess wearing a coordinate's clothes.
+
+**It never quietly merges two households' reports.** See below.
+
+**It never rejects a report.** `plausibility.py` produces flags, and a flag routes to a
+person. The cost of ignoring a real report because it looked implausible is a death; the
+cost of a human spending twenty seconds on a false one is twenty seconds.
+
+### Dedup under-merges on purpose, and every failure lands on "separate"
+
+A duplicate incident costs a dispatcher ten seconds. A false merge means a household
+reported, was folded into another family's incident, one team went to that address, and the
+family who reported waited for someone who never came — and nobody noticed, because the
+queue looked short.
+
+So: auto-link at ≥0.90 cosine, separate below 0.72, and the band between goes to a model
+that must be **confident and say yes** (`MERGE_CONFIDENCE = 0.85`, deliberately above the
+platform's 0.70 review threshold). Every other outcome — a low-confidence yes, an
+unavailable provider, an unparseable answer, a confident no — produces two incidents and a
+flagged pair. There is a test for each of those four.
+
+`DedupStats` reports the duplicate rate and the false-merge rate **together**, because a
+duplicate rate alone always improves by merging harder, which is the behaviour that must
+not be rewarded.
+
+### Language detection is a Unicode script test, not a model call
+
+Sinhala is U+0D80–U+0DFF and Tamil is U+0B80–U+0BFF, disjoint from each other and from
+Latin. So `lexicon.detect` is a character-range count: exact, instant, free, and impossible
+to get wrong the way a classifier gets things wrong. It returns a **mix** rather than a
+winner, so code-switching is a first-class answer — it is normal here, it is the hardest
+input the platform receives, and it is what upgrades the model tier.
+
+Digits and punctuation vote for nothing. Without that, `0771234567` reads as confidently
+English and routes to an English reviewer.
+
+### Two real bugs the fixtures caught in the lexicon
+
+Worth recording because both were invisible until the eval ran.
+
+**Generic water words sat in two categories.** `நீர்` (water) was in FLOOD and `தண்ணீர்`
+(drinking water) in SUPPLIES_NEEDED — and the first is a *substring* of the second, so a
+Tamil flood report matched the supplies list and was typed as a request for a bottle. Fixed
+by removing every bare word for "water" from both lists. Substring matching over a short
+list only works when the terms are specific; the generic ones are exactly what breaks it.
+
+**One Tamil term had a Sinhala first character.** `"වெள்ளம்"` — `ව` followed by Tamil — so
+it could never match anything. Mixed-script typos in a trilingual table are invisible on
+screen and silent at runtime.
+
+Both are arguments for the module's own instruction that a native speaker should review any
+addition to that table.
+
+### The agent writes no incident summary at all
+
+`incident.incident.summary` is a localised JSONB column requiring all three languages. The
+agent has a report in one language and no reviewed translation, so the only summaries it
+could write are model prose nobody checked, or one language copied into three fields and
+labelled as three. The first is unreviewed text about somebody's emergency; the second is a
+lie about what the record contains.
+
+So the column stays null — the same choice `incident_svc.service.intake` already made — and
+the incident is identified by its type and division, which the console renders trilingually
+from the taxonomy. `SUMMARY_NOT_WRITTEN` is a named constant so nobody "fixes" it by
+accident.
+
+### The eval scores the degraded path, and its ECE is meant to be bad
+
+94.1% accuracy over 17 cases, ECE 0.532 against a 0.60 gate. Both numbers need explaining
+and `thresholds.json` carries the long version.
+
+The set deliberately includes reports a keyword list **cannot** resolve — a flooded road to
+a hospital is both an infrastructure failure and a flood — because an eval containing only
+the cases the lexicon handles would report a degraded path as though it were the real one.
+
+The ECE is high because the deterministic path states a **fixed** 0.45, chosen to sit below
+the 0.70 review threshold so every keyword extraction is confirmed by a person. It is a
+policy constant, not a belief, so it does not track how often the path is right — and here
+it is right 93% of the time. The only way to "fix" the number would be to raise the constant
+above the review threshold, which would start auto-publishing keyword guesses into
+life-safety decisions. Accuracy is the gate; ECE is reported and not relied on.
+
+### The bench measures the floor, not the budget
+
+`bench.py --reports 200 --assert-p95 45` runs 200 reports concurrently through the real
+graph against in-process fakes: **p95 629 ms**, three orders of magnitude inside build file
+15's 45-second budget.
+
+That figure is the latency *the platform adds*. It excludes the ASR, translation and
+embedding providers, and transcription alone is 5–25 s of the real budget. Simulating that
+with a sleep would produce a number that says whatever the sleep says, so the fakes return
+instantly and the docstring says what the number is. `--audio-share` and `--asr-latency`
+exist for anyone who does want to model the whole budget, off by default.
+
+A run that fails this gate is definitely too slow. A run that passes is not thereby proven
+to meet 45 s in production.
+
+### Still placeholder, and honest about it
+
+- **No per-language WER, and none can be produced yet.** Build file 15 asks the eval to
+  report it, and doing so needs a held-out set of real Sinhala and Tamil audio with human
+  transcripts. Generating audio to measure ASR against would measure the generator. The
+  build file is right that a blended WER hiding a bad Tamil result is worse than none — and
+  a WER printed from fixtures nobody recorded is exactly that. It is absent rather than
+  fabricated.
+- **No adapters, so the agent is not wired into the service.** `main.py` has no
+  `_build_intake`: there is no `Transcriber` implementation, no `Embedder`, no gazetteer
+  client, and no `ReportStore` over `incident.raw_report`. The ports and the graph are
+  complete and every one of them is exercised against fakes; what does not exist is the
+  layer between them and Postgres. This is a bigger gap than file 14's — the warning agent
+  at least has adapters that are merely unexercised.
+- **The gazetteer does not exist.** `geolocate` needs place-name lookup and core-api has no
+  such endpoint. Sri Lanka's GN division names are in `data/seed/reference/gn_division.json`
+  and would serve as a first gazetteer; landmarks below division level would need a real
+  source.
+- **Still nothing starts an agent from an event.** `consumers/triggers.py` has one row, for
+  `noop`, still disabled. File 15 was supposed to replace it with the intake row — and that
+  row should not be turned on until the adapters above exist, because a trigger pointing at
+  live citizen reports with a refusing store would fail on every report of the day.
+- **Dedup recall is untested against a real pgvector index.** The two-stage design, the
+  bands and every adjudication path are tested; what is not is that an ivfflat cosine search
+  over `report_embedding` actually returns a Tamil voice note when queried with a Sinhala
+  SMS. That needs the embedder and a live index, and it is the assumption the whole recall
+  stage rests on.
+
+---
+
 ## Things that will bite you
 
 These each cost real debugging time. They are written down so they cost you none.
@@ -1419,6 +1581,16 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
 - **Alert fatigue is not suppressed in a running stack (file 14).** The rule is real and
   tested; `NullHistory` is what is wired, because no query over `alerting.alert` per
   household exists yet. It logs a warning on every call.
+- **The intake agent has no adapters (file 15).** The graph, the ports and 79 tests are
+  complete and run against fakes; there is no `Transcriber`, no `Embedder`, no gazetteer
+  client and no `ReportStore`, so `main.py` does not wire it. It cannot process a real
+  report yet.
+- **There is no gazetteer (file 15).** `geolocate` needs place-name lookup and core-api
+  has no such endpoint. `data/seed/reference/gn_division.json` would serve as a first
+  one; landmarks below division level need a real source.
+- **No per-language WER exists (file 15).** Measuring it needs a held-out set of real
+  Sinhala and Tamil audio with human transcripts, which this repository does not have.
+  Absent rather than fabricated — see the file 15 section.
 - **Payment rails are mocks.** Every reference starts `MOCK-`.
 - **Nothing here is delivered to a real handset.** The payment notices go out through
   `MockSmsGateway`, like every other channel in Phase 1. The message text, the language
@@ -1478,6 +1650,11 @@ uv run python -m tools.seed.ditwah     # regenerate the replay fixture from gov-
 make eval AGENT=warning
 uv run python -m tools.sms_segment_check                       # exits 0 over the seed
 uv run pytest tests/agents/warning tests/alerting/test_sms_segments.py
+
+# intake agent (file 15)
+make eval AGENT=intake
+uv run python -m agent_svc.agents.intake.bench --reports 200 --assert-p95 45
+uv run pytest tests/agents/intake
 ```
 
 `agent:invoke` starts a run; `agent:review` opens the approval inbox and answers an
