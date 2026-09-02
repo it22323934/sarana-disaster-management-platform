@@ -25,6 +25,20 @@
       "_why": "Each case is a whole queue and the label is whether rank correlation with the dispatcher's ordering clears the 0.85 target from the proposal. Build file 16 is explicit that agreement must be measured as rank correlation on the same incident set rather than as binary agree/disagree - a dispatcher who works the queue in a slightly different order has not disagreed with it, and scoring that as a failure would push the formula towards whichever ordering happened to be in the fixtures.",
       "_why_ece_is_tight": "ECE sits near 0.01 because the stated confidence IS the measured agreement - the formula is deterministic and has no separate belief about its own ordering, so inventing one to fill the field would have been the dishonest option. The number is therefore self-calibrating by construction and is not evidence of anything; accuracy is the gate.",
       "_the_honest_caveat": "The dispatcher orderings in these fixtures are AGREED EXPECTATIONS, not recorded shifts. No labelled corpus of real dispatcher decisions exists yet, so this is a regression gate on the weighted formula rather than a measure of agreement with a human. The proposal's >=85% agreement target is validated during the pilot, and until then this number must not be quoted as though it had been."
+    },
+    "ledger_anomaly": {
+      "min_accuracy": 0.9,
+      "max_ece": 0.2,
+      "_why": "Each case is one GN division labelled with whether it should produce a flag. Two thirds of the set are divisions that must NOT be flagged, because that is what makes the false-positive rate meaningful: any detector reaches 100% detection by flagging everything, and the cost of that lands on GN officers in the divisions that were hit hardest.",
+      "_the_pair_that_matters": "severe-division-high-values and low-impact-identical-profile carry an identical assessment profile at impact class 4 and impact class 1. The first must produce no flag and the second must produce one. If they ever come out the same, the exposure normalisation has stopped working and the agent is comparing divisions with each other again - the failure ADR-009 exists to prevent, and one that would be invisible in an aggregate accuracy number.",
+      "_read_the_detector_table": "The aggregate accuracy is not the number to read here. The report's per-detector detection and false-positive table is, and ADR-009 makes the false-positive rate first-class for that reason."
+    },
+    "supervisor": {
+      "min_accuracy": 0.95,
+      "max_ece": 0.1,
+      "_why": "Routing is a table, so it is right by construction and 0.95 over ten cases means every one of them. The cases that matter are the refusals: the dangerous failure in this agent is not a wrong answer but a route that fires early, and an incident reaching triage before intake verified it is a crew dispatched on an unverified report.",
+      "_why_ece_is_zero": "The table is deterministic and has no belief about itself, so it states certainty and is certain. Inventing a spread of confidences over a lookup would produce a number that looks like a calibrated safety property and is not one.",
+      "_what_this_does_not_measure": "The gates. Their properties are refusals rather than metrics, and an accuracy figure over a safety property could read 99% while the gate is broken. tests/agents/supervisor/test_gates_three_layers.py asserts each of the three layers with the other two out of the picture."
     }
   }
 }

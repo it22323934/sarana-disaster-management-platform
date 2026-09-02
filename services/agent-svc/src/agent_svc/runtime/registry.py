@@ -50,6 +50,17 @@ class AgentSpec:
     # calibrating". None means the ordinary graph is evaluable as it stands.
     eval_build: Callable[[Any], Any] | None = None
 
+    # Extra markdown for this agent's evaluation report, built from the finished report.
+    #
+    # Accuracy and calibration do not capture every agent's quality. The anomaly agent is
+    # the case that forced this: ADR-009 makes its **false-positive rate per detector** a
+    # first-class metric, because a detection rate without one is a number designed to
+    # impress rather than inform - any detector reaches 100% detection by flagging
+    # everything, and the cost lands on GN officers in the worst-hit divisions.
+    #
+    # Optional, and the harness prints nothing extra without it.
+    eval_sections: Callable[[Any], str] | None = None
+
     def __post_init__(self) -> None:
         if not self.degraded_note.strip():
             raise ValueError(

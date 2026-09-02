@@ -10,7 +10,9 @@ from typing import Final
 
 from agent_svc.agents.forecast import SPEC as FORECAST_SPEC
 from agent_svc.agents.intake import SPEC as INTAKE_SPEC
+from agent_svc.agents.ledger_anomaly import SPEC as ANOMALY_SPEC
 from agent_svc.agents.noop import SPEC as NOOP_SPEC
+from agent_svc.agents.supervisor import SPEC as SUPERVISOR_SPEC
 from agent_svc.agents.triage import SPEC as TRIAGE_SPEC
 from agent_svc.agents.warning import SPEC as WARNING_SPEC
 from agent_svc.runtime.registry import AgentSpec
@@ -25,6 +27,8 @@ SPECS: Final[tuple[AgentSpec, ...]] = (
     WARNING_SPEC,
     INTAKE_SPEC,
     TRIAGE_SPEC,
+    ANOMALY_SPEC,
+    SUPERVISOR_SPEC,
 )
 
 

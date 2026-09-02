@@ -9,7 +9,8 @@ Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 ## Where the build has got to
 
 The repository is organised around 30 numbered build files in `.claude/`. Progress is
-strictly sequential. Files 03-16 are complete; the next unstarted file is 17.
+strictly sequential. Files 03-18 are complete - **all six agents exist**. The next
+unstarted file is 19.
 
 | File | Area | State |
 |---|---|---|
@@ -27,17 +28,20 @@ strictly sequential. Files 03-16 are complete; the next unstarted file is 17.
 | 14 | Warning dissemination agent | Done — template selection, targeting, CAP, gaps |
 | 15 | Intake & verification agent | Done — extraction, geolocation, dedup. No adapters. |
 | 16 | Triage & dispatch agent | Done — scoring, OR-Tools routing, the gate. No adapters. |
-| **17–18** | **Agents** | **Not started — start here** |
-| 19–21 | Web (design system, ops console, public dashboard) | Scaffolds only |
+| 17 | Aid ledger & anomaly agent | Done — exposure-normalised detectors. No adapters. |
+| 18 | Supervisor & HITL | Done — routing table, both gates, conflicts. No adapters. |
+| **19–21** | **Web (design system, ops console, public dashboard)** | **Scaffolds only — start here** |
 | 22–24 | Mobile (foundation, citizen, field companion) | Scaffold only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-**1,516 tests passing, 2 skipped** (1,518 collected across `tests/` and
-`packages/py-shared/tests`). `ruff check`, `ruff format --check` and `mypy` (326
+**1,663 tests passing, 2 skipped** (1,665 collected across `tests/` and
+`packages/py-shared/tests`). `ruff check`, `ruff format --check` and `mypy` (342
 source files) all clean. File 14 added 122 (76 under `tests/agents/warning`, 46 for the
 SMS segment gate); file 15 added 79 under `tests/agents/intake`; file 16 added 79 under
-`tests/agents/triage`.
+`tests/agents/triage`; file 17 added 74 under `tests/agents/ledger_anomaly`; file 18
+added 51 under `tests/agents/supervisor` and 7 under `tests/e2e`; plus 15 for the
+dispatch-gate resumer under `tests/incident`.
 
 ```
 core-api        33 endpoints,  7,171 lines
@@ -45,7 +49,7 @@ incident-svc    20 endpoints,  4,657 lines
 alerting-svc    15 endpoints,  4,177 lines
 ledger-svc      30 endpoints,  7,149 lines
 gov-mock        31 endpoints,  4,865 lines   <- 7 mocked systems + control plane
-agent-svc        6 endpoints, 17,220 lines   <- runtime, 5 agents, replay + eval harness
+agent-svc        6 endpoints, 21,543 lines   <- runtime, all 6 agents + supervisor
 ```
 
 The jump from 680 is file 11's suite plus `tests/alerting/test_seeded_templates.py`, which
@@ -1623,6 +1627,242 @@ would be worse.
 
 ---
 
+## File 17 is done — the anomaly agent, and the boundaries that make it allowable
+
+```
+receive_batch -> aggregate -> normalise_by_exposure -> detect_anomalies
+-> contextualise -> suppress_explained -> raise_flags -> record
+```
+
+```bash
+uv run pytest tests/agents/ledger_anomaly
+uv run pytest tests/agents/ledger_anomaly/test_exposure_normalisation.py
+uv run pytest tests/agents/ledger_anomaly/test_no_individual_named.py
+make eval AGENT=ledger_anomaly
+```
+
+**Read ADR-009 before touching this package.** It is the agent with the highest potential to
+do harm and the harm is not technical.
+
+### The one test that proves the design works
+
+`test_a_severe_division_with_high_value_assessments_produces_no_flag`, paired with
+`test_the_identical_profile_at_low_impact_does_produce_a_flag`. The same assessment profile —
+40 assessments, 70% total loss, 90-minute approvals — at impact class 4 and impact class 1.
+The first raises nothing; the second raises a flag.
+
+That pair is the whole argument. A division that was genuinely hit hardest produces
+assessments that are higher, more numerous and faster. Against a national or district
+average, the worst-hit division in the country is the most anomalous division in the country
+— and the officer who assessed the worst damage is the one most likely to be flagged for it.
+
+So nothing compares a division to its peers. `normalisation.expectation_for` derives what
+each division should produce from **its own impact forecast**, and every detector scores the
+gap against that.
+
+### An unsurveyed division is suppressed, which makes the agent blind in unwarned districts
+
+That is the correct trade and it is deliberate. The tempting fallback — compare it against
+the district mean instead — is exactly the peer comparison the module exists to avoid. A
+detector that says nothing is recoverable; one that flags an officer for having been in the
+wrong village is not.
+
+Same reasoning for a division with fewer than eight assessments: ratios that swing on a
+single row are noise a reviewer pays for.
+
+### Officer identity is not a feature, enforced by absence rather than discipline
+
+`Assessment` carries no `assessor_id`, no `approver_id`, no `user_id`. There is no port
+through which one could be fetched, and a test asserts the dataclass has no such field.
+
+That is stronger than a rule. A rule can be forgotten by whoever adds the ninth detector; a
+field that does not exist cannot be grouped by. **The proxy is the trap** — "assessments per
+assessor" is officer identity wearing a statistic's clothes — so the unit of analysis is
+fixed to the GN division in `build_profiles`, in one place, with the reasoning attached.
+
+### `confirmation_gap` joins coverage before it compares
+
+The most valuable detector and the most easily misread. A division at 40% confirmation and
+35% cell coverage is a **coverage problem**; firing on it would flag the least-connected
+divisions in the country for being least connected, which is both wrong and backwards.
+
+Unknown coverage suppresses too: an unknown is not a green light.
+
+### Three layers stop a model naming anybody
+
+1. **It is never told.** The prompt carries division facts only — no assessor, no approver,
+   no household id. A model cannot name somebody it was never given. A test asserts those
+   strings are absent from the prompt.
+2. **It is instructed.** The prompt states the rules.
+3. **Its output is checked.** `redaction.check` walks every string at any depth for ids,
+   name-shaped pairs, a shipped deny-list of accusatory stems, and the *grammatical shapes*
+   that make a finding without using any of the words — "this is clearly evidence of
+   deliberate manipulation" contains no denied word and is rejected.
+
+A rejected document is discarded **whole** and the flag falls back to the template block. Not
+repaired, not re-asked: an output that reached for an accusation once is not one to negotiate
+with.
+
+The allow-list matters as much as the deny-list. Without `NOT_A_NAME` the check would reject
+"Kandy District" and "Grama Niladhari", the contextualiser could never produce a usable
+sentence, and a safeguard that blocks everything gets removed.
+
+### An empty `innocent_explanations` suppresses the flag
+
+Build file 17 inverts the usual shape of a safeguard here and it is worth preserving. An
+empty list does not mean the pattern is damning — it means the context is too thin for a fair
+review, and a reviewer handed nothing to rule out **supplies their own explanation, which
+will be about a person**.
+
+So the flag is withdrawn. The degraded path can still satisfy the rule because the template
+context draws its explanations from the detector's own ruled-out list rather than from a
+model.
+
+### The eval prints both rates, and the harness gained a hook to let it
+
+ADR-009 makes the false-positive rate first-class, so `AgentSpec` now carries an optional
+`eval_sections` callable and `runtime/eval.py` renders it. Generic — any agent whose quality
+is not captured by accuracy and calibration can add its own metrics — and it fails soft: a
+broken addendum becomes a note in the report rather than an exception that discards it.
+
+The anomaly report prints per-detector detection and false-positive counts side by side.
+Currently 0 false positives across 8 clean divisions, 0 missed across 4.
+
+Two thirds of the fixture set are divisions that must **not** be flagged. That ratio is the
+point: any detector reaches 100% detection by flagging everything.
+
+### Still placeholder, and honest about it
+
+- **No adapters.** No `AssessmentSource`, `ExposureSource` or `FlagStore` over ledger-svc, so
+  `main.py` does not wire it. Consistent with files 15 and 16.
+- **`geo_implausible` uses a centroid, not the division boundary.** `admin.gn_division` has
+  geometry and this agent has no port to read it, so the check compares each assessment
+  against the cluster centroid. The evidence says so in the flag, because a reviewer should
+  not be misled about the precision of the check. A point-in-polygon test is a port and an
+  endpoint away.
+- **`evidence_reuse` takes perceptual hashes as given.** Nothing here computes one; file 08's
+  media handling would have to produce them, and its EXIF and hashing work is itself listed
+  as incomplete above.
+- **The disposition loop is not closed.** `FlagStore.disposition_rates` exists and nothing
+  calls it: measuring the real false-positive rate needs dispositioned flags, which needs the
+  console surface from file 20. The eval measures it against fixtures, which is a regression
+  gate rather than a field measurement, and ADR-009's requirement to *publish* the rate is
+  not met until that loop closes.
+- **`category_drift` never fires in the seed.** It needs `permanent_housing_pct`, which
+  `admin.gn_division` does not carry. It suppresses itself rather than guessing.
+
+---
+
+## File 18 is done — the supervisor, and the line that makes the gates real
+
+```
+receive_event -> check_sequencing -> detect_conflict
+  -> [conflict] -> escalate_conflict -> human_review -> record
+  -> [gate]     -> present_gate -> verify -> commit -> record
+  -> [ordinary] -> dispatch_agents -> record
+```
+
+```bash
+uv run pytest tests/agents/supervisor
+uv run pytest tests/agents/supervisor/test_gates_three_layers.py
+uv run pytest tests/e2e/test_full_correlation_chain.py
+uv run pytest tests/agents/supervisor/test_resume_all.py
+make eval AGENT=supervisor
+```
+
+**All six agents now exist.** Build file 18 says this is where the platform's safety story is
+either real or theatre, and the difference turned out to be one function call.
+
+### The resume payload is client input
+
+`gates.verify_approval_record` goes back to the **database** and checks that a real approval
+row exists — for this exact subject, by the person the payload names, with a second factor
+verified inside the window. The payload is used to *find* the record and never as the record.
+
+A graph that read `decision["approved"]` and committed would have authenticated a JSON field
+written by whoever called the endpoint. `test_a_resume_claiming_an_approval_that_does_not_exist_is_refused`
+is the single most important test in the agent, and there is a companion asserting the
+database is read **on the happy path too** — without it, a short-circuit for "obviously fine"
+payloads would pass every refusal test in the file.
+
+Five distinct refusals, each with its own type so the message says which: no record, a record
+for another subject, a record naming another approver, a stale second factor, a recorded "no".
+
+### Three layers, tested with the other two out of the picture
+
+Build file 18 asks for exactly this, and the reason is that three layers testable only
+through each other are one layer wearing three hats — if the API check is what refuses in
+every test, the database trigger could have been dropped two migrations ago.
+
+1. **Graph** — the interrupt, the re-verification, the gated tool. Every test runs against a
+   fake store with no HTTP and no Postgres anywhere near it.
+2. **Scope** — both gate scopes are in `HUMAN_GATE_SCOPES`, absent from `ROLE_SCOPES[AGENT]`,
+   and `strip_human_gates` removes them from *any* grant set, asserted against the function
+   rather than only against the AGENT role.
+3. **Database** — `tests/schema` asserts the trigger behaves; this file asserts the columns
+   are still **declared**, so a migration that dropped `signed_off_by` or made `released_by`
+   nullable fails a test that runs on a laptop with no Docker.
+
+There is also a test that reads `gates.py`'s own source and asserts it mentions no `httpx`,
+no `Scope.`, and no `sqlalchemy` — the independence is a property of the module, not just of
+how the tests happen to be written today.
+
+### Routing is a table, and a sequencing violation never proceeds "just this once"
+
+An LLM that picks agents is non-deterministic, untestable, and adds nothing to a problem this
+simple. More to the point it has to be auditable: somebody investigating why a household was
+never visited needs to read the rule that should have sent somebody.
+
+The dangerous failure is not a wrong route, it is a route that fires **early**. So each route
+carries the facts that must already be true, and `route()` returns three distinct outcomes —
+**fired**, **skipped** (the predicate did not hold, ordinary), and **refused** (it should
+have run and could not). Collapsing the last two would hide exactly the distinction an
+incident review needs.
+
+A refusal raises, audits, and routes to human review.
+
+### Conflicts escalate, and `Escalation` has no resolved state to reach
+
+`touches_life_safety_or_money` returns **True unconditionally**, and the docstring says why
+that is not a stub: every conflict kind the platform can produce sends a crew or moves money,
+and an unanticipated kind is the one least likely to be safe to resolve automatically. The
+named set exists so a log can say which known kind it was, not to admit exceptions.
+
+`why_the_other_might_be_right` is required and a proposal without it is discarded whole. A
+model that cannot state the counter-case has picked a side and justified it, and a human
+reading a confident one-sided proposal adopts it.
+
+The interrupt payload carries both positions with no pre-selection — a screen that
+pre-selects the recommendation converts a decision into a confirmation.
+
+### The eval harness gained a section hook in file 17 and it earned its keep here
+
+Nothing new was needed for the supervisor, which is the point: `AgentSpec.eval_sections`
+turned out to be the right shape rather than a one-agent special case.
+
+### Still placeholder, and honest about it
+
+- **No `ApprovalStore` implementation.** The supervisor verifies approvals against a
+  protocol; nothing implements it over incident-svc's `dispatch_plan` and ledger-svc's
+  `approval`. Same position as files 15–17, and the most consequential instance of it: the
+  verification is the safety property, and it is currently proved against fakes.
+- **The pending-work API does not exist.** Build file 18 specifies
+  `GET /agents/pending`, `/pending/count` and the scoped inbox. `gates.payload_for` already
+  stamps `waiting_since` on every gate and `age_minutes` computes the SLA figure, so the data
+  is there — the endpoints and the scope filtering are not.
+- **The e2e correlation test walks the supervisor, not six services.** It asserts one id
+  survives every routing decision and both gates against fakes, and its own docstring says
+  what it is. A live version needs the adapters; when they exist, that file is where it goes.
+- **`test_resume_all.py` proves half its name.** Five threads pause and five resume onto
+  their own subjects across a new graph object — which proves nothing lives in the closures.
+  It does not prove Postgres round-trips a checkpoint; that needs a container restart.
+- **Nothing subscribes the supervisor to the bus.** `consumers/triggers.py` still holds one
+  disabled `noop` row. The routing table is the replacement for it and the consumer wiring
+  is the last step — deliberately not taken while five of six agents have no adapters, since
+  a live subscription would route real events into agents that refuse at their first node.
+
+---
+
 ## Things that will bite you
 
 These each cost real debugging time. They are written down so they cost you none.
@@ -1848,6 +2088,22 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
   What does not exist is an `IncidentSource`/`ResponderSource`/`PlanStore` over
   incident-svc, and the wiring that points `dispatch_gate`'s `ThreadResumer` at
   agent-svc's resume endpoint. The gate's safety properties all hold without it.
+- **The anomaly agent has no adapters, and its disposition loop is open (file 17).**
+  Detectors, normalisation, redaction and 74 tests are complete against fakes. Nothing
+  reads ledger-svc, and `FlagStore.disposition_rates` has no caller - so the real
+  false-positive rate ADR-009 requires published is measured against fixtures only.
+  Closing it needs the review surface from file 20.
+- **Nothing subscribes the supervisor to the bus (file 18).** The routing table is the
+  replacement for `consumers/triggers.py`, which still holds one disabled `noop` row.
+  Wiring it is the last step and is deliberately not taken while five of six agents have
+  no adapters - a live subscription would route real events into agents that refuse at
+  their first node.
+- **No `ApprovalStore` implementation (file 18).** The gate verification is the safety
+  property and it is currently proved against fakes. Nothing reads incident-svc's
+  `dispatch_plan` or ledger-svc's `approval`.
+- **The pending-work API does not exist (file 18).** `GET /agents/pending` and the
+  scoped inbox are specified and unbuilt. `waiting_since` is already stamped on every
+  gate payload, so the SLA data is there and the endpoints are not.
 - **Payment rails are mocks.** Every reference starts `MOCK-`.
 - **Nothing here is delivered to a real handset.** The payment notices go out through
   `MockSmsGateway`, like every other channel in Phase 1. The message text, the language
@@ -1917,6 +2173,15 @@ uv run pytest tests/agents/intake
 make eval AGENT=triage
 uv run pytest tests/agents/triage/test_gate_cannot_be_bypassed.py
 uv run pytest tests/agents/triage
+
+# anomaly agent (file 17)
+make eval AGENT=ledger_anomaly       # prints detection AND false-positive per detector
+uv run pytest tests/agents/ledger_anomaly
+
+# supervisor (file 18)
+make eval AGENT=supervisor
+uv run pytest tests/agents/supervisor/test_gates_three_layers.py
+uv run pytest tests/e2e/test_full_correlation_chain.py
 ```
 
 `agent:invoke` starts a run; `agent:review` opens the approval inbox and answers an

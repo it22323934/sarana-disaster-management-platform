@@ -1,0 +1,15 @@
+// Routing decisions. The label is which agents an event starts, and which it refuses.
+//
+// The refusal cases matter more than the routing ones. The dangerous failure in this agent
+// is not a wrong answer - it is a route that fires early, and an incident reaching triage
+// before intake verified it is a crew dispatched on an unverified report.
+{"id": "hazard-declared-starts-forecast", "subject_id": "s-01", "input": {"event_type": "sarana.hazard.event.declared", "payload": {"hazard_type": "CYCLONE"}, "known_facts": []}, "label": {"started": "['forecast']", "violated": false}, "expect_human_review": false}
+{"id": "report-received-starts-intake", "subject_id": "s-02", "input": {"event_type": "sarana.incident.report.received", "payload": {"channel": "SMS"}, "known_facts": []}, "label": {"started": "['intake']", "violated": false}, "expect_human_review": false}
+{"id": "severe-forecast-starts-warning", "subject_id": "s-03", "input": {"event_type": "sarana.forecast.impact.generated", "payload": {"by_impact_class": {"4": 6}}, "known_facts": ["cap_validated", "trilingual_complete"]}, "label": {"started": "['warning']", "violated": false}, "expect_human_review": false}
+{"id": "low-forecast-starts-nothing", "subject_id": "s-04", "input": {"event_type": "sarana.forecast.impact.generated", "payload": {"by_impact_class": {"1": 40}}, "known_facts": ["cap_validated", "trilingual_complete"]}, "label": {"started": "[]", "violated": false}, "expect_human_review": false}
+{"id": "verified-incident-starts-triage", "subject_id": "s-05", "input": {"event_type": "sarana.incident.verified", "payload": {}, "known_facts": ["intake_verified", "intake_deduplicated"]}, "label": {"started": "['triage']", "violated": false}, "expect_human_review": false}
+{"id": "triage-before-verification-is-refused", "subject_id": "s-06", "input": {"event_type": "sarana.incident.verified", "payload": {}, "known_facts": []}, "label": {"started": "[]", "refused": "['triage']", "violated": true}, "expect_human_review": false}
+{"id": "triage-with-only-half-the-preconditions-is-refused", "subject_id": "s-07", "input": {"event_type": "sarana.incident.verified", "payload": {}, "known_facts": ["intake_verified"]}, "label": {"started": "[]", "violated": true}, "expect_human_review": false}
+{"id": "alert-before-cap-validation-is-refused", "subject_id": "s-08", "input": {"event_type": "sarana.forecast.impact.generated", "payload": {"by_impact_class": {"4": 6}}, "known_facts": []}, "label": {"started": "[]", "refused": "['warning']", "violated": true}, "expect_human_review": false}
+{"id": "assessment-batches-to-the-anomaly-agent", "subject_id": "s-09", "input": {"event_type": "sarana.aid.assessment.submitted", "payload": {"district_code": "LK-21"}, "known_facts": []}, "label": {"started": "['ledger_anomaly']", "violated": false}, "expect_human_review": false}
+{"id": "an-unrouted-event-starts-nothing-and-is-not-a-violation", "subject_id": "s-10", "input": {"event_type": "sarana.alert.delivery.confirmed", "payload": {}, "known_facts": []}, "label": {"started": "[]", "violated": false}, "expect_human_review": false}

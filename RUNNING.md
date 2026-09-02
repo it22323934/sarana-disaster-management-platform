@@ -136,6 +136,8 @@ make eval AGENT=forecast
 make eval AGENT=warning
 make eval AGENT=intake
 make eval AGENT=triage
+make eval AGENT=ledger_anomaly
+make eval AGENT=supervisor
 uv run python -m agent_svc.agents.intake.bench --reports 200 --assert-p95 45
 make sms-check                  # every seeded template fits two SMS segments, worst-case
 uv run python -m agent_svc.agents.forecast.replay --scenario ditwah --assert-lead-time 24
@@ -226,13 +228,24 @@ goes anywhere.
 All six backend services are complete and the stack boots. Above them, most of the
 product is not there. Working backwards from the build files:
 
-- **Three of the six agents exist.** The forecast agent turns rainfall into per-division
+- **All six agents exist, and none is wired to the live stack.** The forecast agent turns rainfall into per-division
   impact predictions with lead time, confidence and the drivers that produced them, and
   fires pre-agreed anticipatory triggers. The warning agent turns those forecasts into
   trilingual CAP alerts: it selects a natively reviewed template, resolves targets and
   languages, chooses the channel mix, dispatches, and reports which divisions probably did
   not get it. The intake agent turns raw citizen reports into structured, geolocated,
-  non-duplicate incidents. No triage, anomaly or supervisor agent exists yet. Files 16–18.
+  non-duplicate incidents. The anomaly agent aggregates assessments into the sector
+  figures the public dashboard runs on, and surfaces patterns that warrant audit -
+  normalised against each division's own impact forecast, never naming anybody, never
+  stating a finding. The supervisor routes events to the other five through a
+  deterministic table, enforces both human gates by re-reading the approval from the
+  database rather than trusting the resume payload, and escalates every conflict to a
+  person.
+
+  **What none of them has is adapters.** Every agent runs against fakes and passes; not
+  one reads a real database or calls a real service, and nothing subscribes the
+  supervisor to the event bus. That is the next body of work, and it touches core-api
+  and incident-svc rather than adding agents.
 
   **The intake agent cannot process a real report yet.** Its graph, ports and 79 tests are
   complete and run against fakes, but it has no adapters — no transcriber, no embedder, no
