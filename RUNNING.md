@@ -135,6 +135,7 @@ make eval AGENT=noop            # score an agent against labelled fixtures
 make eval AGENT=forecast
 make eval AGENT=warning
 make eval AGENT=intake
+make eval AGENT=triage
 uv run python -m agent_svc.agents.intake.bench --reports 200 --assert-p95 45
 make sms-check                  # every seeded template fits two SMS segments, worst-case
 uv run python -m agent_svc.agents.forecast.replay --scenario ditwah --assert-lead-time 24
@@ -237,6 +238,13 @@ product is not there. Working backwards from the build files:
   complete and run against fakes, but it has no adapters — no transcriber, no embedder, no
   gazetteer, no store — so `main.py` does not wire it. It is the furthest-along agent that
   is not yet connected to anything.
+
+  **The triage agent is the one that stops.** It ranks incidents on a published weighted
+  formula, solves routes with OR-Tools, writes a plan in PROPOSED — and then pauses
+  indefinitely until a named dispatcher with a second factor releases it. Four independent
+  layers stop it releasing anything itself. It has no adapters either, and
+  `incident_svc`'s `NullResumer` is still what the dispatch gate calls, so approving a plan
+  in the running stack still reports `graph_resumed: false`.
 
   **The warning agent never writes alert text.** It selects among templates two named
   native speakers have signed, fills typed parameters from structured data, and stops for a

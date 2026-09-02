@@ -9,7 +9,7 @@ Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 ## Where the build has got to
 
 The repository is organised around 30 numbered build files in `.claude/`. Progress is
-strictly sequential. Files 03-15 are complete; the next unstarted file is 16.
+strictly sequential. Files 03-16 are complete; the next unstarted file is 17.
 
 | File | Area | State |
 |---|---|---|
@@ -26,16 +26,18 @@ strictly sequential. Files 03-15 are complete; the next unstarted file is 16.
 | 13 | Forecast & impact agent | Done — rule-threshold engine, Ditwah replay, eval |
 | 14 | Warning dissemination agent | Done — template selection, targeting, CAP, gaps |
 | 15 | Intake & verification agent | Done — extraction, geolocation, dedup. No adapters. |
-| **16–18** | **Agents** | **Not started — start here** |
+| 16 | Triage & dispatch agent | Done — scoring, OR-Tools routing, the gate. No adapters. |
+| **17–18** | **Agents** | **Not started — start here** |
 | 19–21 | Web (design system, ops console, public dashboard) | Scaffolds only |
 | 22–24 | Mobile (foundation, citizen, field companion) | Scaffold only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-**1,437 tests passing, 2 skipped** (1,439 collected across `tests/` and
-`packages/py-shared/tests`). `ruff check`, `ruff format --check` and `mypy` (318
+**1,516 tests passing, 2 skipped** (1,518 collected across `tests/` and
+`packages/py-shared/tests`). `ruff check`, `ruff format --check` and `mypy` (326
 source files) all clean. File 14 added 122 (76 under `tests/agents/warning`, 46 for the
-SMS segment gate); file 15 added 79 under `tests/agents/intake`.
+SMS segment gate); file 15 added 79 under `tests/agents/intake`; file 16 added 79 under
+`tests/agents/triage`.
 
 ```
 core-api        33 endpoints,  7,171 lines
@@ -43,7 +45,7 @@ incident-svc    20 endpoints,  4,657 lines
 alerting-svc    15 endpoints,  4,177 lines
 ledger-svc      30 endpoints,  7,149 lines
 gov-mock        31 endpoints,  4,865 lines   <- 7 mocked systems + control plane
-agent-svc        6 endpoints, 14,663 lines   <- runtime, 4 agents, replay + eval harness
+agent-svc        6 endpoints, 17,220 lines   <- runtime, 5 agents, replay + eval harness
 ```
 
 The jump from 680 is file 11's suite plus `tests/alerting/test_seeded_templates.py`, which
@@ -1399,6 +1401,176 @@ to meet 45 s in production.
 
 ---
 
+## File 16 is done — the triage agent, and the gate it exists to stop at
+
+```
+receive -> score_priority -> rank_queue -> check_resources -> compute_routes
+-> assemble_plan -> dispatch_signoff  ** MANDATORY HUMAN GATE **
+-> approve: release -> record       |  reject: record_rejection -> record
+```
+
+```bash
+uv run pytest tests/agents/triage
+uv run pytest tests/agents/triage/test_gate_cannot_be_bypassed.py
+make eval AGENT=triage
+```
+
+This is the agent the dispatch gate has been waiting for since file 12. `NullResumer` can
+now be replaced — see the gap list at the end for what that still needs.
+
+### The gate holds at four independent layers, and each is tested on its own terms
+
+`test_gate_cannot_be_bypassed.py` is the most important file in the agent, and it asserts
+each layer separately rather than through the others — four layers that could only be
+tested through each other would be one layer wearing four hats.
+
+1. **The graph.** A plan pauses at `dispatch_signoff` and stays paused. Re-invoking without
+   a decision does not advance it.
+2. **The tool registry.** `release_dispatch_plan` is `requires_human_gate=True`, and
+   refuses on no decision, a decision naming a different plan, and a recorded refusal.
+3. **The scope model.** `Scope.DISPATCH_COMMIT` is in `HUMAN_GATE_SCOPES` and absent from
+   `ROLE_SCOPES[Role.AGENT]`; `strip_human_gates` removes it from any grant set, asserted
+   against the function rather than only against the AGENT role.
+4. **The gate function.** `dispatch_gate.assert_step_up` refuses a missing and a stale
+   second factor; `assert_undecided` refuses a plan that already carries one.
+
+The database trigger is the fifth and lives in `tests/schema`, where Postgres is available.
+
+**The strongest form of the guarantee is structural, not behavioural.** `PlanStore` exposes
+exactly `propose` and `record_rejection` — there is no method on any port through which this
+agent could release anything. A test asserts that the port has those two methods and nothing
+else, so adding a third is a deliberate act somebody has to argue for.
+
+### The score is a published formula and the LLM cannot touch it
+
+Six weighted terms, all shown to the dispatcher: immediate danger (heaviest at 0.28),
+people at risk, vulnerability, incident type, age, corroboration. They sum to 1.0 so the
+score reads as a fraction, and `factor_breakdown()` returns every term, every weight and
+every contribution for every incident.
+
+**A first pass had `people_at_risk` heavier than `immediate_danger`** and the test caught
+it. Build file 16 says immediate danger is the heaviest weight; it now is, and the test
+asserts it against `max()` rather than a hardcoded number so the property survives a
+retune.
+
+The model writes one trilingual sentence *after* the ranking and the routes are fixed. It
+is discarded whole if it comes back in fewer than three languages. A test runs the same
+queue with and without a model and asserts the ranking and the route summary are identical —
+which is build file 16's "a total model outage is close to a non-event", made checkable.
+
+### Ageing, and the failure in the other direction
+
+An incident that sits unrescued rises, or a queue sorted on severity starves every moderate
+incident for the whole event. The curve is linear to two hours — the same
+`AGE_SATURATION_MINUTES` file 08 uses — and **flat after it**.
+
+Flat matters as much as rising. An unbounded age term eventually lets a four-hour-old supply
+request outrank a fresh medical call, which is the opposite failure and harder to notice
+because the queue still looks busy. Both directions have a test.
+
+### Location confidence reduces dispatchability, never urgency
+
+Build file 16 is precise about this and it is worth preserving in the summary: a report
+nobody can place is exactly as urgent as one with a GPS fix — somebody is still in the
+water. So `score` and `dispatchability` are separate outputs, the queue is ordered on
+urgency, and the plan is built from what can be reached. An unplaceable incident stays top
+of the queue and comes back as `unservable`.
+
+Folding the two would quietly deprioritise the people whose reports the platform serves
+worst, which is the population it exists for.
+
+### OR-Tools is now a dependency, and there is still no road network
+
+`uv add ortools` in `services/agent-svc`. It brings numpy, pandas and protobuf, and it
+**downgraded protobuf from 7.36.0 to 6.33.6** — the full suite passes on that, but it is
+worth knowing if something protobuf-shaped breaks later.
+
+The solver is a real CVRPTW: per-vehicle transit callbacks, capacity as a dimension,
+`VehicleVar(...).SetValues([-1, *allowed])` to bar a vehicle from an incident it cannot
+physically reach, and a disjunction so one unreachable incident does not make the whole
+problem infeasible. `SetAllowedVehiclesForIndex` does not accept a Python list in this
+binding; the VehicleVar form is the one that works and it is a hard constraint rather than
+a penalty, which is what the design wanted anyway.
+
+**`travel times over a road network with flood-blocked edges removed` is not what this
+does.** There is no road network in this repository — no OSM extract, no routing graph, no
+edges to remove. Travel time is straight-line distance at a mode-dependent speed with a 1.4
+detour factor, and "flood-blocked edges removed" is implemented as the thing the platform
+actually knows: a division with `road_access_lost` is reachable by `NAVY`, `COAST_GUARD` or
+`MILITARY` and by nothing else.
+
+That gets the decision that matters right — who can reach a cut-off village — and it
+under-estimates every ETA, because roads bend. Every ETA is a floor. Wiring a real routing
+engine changes `routing.TravelModel` and nothing else.
+
+### The responder vocabulary was guessed wrong and the test caught it
+
+The first draft had `SAR_TEAM`, `BOAT`, `HELICOPTER` and `ARMY`. `incident.responder.type`
+has none of them — the real list is `AMBULANCE, FIRE, POLICE, MILITARY, NAVY, COAST_GUARD,
+VOLUNTEER, NGO, MEDICAL_TEAM, ENGINEERING`. So there is **no aircraft in the roster**, which
+is why the travel model has no straight-line exemption: exempting one would model a
+capability the platform does not have.
+
+### Rejections are recorded as data, not as an error path
+
+A rejection is a dispatcher telling us the ranking was wrong in a situation where they know
+something the platform does not — the road is passable because they drove it, the family
+already walked out, that address is a shop. None of that is in any database.
+
+So `rejections.py` records a taxonomy reason imported from
+`dispatch_gate.RejectionReason` (not restated — two lists that were meant to match are two
+that eventually do not), appends **one observation per incident** rather than one per plan,
+and re-queues. An unrecognised reason is stored as `OTHER` with the original preserved in
+the note rather than refused: the dispatcher has already decided, and protecting a
+vocabulary at the cost of the signal would be the wrong trade.
+
+`distribution()` is the number that matters. An accept rate says how often the agent is
+agreed with; the distribution says *how it is wrong*, which is what a change can be aimed
+at.
+
+### The eval measures rank correlation, and its fixtures are honest about what they are
+
+100% accuracy, ECE 0.010 over ten cases. Both numbers need a caveat and `thresholds.json`
+carries the long version.
+
+Each case is a **whole queue** with an ordering, scored on Spearman correlation mapped onto
+[0, 1] — build file 16 is explicit that agreement must not be measured as binary
+agree/disagree, because a dispatcher who works the queue in a slightly different order has
+not disagreed with it.
+
+The ECE is near zero because the stated confidence **is** the measured agreement: the
+formula is deterministic and has no separate belief about its own ordering, so inventing one
+to fill the field would have been the dishonest option. It is self-calibrating by
+construction and is not evidence of anything.
+
+**The dispatcher orderings are agreed expectations, not recorded shifts.** No labelled
+corpus of real dispatcher decisions exists. This is a regression gate on the formula, and
+the proposal's ≥85% agreement target is validated during the pilot — the number must not be
+quoted as though it had been.
+
+### Still placeholder, and honest about it
+
+- **No adapters, so the agent is not wired into the service.** `main.py` has no
+  `_build_triage`: there is no `IncidentSource`, `ResponderSource` or `PlanStore` over
+  incident-svc. The graph and all four ports are complete and exercised against fakes. Same
+  position as file 15, and the same fix — an HTTP client per port.
+- **`NullResumer` is still what incident-svc uses.** The agent now exists to be resumed, and
+  the wiring — pointing `dispatch_gate`'s `ThreadResumer` at agent-svc's resume endpoint —
+  has not been done. Until it is, `graph_resumed: false` is still what the approve response
+  reports, which is honest and is not the finished state.
+- **The restart test proves half of what its name says.** It compiles a *new graph object*
+  over a shared in-process checkpointer, which proves the thread id is derivable and the
+  checkpoint carries everything the resume needs — none of it lives in the closures. It does
+  **not** prove Postgres round-trips the checkpoint; that needs the durable saver and a
+  container restart, and the two halves have never been run end to end. The file says so in
+  its own docstring.
+- **No event starts it.** Consistent with files 14 and 15: `consumers/triggers.py` still has
+  one disabled row for `noop`.
+- **The rank-correlation target is unvalidated.** See above. It needs real dispatcher
+  decisions, which is file 28 plus a pilot.
+
+---
+
 ## Things that will bite you
 
 These each cost real debugging time. They are written down so they cost you none.
@@ -1426,6 +1598,33 @@ Hyper-V on Windows Home, no admin for `diskpart`, and WSL refuses sparse mode wi
 `--allow-unsafe` over the Postgres volumes. So the space you reclaim lives *inside* the
 VHDX and host free space never rises. Run the prune before a long test session, and get a
 proper `diskpart compact vdisk` done from an elevated shell when you can.
+
+**There is a third cause, and as of 2 Sep 2026 it is the live one.** Same symptom, neither
+of the above fixes it:
+
+```bash
+TESTCONTAINERS_RYUK_DISABLED=true uv run pytest tests/schema   # 52 passed
+uv run pytest tests/schema                                     # 13 errors
+```
+
+testcontainers asks Docker for ryuk's published port *before Docker has published it*.
+`Reaper._create_instance()` calls `get_exposed_port(8080)` immediately after starting the
+container; `docker port <id>` on the very same container a second later returns the mapping
+fine. It is a race inside testcontainers' own startup, before any SARANA code is imported,
+and it is not load-dependent - it reproduces on a completely idle machine.
+
+Diagnosing it: `docker ps -a --filter ancestor=testcontainers/ryuk:0.8.1` after a failed
+run shows the orphaned container *with* a healthy `0.0.0.0:NNNNN->8080/tcp` mapping. Each
+failed run leaves one behind, so clear them:
+
+```bash
+docker rm -f $(docker ps -aq --filter ancestor=testcontainers/ryuk:0.8.1)
+```
+
+`TESTCONTAINERS_RYUK_DISABLED=true` is a working diagnostic and is **not** set anywhere in
+the repository, deliberately: ryuk is what cleans up containers after a killed run, and
+turning it off by default trades this race for a slow leak of stray Postgres containers.
+Pinning a newer `testcontainers` is the real fix and has not been tried.
 
 ### Vocabularies drift from the schema, silently, and it is always a 500
 
@@ -1591,6 +1790,11 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
 - **No per-language WER exists (file 15).** Measuring it needs a held-out set of real
   Sinhala and Tamil audio with human transcripts, which this repository does not have.
   Absent rather than fabricated — see the file 15 section.
+- **The triage agent has no adapters, and `NullResumer` still stands (file 16).** The
+  graph, its four ports, the OR-Tools solver and 79 tests are complete against fakes.
+  What does not exist is an `IncidentSource`/`ResponderSource`/`PlanStore` over
+  incident-svc, and the wiring that points `dispatch_gate`'s `ThreadResumer` at
+  agent-svc's resume endpoint. The gate's safety properties all hold without it.
 - **Payment rails are mocks.** Every reference starts `MOCK-`.
 - **Nothing here is delivered to a real handset.** The payment notices go out through
   `MockSmsGateway`, like every other channel in Phase 1. The message text, the language
@@ -1655,6 +1859,11 @@ uv run pytest tests/agents/warning tests/alerting/test_sms_segments.py
 make eval AGENT=intake
 uv run python -m agent_svc.agents.intake.bench --reports 200 --assert-p95 45
 uv run pytest tests/agents/intake
+
+# triage agent (file 16)
+make eval AGENT=triage
+uv run pytest tests/agents/triage/test_gate_cannot_be_bypassed.py
+uv run pytest tests/agents/triage
 ```
 
 `agent:invoke` starts a run; `agent:review` opens the approval inbox and answers an
