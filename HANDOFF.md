@@ -9,8 +9,8 @@ Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 ## Where the build has got to
 
 The repository is organised around 30 numbered build files in `.claude/`. Progress is
-strictly sequential. Files 03-18 are complete - **all six agents exist**. The next
-unstarted file is 19.
+strictly sequential. Files 03-19 are complete - **all six agents exist, and the design
+system they will be seen through exists**. The next unstarted file is 20.
 
 | File | Area | State |
 |---|---|---|
@@ -30,11 +30,18 @@ unstarted file is 19.
 | 16 | Triage & dispatch agent | Done — scoring, OR-Tools routing, the gate. No adapters. |
 | 17 | Aid ledger & anomaly agent | Done — exposure-normalised detectors. No adapters. |
 | 18 | Supervisor & HITL | Done — routing table, both gates, conflicts. No adapters. |
-| **19–21** | **Web (design system, ops console, public dashboard)** | **Scaffolds only — start here** |
+| 19 | Design system | Done — tokens, 3-script type, 34 components, 4 CI gates |
+| **20–21** | **Web (ops console, public dashboard)** | **Scaffolds only — start here** |
 | 22–24 | Mobile (foundation, citizen, field companion) | Scaffold only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
+On the TypeScript side, **126 tests pass**: 64 unit and 33 axe-over-every-story in
+`packages/ui`, and 29 in `packages/ts-shared` (11 of them new, covering `datetime.ts`,
+which had none). `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of
+Done commands are clean.
+
+On the Python side, untouched by file 19:
 **1,663 tests passing, 2 skipped** (1,665 collected across `tests/` and
 `packages/py-shared/tests`). `ruff check`, `ruff format --check` and `mypy` (342
 source files) all clean. File 14 added 122 (76 under `tests/agents/warning`, 46 for the
@@ -1863,6 +1870,203 @@ turned out to be the right shape rather than a one-agent special case.
 
 ---
 
+## File 19 is done — the design system, and the decisions inside it
+
+`packages/ui` is now a real design system: one token source of truth, 34 exported
+components, a Storybook, and four CI gates. 7,645 lines across `src` and `scripts`.
+
+```
+tokens/       6 files   the source of truth; tokens.css and tokens.nativewind.js generated
+primitives/   9 files   Button, Input, Textarea, Select, toggles, overlays, Tabs, Toast
+data/         2 files   DataTable (virtualised), StatCard, TrendSparkline, EmptyState
+domain/       6 files   SeverityPill, TimeSpine, PendingGateBanner, GNDivisionPicker
+map/          1 file    MapLibre shell + four layer builders
+forms/        1 file    react-hook-form/zod bindings, TrilingualField, OfflineSubmit
+stories/      7 files   the catalogue the a11y and coverage gates walk
+```
+
+The four gates, all under `pnpm --filter @sarana/ui`:
+
+```
+test:contrast        79 declared pairings, WCAG 2.2 AA, plus an exhaustiveness guard
+test:i18n-overflow   15 slots x 3 scripts against a width model
+test:a11y            axe over all 33 stories, zero violations
+test:tokens-sync     regenerates tokens.css/tokens.nativewind.js and diffs
+```
+
+### The brief's palette failed its own accessibility floor in three places
+
+The five severity hexes and the interface palette are the brief's, unchanged. But the
+*roles* the brief assigns some of them do not meet the floor it also specifies, and the
+contrast gate found all three on its first run:
+
+- **The primary button's hover.** The brief names `--signal-400`. White on it is 3.16:1.
+  A hover state is not exempt from SC 1.4.3, so a button that lightened would drop its own
+  label below AA at the moment the pointer was on it. Hover now *darkens*, to a derived
+  `--signal-600`. `--signal-400` keeps its other role as the accent on the dark base.
+- **The accent as text on light.** `--signal-500` is 4.81:1 on `--paper-50` but 4.48:1 on
+  `--paper-100`, so a link on the page passed and the same link inside a card did not.
+  `TEXT_ACCENT` splits the roles: `--signal-500` stays the button fill, light-theme accent
+  text reads one step darker.
+- **The focus ring.** The brief's `--signal-400` is 2.86:1 on `--paper-100`, under the 3:1
+  floor SC 1.4.11 sets — and a focus ring is the one indicator a keyboard-only dispatcher
+  cannot work without. `FOCUS_RING` is per-surface: the brief's ring on dark,
+  `--signal-500` on light.
+
+Each derived value carries the measurement that forced it, in `palette.ts`.
+
+### The ramp's five hexes are identity colours, not text colours
+
+Measured against the two base surfaces, every one of them fails AA as body text on one
+surface or the other, and levels 0-3 fail on the dark base — which is where the console
+actually runs:
+
+```
+level  base       on --ink-900   on --paper-50
+0      #4A5568         2.49            7.33
+1      #C9A227         7.74            2.36
+2      #D97706         5.88            3.10
+3      #DC2626         3.88            4.70
+4      #7F1D1D         1.87            9.75
+```
+
+So each level carries a derived `bg`/`fg`/`border` triple per surface, and the raw hue is
+kept for the map marker and the card rule. `fg` was solved to 4.75:1 on its own `bg` —
+headroom above the floor, so a rounding change cannot silently drop the gate — and
+`border` to 3.2:1 against the *tightest* surface the chip can sit on. Solving the light
+borders against `--paper-50`, which is the obvious thing to do, put all four of them at
+2.98:1 on a card. The gate caught that too.
+
+### Level 4 is a fill, and the thing that inverts is the label
+
+Levels 0-3 render as a tinted chip; level 4 renders as a solid deep-red fill. Lightening
+`#7F1D1D` far enough to read as text on the dark base lands it within a few percent of a
+lightened `#DC2626`, so the two loudest levels would become the hardest pair on the ramp
+to tell apart — exactly the wrong way round.
+
+What actually separates it is not the fill. On the dark base every chip background is
+dark, level 4 included: the fills sit within 1.32:1 of each other. The *label* is what
+inverts — level 4 reads near-white while every tint reads mid-toned, a separation of at
+least 2.44:1 on dark and 4.7:1 on light. A test asserts that. Its first version asserted
+the fill instead, and was wrong.
+
+### The ramp is not discriminable in greyscale, and a test says so on purpose
+
+Ochre, amber and red at one tint lightness land within **1.06:1** of each other.
+Separating them would mean abandoning either the brief's five hues or a uniform tint
+lightness. The system carries the meaning in a shape and a word instead, and
+`tokens.test.ts` holds a test asserting the tints are *within* 1.2:1 — so anyone proposing
+to drop the shape or the label from `SeverityPill` sees the number first, and so that if
+the ramp is ever re-tuned to be luminance-separated the test fires and says the shape rule
+can be relaxed.
+
+`SeverityPill` has no `showLabel={false}`, no icon-only variant and no compact mode that
+drops the shape. `SeverityDot` exists for the map, and its `label` prop is required.
+
+### "Every token pairing" is a declared contract plus an exhaustiveness guard
+
+The raw cross product is not the right set — `--sev-1-fg` on `--sev-3-bg` is not something
+this system draws. So `pairings.ts` declares the 79 pairings that actually render, and
+`unpairedTokens()` fails on any colour token appearing in no pairing at all. A token can
+escape the gate only by not existing.
+
+Two floors, because WCAG has two: 4.5:1 for text, 3:1 for the boundaries that identify a
+control. The brief says 4.5 for everything; where the brief and the standard disagree the
+standard wins and the deviation gets a comment. There are four exemptions, each with a
+reason, and three tests police the exemption list itself: every reason must be long enough
+to be an argument, no exemption may name a pairing that now passes, and **no text pairing
+may ever be exempted**.
+
+### The type scale is where the trilingual commitment is actually spent
+
+Sinhala gets +0.15 line-height and a 1.06 size uplift at body sizes; Tamil +0.12 and 1.04.
+Sinhala takes the larger leading because its ascender/descender range is the widest of the
+three, and at Latin leading the ේ of one line touches the ු of the line above. The uplift
+stops above `base` — scaling a 44px headline by 1.06 pushes a three-word Tamil title onto
+a second line. Tracking is Latin-only, scoped to `:lang(en)`, because Sinhala and Tamil
+glyphs join and letter-spacing breaks the join.
+
+Nothing switches a font in JavaScript. Selection is `:lang(si)`/`:lang(ta)` in
+`tokens.css`, which is the only thing that works in a static export and on a printed
+page — and the public dashboard is printed.
+
+### The overflow gate is a width model, and it says so
+
+jsdom has no layout, so `test:i18n-overflow` estimates rendered width from code-point
+count, a per-script mean advance and the per-script size uplift, then measures it against
+the slot budget each component actually gets. It catches the regression it is built for — a
+translation growing past its slot — and it does not catch a layout that breaks for another
+reason. A real pixel measurement needs a browser; that is the visual regression suite, and
+it is **not built** (see the gaps below).
+
+It is worth running just to read the report. The Sinhala DS-division label is **2.98x** its
+English equivalent, and the Tamil primary-button label is 1.98x.
+
+### axe runs over the story catalogue, and colour-contrast is disabled there on purpose
+
+`test:a11y` discovers every named export of every `*.stories.tsx` and runs axe on it.
+jsdom has no cascade, so axe's `color-contrast` rule cannot evaluate anything and is
+disabled explicitly rather than silently skipped — colour is gated by `test:contrast`,
+which is stronger, because it covers both surfaces and every state rather than only what
+happens to be on screen.
+
+The hole in a discovery-based sweep is a component with no story, which the sweep passes by
+never seeing. `coverage.test.ts` closes it from the other direction: every exported
+component must appear in a story, with a reasoned exclusion list that is itself policed for
+staleness. It caught six wrong exclusions on its first run.
+
+### Not every component is a client component
+
+`'use client'` is on the 18 modules that hold a hook, a browser API or a function prop.
+`badge`, `skeleton`, `severity-pill` and `trust` deliberately do not have it, so the
+severity chips, the mock-data badge and the audit trail stay server-renderable — which is
+what keeps the public dashboard's pages static, and that is the whole point of that app.
+
+### Three things that were broken and are now fixed
+
+- **`formatDate` returned US-ordered dates.** CLDR gives `en-LK` the US order, so
+  `formatDate` returned `Nov 28, 2025` while its own docstring said `28 Nov 2025`. Every
+  situation report and press release in Sri Lanka is day-first. The tag is now `en-GB` for
+  date and time; money stays on `en-LK`, where only the grouping matters and it is the
+  same in both. `datetime.ts` had **no tests at all** — it has 11 now, which is how this
+  was found.
+- **Both Next apps failed `next build`.** `@sarana/ui` and `@sarana/ts-shared` are
+  `"type": "module"` and import each other as `./tokens/index.js` while the file is
+  `index.ts` — which is what TypeScript mandates for ESM and what `tsc` and Vite both
+  understand. Webpack does not. `resolve.extensionAlias` is now set in both
+  `next.config.ts`. Turbopack handles it natively, so `next dev --turbo` worked either way
+  and only the production build broke, which is the worst place to find out.
+- **`pnpm lint` was already failing before file 19 started.** `tests/perf/resolve.js` is a
+  k6 script and k6 injects `__ENV`; eslint had no globals declaration for it. Now it does.
+
+### Storybook is not the gate
+
+The a11y addon is installed so a reviewer sees violations while looking at a component, but
+`pnpm test:a11y` is what blocks a merge. An addon panel nobody opens is not a check.
+
+### Still placeholder, and honest about it
+
+- **No visual regression suite.** The brief asks for one. It needs a real browser —
+  Playwright plus a baseline set — and neither exists. The `test:i18n-overflow` model is a
+  deliberate stand-in for the one regression that matters most, not a replacement.
+- **The per-script advances are measured averages, not font metrics.** `MEAN_ADVANCE` in
+  `overflow-budgets.ts` was taken over the seeded UI strings. No font files are vendored,
+  so nothing computes a real advance width.
+- **No fonts are vendored or self-hosted.** The stacks name Instrument Sans, Noto Sans
+  Sinhala, Noto Sans Tamil and IBM Plex Mono with real fallbacks, and nothing loads them.
+  On a machine without them, the Sinhala and Tamil metrics are tuned for faces the browser
+  is not using.
+- **`MapShell` has never rendered a map.** MapLibre is an optional peer, dynamically
+  imported. The layer builders are pure and unit-tested; the shell itself needs a WebGL
+  context and a tile server, and `NEXT_PUBLIC_SARANA_MAP_STYLE_URL` points at nothing yet.
+- **Nothing consumes the NativeWind preset.** `tokens.nativewind.js` is generated and
+  correct; file 22 is what reads it.
+- **`next build` cannot finish on Windows without Developer Mode.** Compilation and static
+  generation both succeed; the `output: 'standalone'` trace-copy step then fails with
+  `EPERM` creating symlinks. Pre-existing, environmental, and unrelated to app code.
+
+---
+
 ## Things that will bite you
 
 These each cost real debugging time. They are written down so they cost you none.
@@ -2104,6 +2308,12 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
 - **The pending-work API does not exist (file 18).** `GET /agents/pending` and the
   scoped inbox are specified and unbuilt. `waiting_since` is already stamped on every
   gate payload, so the SLA data is there and the endpoints are not.
+- **No visual regression suite (file 19).** Required by the brief, and it needs a real
+  browser. `test:i18n-overflow` is a width *model* standing in for the one regression that
+  matters most; it is not a pixel comparison and does not claim to be.
+- **No fonts are vendored (file 19).** The three-script metrics are tuned for Noto Sans
+  Sinhala and Noto Sans Tamil, and nothing loads them. On a machine without those faces
+  installed, the uplift and leading are applied to whatever the browser substitutes.
 - **Payment rails are mocks.** Every reference starts `MOCK-`.
 - **Nothing here is delivered to a real handset.** The payment notices go out through
   `MockSmsGateway`, like every other channel in Phase 1. The message text, the language
@@ -2177,6 +2387,14 @@ uv run pytest tests/agents/triage
 # anomaly agent (file 17)
 make eval AGENT=ledger_anomaly       # prints detection AND false-positive per detector
 uv run pytest tests/agents/ledger_anomaly
+
+# design system (file 19)
+pnpm --filter @sarana/ui test:contrast        # 79 pairings, prints every ratio
+pnpm --filter @sarana/ui test:i18n-overflow   # 15 slots x 3 scripts, prints the ratios
+pnpm --filter @sarana/ui test:a11y            # axe over all 33 stories
+pnpm --filter @sarana/ui test:tokens-sync     # tokens.css/nativewind vs src/tokens
+pnpm --filter @sarana/ui tokens:generate      # after editing any token
+pnpm --filter @sarana/ui storybook            # localhost:6006, three scripts side by side
 
 # supervisor (file 18)
 make eval AGENT=supervisor

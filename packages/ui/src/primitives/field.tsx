@@ -1,3 +1,10 @@
+'use client';
+
+// This module holds a hook, a browser API, or a prop that is a function, so it runs on
+// the client. The directive is deliberately not on every file in the library: badge,
+// skeleton, severity-pill and trust are pure renderers and stay server-renderable,
+// which is what keeps the public dashboard's pages static.
+
 /**
  * The label / description / error scaffolding every form control shares.
  *

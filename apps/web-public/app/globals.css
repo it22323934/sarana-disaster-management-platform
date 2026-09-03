@@ -1,31 +1,24 @@
-@import 'tailwindcss';
-
 /*
- * The design system - colour tokens, the three-script type scale, the map shell - is
- * built in a later step. What is here now is the minimum a page needs to render
- * legibly in Sinhala, Tamil and English.
+ * The SARANA design system, mounted.
  *
- * Sinhala and Tamil glyphs are taller than Latin ones at the same point size, so the
- * base line-height is deliberately looser than a Latin-only interface would use.
+ * `@source` is required and is the thing that breaks silently if it is removed: Tailwind
+ * v4 scans the project it is invoked from, and every component in this app comes from
+ * `packages/ui`, so without it the utilities those components reference are never
+ * generated and the app renders unstyled with no error anywhere.
+ *
+ * `tokens.css` is generated from `packages/ui/src/tokens` and carries the colour ramp,
+ * the three-script type scale, the theme blocks and the Tailwind theme bridge.
+ * `pnpm --filter @sarana/ui test:tokens-sync` fails CI if it drifts from its source.
  */
 
-@theme {
-  --font-sans:
-    'Noto Sans', 'Noto Sans Sinhala', 'Noto Sans Tamil', ui-sans-serif, system-ui,
-    sans-serif;
-  --font-mono: ui-monospace, 'Cascadia Mono', 'Source Code Pro', monospace;
-}
+@import 'tailwindcss';
+@source '../../../packages/ui/src';
 
-:root {
-  color-scheme: light dark;
-}
+@import '@sarana/ui/tokens.css';
 
 body {
+  background: var(--surface-base);
+  color: var(--text-primary);
   font-family: var(--font-sans);
-  line-height: 1.6;
-}
-
-:lang(si),
-:lang(ta) {
-  line-height: 1.85;
+  line-height: var(--leading-base);
 }

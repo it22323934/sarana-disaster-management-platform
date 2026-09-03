@@ -1,4 +1,4 @@
-import { SimulatedDataBadge } from '@sarana/ui';
+import { MockDataBadge } from '@sarana/ui';
 
 /**
  * The console shell.
@@ -12,10 +12,7 @@ export default function Home() {
     <main className="mx-auto flex max-w-3xl flex-col gap-6 p-10">
       <header className="flex items-baseline gap-3">
         <h1 className="text-2xl font-semibold">SARANA Operations Console</h1>
-        <SimulatedDataBadge
-          className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900"
-          source="all government feeds"
-        />
+        <MockDataBadge source="all government feeds" />
       </header>
 
       <p className="text-sm leading-relaxed">

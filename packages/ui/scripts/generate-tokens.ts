@@ -386,7 +386,7 @@ function main(): void {
 
   for (const artefact of artefacts()) {
     if (checking) {
-      let onDisk = '';
+      let onDisk: string;
       try {
         onDisk = readFileSync(artefact.path, 'utf8');
       } catch {

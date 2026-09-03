@@ -10,10 +10,13 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
-  // `lang` is set per-request once locale negotiation lands with the design system.
-  // Until then English is the documented default, matching the API.
+  // `lang` is set per-request once locale negotiation lands with the console shell in
+  // build file 20. English is the documented default until then, matching the API.
+  //
+  // Operations rooms run dark, and a mid-range Android in the field saves real battery
+  // on an OLED panel. An operator can still switch; the default is the decision.
   return (
-    <html lang="en">
+    <html lang="en" data-theme="dark">
       <body>{children}</body>
     </html>
   );

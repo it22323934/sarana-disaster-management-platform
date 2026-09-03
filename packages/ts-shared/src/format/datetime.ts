@@ -10,11 +10,22 @@ import type { Locale } from '../i18n/types.js';
 
 export const COLOMBO_TIMEZONE = 'Asia/Colombo';
 
-/** Intl locale tags for the three SARANA locales. */
+/**
+ * Intl locale tags for the three SARANA locales.
+ *
+ * English uses `en-GB`, not `en-LK`. CLDR gives `en-LK` the US date order, so
+ * `en-LK` renders 28 November 2025 as `Nov 28, 2025` while Sri Lankan usage - and every
+ * situation report, press release and runbook this platform has to sit alongside - writes
+ * `28 Nov 2025`. `en-GB` is the closest tag that produces the day-first order the rest of
+ * the country uses.
+ *
+ * Money is unaffected and stays on `en-LK`: the grouping is what matters there, and it is
+ * the same in both.
+ */
 const INTL_LOCALES: Record<Locale, string> = {
   si: 'si-LK',
   ta: 'ta-LK',
-  en: 'en-LK',
+  en: 'en-GB',
 };
 
 function toDate(value: Date | string | number): Date {
