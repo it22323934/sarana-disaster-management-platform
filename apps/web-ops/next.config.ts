@@ -1,4 +1,14 @@
+import createNextIntlPlugin from 'next-intl/plugin';
 import type { NextConfig } from 'next';
+
+/**
+ * next-intl needs to be told where the per-request config lives.
+ *
+ * Without this the app compiles and then fails at request time with "Couldn't find
+ * next-intl config file" on every route — a build that passes and a server that serves
+ * nothing, which is the worst combination to discover late.
+ */
+const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 
 const config: NextConfig = {
   reactStrictMode: true,
@@ -30,4 +40,4 @@ const config: NextConfig = {
   },
 };
 
-export default config;
+export default withNextIntl(config);

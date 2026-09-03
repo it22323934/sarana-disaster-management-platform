@@ -172,6 +172,59 @@ the project it is invoked from, so without that directive none of the utilities 
 library uses are generated - and it fails silently, with no error anywhere. If a page comes
 up as unstyled HTML, check `app/globals.css` first.
 
+## The ops console
+
+```bash
+pnpm --filter @sarana/web-ops dev          # http://localhost:3000
+```
+
+Sign in with any demo account below. The console talks to **one origin** - its own
+`/gateway` - and a Next route handler forwards each call to whichever of the five services
+owns it, attaching the access token from an httpOnly cookie. The browser never holds a
+token, which is why there is no CORS configuration on any service for it.
+
+The two screens worth opening first are the gates, because they are what the console is
+for:
+
+```
+/en/ops/dispatch          plans awaiting a dispatch decision
+/en/ops/dispatch/<id>     the dispatch gate
+/en/disbursements/<id>    the money gate, by entitlement id
+```
+
+Swap `en` for `si` or `ta` in any URL. The locale is in the path, not only a cookie, so a
+link to a plan opens in the language the sender was reading it in.
+
+### Two screens tell you something is missing, on purpose
+
+The dispatch gate shows a banner saying the agent reasoning is not attached. That is true:
+`GET /dispatch-plans/{id}` does not return the factor breakdown or the unservable list, and
+the triage agent has no adapters, so no plan carries a reasoning thread. The screen says so
+rather than rendering an empty "why these are ranked here" section, which would read as
+*the agent considered nothing*.
+
+`/disbursements` says the queue cannot be listed. Also true: `ledger-svc` has no
+`GET /entitlements`, so nothing can ask which entitlements are waiting. An empty list there
+would tell a district approver no money is waiting when there might be a hundred
+households, so it says why and offers direct entry by entitlement reference instead.
+
+Both are backend gaps, both are in the handoff, and neither is a bug in the console.
+
+### Tests
+
+```bash
+pnpm --filter @sarana/web-ops verify-i18n   # 163 keys in si, ta and en
+pnpm --filter @sarana/web-ops test          # 12 unit tests over the gates
+pnpm --filter @sarana/web-ops test:a11y     # axe: 5 screens x 3 locales
+pnpm --filter @sarana/web-ops test:e2e      # 13 Playwright tests in real Chromium
+```
+
+The e2e suite starts its own dev server on port 3100 and intercepts the gateway in the
+browser, so it needs neither Docker nor a seeded database. It does not prove the services
+enforce their gates - that is the Python suite's job, against a real Postgres. It proves
+the console asks for the second factor, will not approve on Enter, and shows a blocking
+grievance before the approver reaches the button.
+
 ## Things that will confuse you otherwise
 
 **The hierarchy cache holds misses.** `/admin/resolve` caches negative answers for an hour,
@@ -298,11 +351,13 @@ goes anywhere.
 All six backend services are complete and the stack boots, and the design system above
 them exists. What does not exist is the screens. Working backwards from the build files:
 
-- **The design system is built; the two consoles are not.** `packages/ui` has tokens, a
-  three-script type scale, 34 components and four CI gates, and Storybook shows all of it.
-  Both Next apps mount the tokens and render a single placeholder page each. The common
-  operating picture, the incident queue, the two human-gate dialogs, the approval chain and
-  the public ledger views are files 20 and 21, and none of them is started.
+- **The design system is built. The ops console is half-built. The public dashboard is
+  not started.** `packages/ui` has tokens, a three-script type scale, 34 components and
+  four CI gates. `apps/web-ops` has the shell, the gateway, sign-in and step-up, the common
+  operating picture and **both human gate screens**, with 13 Playwright tests covering the
+  approval flow, the rejection flow, the release and its refusal. What it does not have is
+  19 of its 26 routes: incidents, alerts, forecast, the review queue, approvals,
+  grievances, audit and admin are all unbuilt and their navigation links 404.
 
 - **All six agents exist, and none is wired to the live stack.** The forecast agent turns rainfall into per-division
   impact predictions with lead time, confidence and the drivers that produced them, and

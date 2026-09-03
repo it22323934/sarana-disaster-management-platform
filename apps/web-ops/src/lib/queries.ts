@@ -1,0 +1,200 @@
+'use client';
+
+/**
+ * The console's data layer.
+ *
+ * **On polling.** File 20 specifies SSE from core-api. There is no SSE endpoint on
+ * core-api — no service in the platform emits `text/event-stream` today — so everything
+ * here polls, and `LIVE_INTERVAL_MS` is the one place that changes when a stream exists.
+ * The pending-gate count polls regardless: the brief calls for a belt-and-braces poll on
+ * that number even with SSE working, because it is the number that must never be stale.
+ *
+ * Poll intervals are chosen against what the number costs if it is wrong, not against
+ * what feels responsive:
+ *
+ *   gates      5s   an approval waiting unseen is the failure this console exists to stop
+ *   queue     15s   ordering shifts as reports arrive; a 15s-old queue is still actionable
+ *   reference 5min  divisions and responders barely change during an incident
+ */
+
+import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+
+import { gatewayFetch } from './gateway-client';
+import {
+  PENDING_PLAN_STATUSES,
+  anomalyListSchema,
+  dispatchPlanListSchema,
+  dispatchPlanSchema,
+  disbursementListSchema,
+  entitlementSchema,
+  grievanceListSchema,
+  incidentListSchema,
+  queueSchema,
+  responderListSchema,
+  type Anomaly,
+  type DispatchPlan,
+  type Entitlement,
+  type Grievance,
+  type Incident,
+  type QueueRow,
+  type Responder,
+} from './schemas';
+
+export const GATE_INTERVAL_MS = 5_000;
+export const LIVE_INTERVAL_MS = 15_000;
+export const REFERENCE_INTERVAL_MS = 300_000;
+
+export const queryKeys = {
+  pendingPlans: ['dispatch-plans', 'pending'] as const,
+  plan: (id: string) => ['dispatch-plans', id] as const,
+  queue: (divisionCode?: string) => ['incidents', 'queue', divisionCode ?? 'all'] as const,
+  incidents: (ids: readonly string[]) => ['incidents', 'by-id', [...ids].sort()] as const,
+  responders: ['responders'] as const,
+  entitlement: (id: string) => ['entitlements', id] as const,
+  disbursements: ['disbursements'] as const,
+  grievances: (entitlementId: string) => ['grievances', entitlementId] as const,
+  anomalies: (divisionCode?: string) => ['anomalies', divisionCode ?? 'all'] as const,
+};
+
+/**
+ * Dispatch plans a human still has to decide.
+ *
+ * Fetched per status and merged rather than fetched unfiltered and filtered here: an
+ * unfiltered list during a national event is thousands of rows, and the banner needs a
+ * count every five seconds.
+ */
+export function usePendingPlans(): UseQueryResult<DispatchPlan[]> {
+  return useQuery({
+    queryKey: queryKeys.pendingPlans,
+    refetchInterval: GATE_INTERVAL_MS,
+    // Keep polling when the tab is in the background. An operator with the console on a
+    // second monitor is the normal case, and a banner that froze when it lost focus would
+    // be worse than no banner.
+    refetchIntervalInBackground: true,
+    queryFn: async () => {
+      const pages = await Promise.all(
+        PENDING_PLAN_STATUSES.map((status) =>
+          gatewayFetch('dispatch-plans', {
+            query: { status, limit: 500 },
+            schema: dispatchPlanListSchema,
+          }),
+        ),
+      );
+      return pages
+        .flat()
+        .sort((a, b) => a.proposed_at.localeCompare(b.proposed_at));
+    },
+  });
+}
+
+export function usePlan(planId: string): UseQueryResult<DispatchPlan> {
+  return useQuery({
+    queryKey: queryKeys.plan(planId),
+    refetchInterval: LIVE_INTERVAL_MS,
+    queryFn: () => gatewayFetch(`dispatch-plans/${planId}`, { schema: dispatchPlanSchema }),
+  });
+}
+
+export function useTriageQueue(divisionCode?: string): UseQueryResult<QueueRow[]> {
+  return useQuery({
+    queryKey: queryKeys.queue(divisionCode),
+    refetchInterval: LIVE_INTERVAL_MS,
+    queryFn: () =>
+      gatewayFetch('incidents/queue', {
+        query: { gn_division_code: divisionCode, limit: 200 },
+        schema: queueSchema,
+      }),
+  });
+}
+
+/**
+ * The incidents a plan covers.
+ *
+ * One request per id. `incident-svc` has no bulk-by-id read, and a plan covers a handful
+ * of incidents rather than hundreds, so the alternative — listing everything and filtering
+ * client-side — would be far more expensive on the one screen that has to load fast.
+ */
+export function usePlanIncidents(ids: readonly string[]): UseQueryResult<Incident[]> {
+  return useQuery({
+    queryKey: queryKeys.incidents(ids),
+    enabled: ids.length > 0,
+    queryFn: async () => {
+      const rows = await Promise.all(
+        ids.map((id) =>
+          gatewayFetch(`incidents/${id}`, { schema: incidentListSchema.element }),
+        ),
+      );
+      // Highest severity first, then most people at risk. The dispatcher reads the top of
+      // this list under time pressure, so it leads with what the decision turns on.
+      return rows.sort(
+        (a, b) => b.severity - a.severity || b.people_at_risk - a.people_at_risk,
+      );
+    },
+  });
+}
+
+export function useResponders(): UseQueryResult<Responder[]> {
+  return useQuery({
+    queryKey: queryKeys.responders,
+    refetchInterval: REFERENCE_INTERVAL_MS,
+    queryFn: () => gatewayFetch('responders', { schema: responderListSchema }),
+  });
+}
+
+export function useEntitlement(id: string): UseQueryResult<Entitlement> {
+  return useQuery({
+    queryKey: queryKeys.entitlement(id),
+    queryFn: () => gatewayFetch(`entitlements/${id}`, { schema: entitlementSchema }),
+  });
+}
+
+export function useDisbursements(): UseQueryResult<ReturnType<typeof Array.prototype.slice>> {
+  return useQuery({
+    queryKey: queryKeys.disbursements,
+    refetchInterval: LIVE_INTERVAL_MS,
+    queryFn: () => gatewayFetch('disbursements', { schema: disbursementListSchema }),
+  });
+}
+
+/**
+ * Grievances on one entitlement.
+ *
+ * An open one blocks the release, and `ledger-svc` refuses it server-side. The console
+ * fetches them so the approver sees *why* before they press the button, rather than
+ * pressing it and receiving a 409.
+ */
+export function useGrievances(entitlementId: string): UseQueryResult<Grievance[]> {
+  return useQuery({
+    queryKey: queryKeys.grievances(entitlementId),
+    enabled: entitlementId.length > 0,
+    queryFn: () =>
+      gatewayFetch('grievances', {
+        query: { entitlement_id: entitlementId },
+        schema: grievanceListSchema,
+      }),
+  });
+}
+
+export function useAnomalies(divisionCode?: string): UseQueryResult<Anomaly[]> {
+  return useQuery({
+    queryKey: queryKeys.anomalies(divisionCode),
+    queryFn: () =>
+      gatewayFetch('anomalies', {
+        query: { gn_division_code: divisionCode },
+        schema: anomalyListSchema,
+      }),
+  });
+}
+
+/** Invalidate everything a gate decision changes. Called after approve, reject, release. */
+export function useInvalidateGates(): () => Promise<void> {
+  const client = useQueryClient();
+  return async () => {
+    await Promise.all([
+      client.invalidateQueries({ queryKey: queryKeys.pendingPlans }),
+      client.invalidateQueries({ queryKey: ['dispatch-plans'] }),
+      client.invalidateQueries({ queryKey: queryKeys.disbursements }),
+      client.invalidateQueries({ queryKey: ['incidents'] }),
+    ]);
+  };
+}

@@ -8,22 +8,43 @@
     "build": "next build",
     "start": "next start --port 3000",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run",
+    "test:a11y": "vitest run --config vitest.a11y.config.ts",
+    "test:e2e": "playwright test",
+    "verify-i18n": "tsx ./scripts/verify-messages.ts"
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
     "@sarana/ts-shared": "workspace:*",
     "@sarana/ui": "workspace:*",
+    "@tanstack/react-query": "^5.100.0",
+    "maplibre-gl": "^5.0.0",
     "next": "^15.1.3",
+    "next-intl": "^4.14.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-hook-form": "^7.60.0",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.0",
     "@tailwindcss/postcss": "^4.0.0",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "axe-core": "^4.10.2",
+    "jsdom": "^25.0.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "tailwindcss": "^4.0.0",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2",
+    "vite": "^5.4.11",
     "vitest": "^2.1.8"
   }
 }

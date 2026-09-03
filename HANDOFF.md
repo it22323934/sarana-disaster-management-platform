@@ -9,8 +9,9 @@ Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 ## Where the build has got to
 
 The repository is organised around 30 numbered build files in `.claude/`. Progress is
-strictly sequential. Files 03-19 are complete - **all six agents exist, and the design
-system they will be seen through exists**. The next unstarted file is 20.
+strictly sequential. Files 03-19 are complete, and **file 20 is partial**: the console's
+foundation and both human gates are built and tested end to end in a browser; most of its
+26 routes are not. The next work is finishing 20.
 
 | File | Area | State |
 |---|---|---|
@@ -31,14 +32,15 @@ system they will be seen through exists**. The next unstarted file is 20.
 | 17 | Aid ledger & anomaly agent | Done — exposure-normalised detectors. No adapters. |
 | 18 | Supervisor & HITL | Done — routing table, both gates, conflicts. No adapters. |
 | 19 | Design system | Done — tokens, 3-script type, 34 components, 4 CI gates |
-| **20–21** | **Web (ops console, public dashboard)** | **Scaffolds only — start here** |
+| **20** | **Ops console** | **Partial — shell, gateway, auth, both gates, COP. 7 of 26 routes.** |
+| **21** | **Public dashboard** | **Scaffold only** |
 | 22–24 | Mobile (foundation, citizen, field companion) | Scaffold only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-On the TypeScript side, **126 tests pass**: 64 unit and 33 axe-over-every-story in
-`packages/ui`, and 29 in `packages/ts-shared` (11 of them new, covering `datetime.ts`,
-which had none). `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of
+On the TypeScript side, **166 tests pass**: 64 unit and 33 axe-over-every-story in
+`packages/ui`, 29 in `packages/ts-shared`, and in `apps/web-ops` 12 unit, 15 axe across
+five screens x three locales, and **13 Playwright tests in a real Chromium**. `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of
 Done commands are clean.
 
 On the Python side, untouched by file 19:
@@ -2067,6 +2069,151 @@ The a11y addon is installed so a reviewer sees violations while looking at a com
 
 ---
 
+## File 20 is partial — the console's spine and both gates, and what is not there
+
+What exists: the app shell, the gateway, sign-in and step-up, the common operating
+picture, the dispatch queue, **both human gate screens**, and the degraded states. What
+does not: 19 of the 26 routes in the brief, and the map layers beyond the shell.
+
+```
+app/[locale]/           login, /, /ops, /ops/dispatch, /ops/dispatch/[planId],
+                        /disbursements, /disbursements/[entitlementId]
+app/gateway/[...path]   the BFF proxy - one origin, five services
+src/lib/                gateway client, queries, schemas, session, auth actions
+src/components/         shell, gate banner, both gates, both queues, COP, degraded
+messages/               163 keys x si/ta/en, gated by verify-i18n
+e2e/                    13 Playwright tests, gates and three-script rendering
+```
+
+### The browser never holds a token
+
+Every call goes through `/gateway`, a Next route handler that attaches the access token
+from an **httpOnly cookie** and refreshes once on a 401, server-side. Three reasons, and
+the third is the one that matters: five services would mean five CORS configurations; the
+browser would have to know the port map, making deployment topology a frontend concern;
+and a token in `localStorage` is exfiltrable by any XSS on any page. This console releases
+money and dispatches responders. That is not a risk worth a client-side fetch.
+
+A third cookie, `sarana_principal`, **is** readable — it holds the claims the navigation
+renders from. It is a cache, never an authority: nothing is authorised from it, and a user
+who edits it to add a scope gets a 403 from the service rather than a wider console.
+
+### There is no SSE anywhere, so everything polls
+
+The brief specifies SSE from core-api. **No service in the platform emits
+`text/event-stream`** — verified across all six. So `src/lib/queries.ts` polls, and
+`LIVE_INTERVAL_MS` is the single place that changes when a stream exists. Intervals are
+chosen against what the number costs if it is wrong, not against what feels responsive:
+gates 5s, queue 15s, reference data 5min. The gate poll runs in background tabs too — an
+operator with the console on a second monitor is the normal case, and a banner that froze
+on blur would be worse than no banner.
+
+### Two API gaps the console had to be honest about
+
+**The dispatch gate cannot show the reasoning.** The brief requires the per-incident factor
+breakdown and the `unservable` list, "expanded by default". `GET /dispatch-plans/{id}`
+returns `PlanSummary`, which carries neither — and the table has a `route` JSONB column and
+a `langgraph_thread_id` that the response model does not expose either. Rather than render
+an empty "why these are ranked here" section, which reads as *the agent considered nothing*,
+the screen shows a named degraded banner saying the reasoning is not attached and what to
+do instead. That is the true state today: the triage agent has no adapters, so no plan
+carries a reasoning thread.
+
+**The release queue cannot be listed.** `ledger-svc` has `GET /entitlements/{id}` and **no
+list endpoint**, so nothing can ask "which entitlements are approved and waiting". An empty
+list would be the most dangerous screen in the console — it would tell a district approver
+no money is waiting when there might be a hundred households. `/disbursements` says so,
+offers direct entry by entitlement reference, and lists what has recently been released
+from the endpoint that does exist.
+
+Closing either is backend work, and both are named in the gaps below.
+
+### The gate screens hold four properties, and each has a test
+
+- **Approve is unreachable by Enter.** The TOTP field is focused on load so an easy
+  decision is fast, and the form swallows submit. A dispatcher resting a hand on the
+  keyboard must not be able to send people towards a hazard. Tested in jsdom and in
+  Chromium.
+- **Rejecting is exactly as fast as approving.** Same size, same column, one click to open,
+  neither pre-selected. If rejecting is slower people approve to save time and the gate
+  becomes theatre. The e2e test asserts the button sizes match.
+- **The money gate blocks before the button, not after.** An open grievance or a
+  segregation conflict disables release and says why. `ledger-svc` would refuse with a 409
+  anyway; letting the click through to collect one teaches approvers that refusals are
+  noise.
+- **A household name is never rendered, even if the server sends one.** The fixture in
+  both the unit and the e2e suite includes `household_name`, and both assert it does not
+  appear. The real guarantee is that the query never selects one; this is the second line.
+
+### The calculation is a derivation, not a total
+
+`EntitlementOut.calculation_trace` is walked structurally and rendered key by key, with the
+schedule version above it and the amount below. A trace key the console has never seen is
+rendered rather than dropped: the one thing this panel must never do is silently omit a
+step, because the step it omits is the one the approver needed. An approver shown only a
+number is being asked to rubber-stamp; one who can follow the arithmetic catches the
+schedule version being wrong, which is the error that actually happens.
+
+### Not every component is a client component, and the console keeps that
+
+`'use client'` is on the modules that hold a hook, a browser API or a function prop.
+`severity-pill` and `trust` from the design system stay server-renderable, so the severity
+chips and the mock-data badge render on the server. It matters more for file 21 than here.
+
+### Three things that were broken and are now fixed
+
+- **`next build` produced a server that served nothing.** next-intl's plugin was not wired
+  into `next.config.ts`, so the build passed, 18 pages generated, and every request failed
+  at run time with "Couldn't find next-intl config file". A build that passes and a server
+  that serves nothing is the worst combination to find late; the e2e suite found it.
+- **A hook was called after an early return** in the dispatch gate, which is a rules-of-
+  hooks violation that renders fine until the loading branch is taken.
+- **A Tailwind class was being built by concatenation** in the design system's
+  `SeverityPill` (found while wiring the console). Tailwind extracts utilities by scanning
+  for literal strings, so the class was never generated — a silent failure, in the build,
+  on the one component whose colour is load-bearing.
+
+### What the e2e suite proves, and what it does not
+
+13 Playwright tests run against `next dev` with the **gateway routes intercepted in the
+browser**, not against a booted platform. That is a trade, not a shortcut: the flows these
+protect are properties of the console, and making them depend on six Docker services, a
+seeded Postgres and a working TOTP secret would produce a suite that fails for reasons
+unrelated to the console and that nobody runs.
+
+So they do **not** prove that `incident-svc` refuses an approval without a step-up stamp,
+or that `ledger-svc` refuses a release with an open grievance. Those are server properties,
+tested in the Python suite against a real database. They prove the console asks for the
+second factor, will not approve on Enter, and shows the approver a blocking grievance
+before they reach the button.
+
+### Still placeholder, and honest about it
+
+- **19 of 26 routes do not exist.** `/ops/incidents`, `/ops/incidents/[id]`, `/ops/alerts`
+  and everything under it, `/ops/forecast`, `/ops/review`, `/field/assessments`,
+  `/approvals`, `/grievances`, `/audit` and `/admin` are all unbuilt. The navigation links
+  to them and they 404. That is the largest single piece of remaining work in file 20.
+- **The map has a shell and no layers.** `MapShell` mounts and renders its accessible
+  fallback list; the GN division, incident, heat and delivery-gap layers are built as pure
+  functions in `packages/ui` and nothing calls them yet. `NEXT_PUBLIC_SARANA_MAP_STYLE_URL`
+  points at MapLibre's demo tiles.
+- **The time spine is not on the console.** `TimeSpine` exists and is storied; the shell
+  does not mount it, because nothing yet supplies a landfall instant or the milestone list.
+- **The gate banner counts dispatches only.** Disbursements are not counted, because there
+  is no endpoint to count them - see the release-queue gap above. The banner therefore
+  under-reports, which is recorded here rather than hidden.
+- **No alert sound.** `PendingGateBanner` offers the control only when a handler is passed,
+  and none is: offering a control that does nothing is worse than not offering it, because
+  an operator who enables it then believes they will be told. The string is translated.
+- **No lighthouse budget check.** The brief's fourth DoD command
+  (`--assert-lcp 2000 --assert-js 250`) is not wired. It needs the app served from a
+  production build, and `next build` cannot finish on Windows without Developer Mode.
+- **`next build` still cannot finish on Windows.** Compilation and all 18 static pages
+  succeed; the pre-existing `output: 'standalone'` trace-copy step then fails with `EPERM`
+  creating symlinks. Environmental, and unrelated to the console.
+
+---
+
 ## Things that will bite you
 
 These each cost real debugging time. They are written down so they cost you none.
@@ -2308,6 +2455,16 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
 - **The pending-work API does not exist (file 18).** `GET /agents/pending` and the
   scoped inbox are specified and unbuilt. `waiting_since` is already stamped on every
   gate payload, so the SLA data is there and the endpoints are not.
+- **`GET /dispatch-plans/{id}` does not expose the reasoning (files 08/16/20).** The
+  table has `route` and `langgraph_thread_id`; `PlanSummary` returns neither, and the
+  factor breakdown and `unservable` list exist only in the triage agent's interrupt
+  payload. The dispatch gate screen cannot show what the brief requires until this is
+  widened, and it says so on screen rather than rendering an empty section.
+- **`ledger-svc` has no `GET /entitlements` (files 10/20).** Nothing can list entitlements
+  awaiting release, so the money gate's queue cannot be assembled. The gate screen itself
+  works from an entitlement id.
+- **No SSE anywhere (files 07/20).** The console polls. `LIVE_INTERVAL_MS` in
+  `apps/web-ops/src/lib/queries.ts` is the one place that changes when a stream exists.
 - **No visual regression suite (file 19).** Required by the brief, and it needs a real
   browser. `test:i18n-overflow` is a width *model* standing in for the one regression that
   matters most; it is not a pixel comparison and does not claim to be.
@@ -2395,6 +2552,13 @@ pnpm --filter @sarana/ui test:a11y            # axe over all 33 stories
 pnpm --filter @sarana/ui test:tokens-sync     # tokens.css/nativewind vs src/tokens
 pnpm --filter @sarana/ui tokens:generate      # after editing any token
 pnpm --filter @sarana/ui storybook            # localhost:6006, three scripts side by side
+
+# ops console (file 20)
+pnpm --filter @sarana/web-ops dev              # http://localhost:3000
+pnpm --filter @sarana/web-ops verify-i18n      # 163 keys x si/ta/en
+pnpm --filter @sarana/web-ops test             # 12 unit
+pnpm --filter @sarana/web-ops test:a11y        # axe, 5 screens x 3 locales
+pnpm --filter @sarana/web-ops test:e2e         # 13 Playwright, real Chromium
 
 # supervisor (file 18)
 make eval AGENT=supervisor
