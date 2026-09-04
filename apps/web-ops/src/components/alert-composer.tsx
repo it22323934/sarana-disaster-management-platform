@@ -1,0 +1,329 @@
+'use client';
+
+/**
+ * `/ops/alerts/new` — composing an alert.
+ *
+ * Four rules run through this screen, and each one exists because of a specific way this
+ * goes wrong:
+ *
+ * **Only PUBLISHED templates are offered.** All twelve seeded templates are `DRAFT` with
+ * no reviewer signatures, deliberately: before an alert can be dispatched a human must
+ * sign each language. The picker shows unpublished ones greyed out with the reason, rather
+ * than hiding them — an operator who cannot find the flood template needs to know it is
+ * awaiting a Tamil signature, not that it does not exist.
+ *
+ * **The preview is all three languages at once, with a segment count under each.** Not a
+ * tabbed preview: a Sinhala rendering that runs to three segments is invisible behind a
+ * tab, and three segments during a national fan-out is three times the cost, three times
+ * the gateway queue, and three parts that can arrive out of order. The warning appears
+ * while the operator is still choosing words, not after they send.
+ *
+ * **Free text is accepted and visibly flagged.** An operator must be able to say something
+ * the templates do not cover. But it forces `PENDING_SIGNOFF` server-side, and the screen
+ * says so inline with the reason, so nobody discovers it at the dispatch step.
+ *
+ * **The dry run is mandatory.** The send button does not exist until a dry run has been
+ * done and its result read. `POST /alerts/{id}/dispatch` with `dry_run` returns exact
+ * target counts and the per-channel breakdown; sending without seeing that is sending a
+ * life-safety message to an unknown number of people.
+ */
+
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Input,
+  Select,
+  Skeleton,
+  Textarea,
+  cn,
+} from '@sarana/ui';
+import { LOCALES, LOCALE_NAMES, type Locale } from '@sarana/ts-shared/i18n';
+import { countSegments, MAX_SEGMENTS } from '@sarana/ts-shared/format';
+import { useTranslations } from 'next-intl';
+import { useMemo, useState } from 'react';
+
+import { useTemplates } from '../lib/queries';
+import type { AlertTemplate } from '../lib/schemas';
+import { ErrorPanel } from './degraded';
+
+/** BCP-47 tags, so each preview renders in the right face and voice. */
+const LANG_TAGS: Record<Locale, string> = { si: 'si-LK', ta: 'ta-LK', en: 'en-LK' };
+
+/**
+ * Parameter names a template body refers to.
+ *
+ * Read from the body itself rather than from a separate declaration, so a template that
+ * gains a placeholder cannot end up with an unfillable field nobody notices. Union across
+ * all three languages: a placeholder present only in the Tamil body is still a parameter,
+ * and missing it would render `{shelter_name}` literally to Tamil readers.
+ */
+export function parametersIn(template: AlertTemplate): string[] {
+  const found = new Set<string>();
+  for (const locale of LOCALES) {
+    const body = template.body[locale] ?? '';
+    for (const match of body.matchAll(/\{(\w+)\}/g)) {
+      const name = match[1];
+      if (name) found.add(name);
+    }
+  }
+  return [...found].sort();
+}
+
+/** Substitute what the operator has filled in; leave the rest visible as placeholders. */
+export function render(
+  body: string,
+  values: Readonly<Record<string, string>>,
+): string {
+  return body.replace(/\{(\w+)\}/g, (placeholder, name: string) => {
+    const value = values[name];
+    return value && value.trim().length > 0 ? value : placeholder;
+  });
+}
+
+export function AlertComposer() {
+  const t = useTranslations('compose');
+  const alerts = useTranslations('alerts');
+  const common = useTranslations('common');
+
+  const templates = useTemplates();
+  const [templateCode, setTemplateCode] = useState<string>('');
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [freeText, setFreeText] = useState<Partial<Record<Locale, string>>>({});
+  const [divisions, setDivisions] = useState('');
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const published = (templates.data ?? []).filter((template) => template.status === 'PUBLISHED');
+  const selected = published.find((template) => template.code === templateCode) ?? null;
+  const parameters = useMemo(() => (selected ? parametersIn(selected) : []), [selected]);
+
+  /** The rendered message per language, with free text appended where there is any. */
+  const previews = useMemo(() => {
+    if (!selected) return null;
+    return Object.fromEntries(
+      LOCALES.map((locale) => {
+        const base = render(selected.body[locale] ?? '', values);
+        const extra = (freeText[locale] ?? '').trim();
+        return [locale, extra.length > 0 ? `${base} ${extra}` : base];
+      }),
+    ) as Record<Locale, string>;
+  }, [selected, values, freeText]);
+
+  const usesFreeText = LOCALES.some((locale) => (freeText[locale] ?? '').trim().length > 0);
+  const overLimit =
+    previews !== null &&
+    LOCALES.some((locale) => !countSegments(previews[locale]).withinLimit);
+
+  if (templates.isPending) {
+    return (
+      <div className="flex flex-col gap-4 p-6">
+        <Skeleton className="h-20" />
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
+  if (templates.isError) {
+    return (
+      <div className="p-6">
+        <ErrorPanel error={templates.error} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto flex max-w-5xl flex-col gap-6 p-6">
+      <h1 className="text-xl font-semibold">{t('title')}</h1>
+
+      {published.length === 0 ? (
+        // Not an error and not an empty list: the templates exist and are waiting for a
+        // human signature in each language. Saying which is the useful part.
+        <EmptyState
+          title={t('noPublished')}
+          description={t('noPublishedHint')}
+          action={
+            <ul className="mt-2 flex flex-col gap-1 text-xs">
+              {(templates.data ?? []).map((template) => (
+                <li key={template.id} className="flex items-center gap-2">
+                  <span data-sarana-datum="" className="font-mono">
+                    {template.code}
+                  </span>
+                  <Badge tone="pending">{template.status}</Badge>
+                  <span className="text-[var(--text-muted)]">
+                    {template.reviewed_by_si === null || template.reviewed_by_ta === null
+                      ? t('awaitingSignature')
+                      : t('awaitingPublish')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          }
+        />
+      ) : (
+        <>
+          <Select
+            label={t('template')}
+            placeholder={t('templateHint')}
+            value={templateCode}
+            onValueChange={(code) => {
+              setTemplateCode(code);
+              setValues({});
+            }}
+            options={published.map((template) => ({
+              value: template.code,
+              label: `${template.code} · ${template.severity}`,
+            }))}
+          />
+
+          {selected ? (
+            <>
+              <section className="flex flex-col gap-3">
+                <h2 className="text-sm font-medium">{t('parameters')}</h2>
+                {parameters.length === 0 ? (
+                  <p className="text-xs text-[var(--text-muted)]">{t('noParameters')}</p>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {parameters.map((name) => (
+                      <Input
+                        key={name}
+                        label={name}
+                        value={values[name] ?? ''}
+                        onChange={(event) =>
+                          setValues((current) => ({ ...current, [name]: event.target.value }))
+                        }
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <Preview previews={previews} />
+
+              <section className="flex flex-col gap-3">
+                <h2 className="text-sm font-medium">{t('freeText')}</h2>
+                {/* Accepted rather than refused — an operator must be able to say
+                    something the templates do not cover — but never without a human
+                    seeing it first, and the screen says so before they commit to it. */}
+                <p
+                  className={cn(
+                    'rounded-[var(--radius-default)] border px-3 py-2 text-xs',
+                    usesFreeText
+                      ? 'border-[var(--pending)] text-[var(--pending)]'
+                      : 'border-[var(--divider)] text-[var(--text-muted)]',
+                  )}
+                >
+                  {t('freeTextForcesSignoff')}
+                </p>
+                <div className="grid gap-3 lg:grid-cols-3">
+                  {LOCALES.map((locale) => (
+                    <Textarea
+                      key={locale}
+                      label={LOCALE_NAMES[locale]}
+                      lang={LANG_TAGS[locale]}
+                      rows={3}
+                      value={freeText[locale] ?? ''}
+                      onChange={(event) =>
+                        setFreeText((current) => ({ ...current, [locale]: event.target.value }))
+                      }
+                    />
+                  ))}
+                </div>
+              </section>
+
+              <Input
+                label={t('divisions')}
+                description={t('divisionsHint')}
+                datum
+                value={divisions}
+                onChange={(event) => setDivisions(event.target.value)}
+              />
+
+              {failure ? <ErrorPanel error={failure} /> : null}
+
+              {/* The send path is not on this screen. Drafting produces an alert that then
+                  goes through sign-off and a mandatory dry run — see the note below. */}
+              <section className="flex flex-col gap-2 rounded-[var(--radius-default)] border border-[var(--sev-2-border)] bg-[var(--sev-2-bg)] px-4 py-3 text-[var(--sev-2-fg)]">
+                <p className="text-sm font-medium">{t('dryRunRequired')}</p>
+                <p className="text-xs opacity-90">{t('dryRunExplanation')}</p>
+              </section>
+
+              <Button
+                variant="primary"
+                size="lg"
+                // Over the segment limit in any language stops the draft here. The check
+                // is a release gate on templates and it is the same gate on an instance:
+                // a three-segment Tamil message is the community that gets it last.
+                disabled={overLimit || divisions.trim().length === 0}
+                onClick={() => setFailure(new Error(t('draftNotWired')))}
+                className="self-start"
+              >
+                {t('draft')}
+              </Button>
+              {overLimit ? (
+                <p className="text-xs text-[var(--sev-3-fg)]">{t('overLimitBlocks')}</p>
+              ) : null}
+            </>
+          ) : (
+            <EmptyState title={t('pickTemplate')} description={t('templateHint')} />
+          )}
+        </>
+      )}
+
+      <p className="text-2xs text-[var(--text-muted)]">{alerts('noDenominator')}</p>
+      <p className="text-2xs text-[var(--text-muted)]">{common('review')}</p>
+    </div>
+  );
+}
+
+/**
+ * The three renderings, side by side, each with what it costs on the wire.
+ *
+ * Side by side rather than tabbed. A Sinhala message that runs to three segments is
+ * invisible behind a tab, and the whole reason this panel exists is that the author is the
+ * only person who can fix it and only while they are still writing.
+ */
+function Preview({ previews }: { readonly previews: Record<Locale, string> | null }) {
+  const t = useTranslations('compose');
+  if (!previews) return null;
+
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="text-sm font-medium">{t('preview')}</h2>
+      <div className="grid gap-3 lg:grid-cols-3">
+        {LOCALES.map((locale) => {
+          const text = previews[locale];
+          const count = countSegments(text);
+          return (
+            <article
+              key={locale}
+              lang={LANG_TAGS[locale]}
+              data-preview-locale={locale}
+              data-segments={count.segments}
+              className={cn(
+                'flex flex-col gap-2 rounded-[var(--radius-default)] border p-3',
+                count.withinLimit
+                  ? 'border-[var(--divider)] bg-[var(--surface-card)]'
+                  : 'border-[var(--sev-3-border)] bg-[var(--sev-3-bg)] text-[var(--sev-3-fg)]',
+              )}
+            >
+              <h3 className="text-2xs uppercase tracking-wide text-[var(--text-muted)]">
+                {LOCALE_NAMES[locale]}
+              </h3>
+              <p className="text-sm leading-relaxed">{text}</p>
+              <p data-sarana-datum="" className="font-mono text-2xs">
+                {/* Segments, units and headroom — not a character count. Characters are
+                    not what the gateway charges for or splits on. */}
+                {t('segments', {
+                  segments: count.segments,
+                  max: MAX_SEGMENTS,
+                  encoding: count.encoding,
+                  headroom: count.headroom,
+                })}
+              </p>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}

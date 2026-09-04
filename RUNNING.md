@@ -192,7 +192,15 @@ and the delivery-gaps panel, because it is the one that changes what happens nex
 /en/disbursements/<id>              the money gate, by entitlement id
 /en/ops/alerts/<id>/delivery        delivery counts and the divisions probably unreached
 /en/audit/anomalies                 flags, their innocent explanations, disposition
+/en/ops/alerts/new                  compose an alert, with live per-language SMS cost
 ```
+
+`/ops/alerts/new` is worth opening even with nothing seeded. It previews the message in
+all three languages side by side with the segment cost under each, and the numbers show
+the asymmetry the platform has to design around: the same flood warning is **one** segment
+in English and **two** in both Sinhala and Tamil, from the alphabet alone. During a
+national fan-out that is twice the cost and twice the gateway queue for the two languages
+most of the country reads.
 
 Swap `en` for `si` or `ta` in any URL. The locale is in the path, not only a cookie, so a
 link to a plan opens in the language the sender was reading it in.
@@ -215,10 +223,10 @@ Both are backend gaps, both are in the handoff, and neither is a bug in the cons
 ### Tests
 
 ```bash
-pnpm --filter @sarana/web-ops verify-i18n   # 238 keys in si, ta and en
+pnpm --filter @sarana/web-ops verify-i18n   # 259 keys in si, ta and en
 pnpm --filter @sarana/web-ops test          # 12 unit tests over the gates
-pnpm --filter @sarana/web-ops test:a11y     # axe: 14 screens x 3 locales
-pnpm --filter @sarana/web-ops test:e2e      # 16 Playwright tests in real Chromium
+pnpm --filter @sarana/web-ops test:a11y     # axe: 15 screens x 3 locales
+pnpm --filter @sarana/web-ops test:e2e      # 21 Playwright tests in real Chromium
 ```
 
 The e2e suite starts its own dev server on port 3100 and intercepts the gateway in the
@@ -358,9 +366,9 @@ them exists. What does not exist is the screens. Working backwards from the buil
   four CI gates. `apps/web-ops` has the shell, the gateway, sign-in and step-up, the common
   operating picture, **both human gate screens**, the delivery-gaps panel, the incident and
   alert lists, the audit ledger with its anomaly disposition workflow, and the review and
-  grievance queues - 12 working routes, with 16 Playwright tests. Six more routes say "not
-  built" rather than 404ing: forecast, alert composition, field assessments, approvals,
-  chain verification and admin.
+  grievance queues and the alert composer - 13 working routes, with 21 Playwright tests.
+  Five more routes say "not built" rather than 404ing: forecast, field assessments,
+  approvals, chain verification and admin.
 
 - **All six agents exist, and none is wired to the live stack.** The forecast agent turns rainfall into per-division
   impact predictions with lead time, confidence and the drivers that produced them, and

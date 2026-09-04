@@ -10,9 +10,9 @@ Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 
 The repository is organised around 30 numbered build files in `.claude/`. Progress is
 strictly sequential. Files 03-19 are complete, and **file 20 is mostly built**: the
-console's foundation, both human gates, and 12 of its 26 routes exist and are tested end
-to end in a browser. Six more routes render an honest "not built" screen rather than a
-404. The next work is finishing 20, then 21.
+console's foundation, both human gates, the alert composer and 13 of its 26 routes exist
+and are tested end to end in a browser. Five more routes render an honest "not built"
+screen rather than a 404. The next work is finishing 20, then 21.
 
 | File | Area | State |
 |---|---|---|
@@ -33,15 +33,15 @@ to end in a browser. Six more routes render an honest "not built" screen rather 
 | 17 | Aid ledger & anomaly agent | Done — exposure-normalised detectors. No adapters. |
 | 18 | Supervisor & HITL | Done — routing table, both gates, conflicts. No adapters. |
 | 19 | Design system | Done — tokens, 3-script type, 34 components, 4 CI gates |
-| **20** | **Ops console** | **Mostly built — 12 of 26 routes, both gates, 16 e2e tests** |
+| **20** | **Ops console** | **Mostly built — 13 of 26 routes, both gates, 21 e2e tests** |
 | **21** | **Public dashboard** | **Scaffold only** |
 | 22–24 | Mobile (foundation, citizen, field companion) | Scaffold only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-On the TypeScript side, **196 tests pass**: 64 unit and 33 axe-over-every-story in
-`packages/ui`, 29 in `packages/ts-shared`, and in `apps/web-ops` 12 unit, 42 axe across
-**14 screens x three locales**, and **16 Playwright tests in a real Chromium**. `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of
+On the TypeScript side, **216 tests pass**: 64 unit and 33 axe-over-every-story in
+`packages/ui`, 54 in `packages/ts-shared`, and in `apps/web-ops` 12 unit, 45 axe across
+**15 screens x three locales**, and **21 Playwright tests in a real Chromium**. `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of
 Done commands are clean.
 
 On the Python side, untouched by file 19:
@@ -2235,14 +2235,16 @@ before they reach the button.
 
 ### Still placeholder, and honest about it
 
-- **Six routes render `NotBuilt` rather than working.** `/ops/forecast`,
-  `/ops/alerts/new`, `/field/assessments`, `/approvals`, `/audit/chain` and `/admin`. Two
-  of those are blocked on backend gaps (`/approvals` needs a `GET /entitlements` list;
-  `/audit/chain` needs the range-verification surface), and four are unstarted work.
-- **Alert composition is the biggest missing piece.** `/ops/alerts/new` is specified in
-  detail - template selection, typed parameters, a live trilingual preview with SMS
-  segment counts, map area selection, and a mandatory dry run before send - and none of it
-  is built. The alerting API behind it is complete, so this is console work only.
+- **Five routes render `NotBuilt` rather than working.** `/ops/forecast`,
+  `/field/assessments`, `/approvals`, `/audit/chain` and `/admin`. Two are blocked on
+  backend gaps (`/approvals` needs a `GET /entitlements` list; `/audit/chain` needs the
+  range-verification surface); three are unstarted work.
+- **Area selection is a text field, not a map.** The composer takes comma-separated GN
+  division codes. The brief asks for selection on the map by division, DS division,
+  district or a drawn polygon snapping to boundaries, and the map has no layers yet.
+- **The composer's dry run is a notice, not a call.** It says a dry run is required and
+  why. `POST /alerts/{id}/dispatch` with `dry_run` is not wired, because there is no draft
+  to dispatch - see the hazard-event gap.
 - **`/ops/incidents/[id]` shows no reports, no audio and no dedup links.** It shows the
   incident and what its location confidence means for dispatch. The linked reports with
   original-language text and playback, the transcription confidence per report, and the
@@ -2265,6 +2267,66 @@ before they reach the button.
 - **`next build` still cannot finish on Windows.** Compilation and all 18 static pages
   succeed; the pre-existing `output: 'standalone'` trace-copy step then fails with `EPERM`
   creating symlinks. Environmental, and unrelated to the console.
+
+---
+
+## The SMS segment count now exists in TypeScript, and it is pinned to the Python one
+
+`packages/ts-shared/src/format/sms.ts` mirrors `sarana_shared.domain.sms`. It is the only
+duplicated logic in the repository and it earns the duplication: the alert composer has to
+show the segment cost for all three languages **while the operator is typing**, before any
+draft exists to ask the server about. A preview that appeared only after drafting would
+tell an author their Tamil message is three segments at the point it is too late to reword
+it.
+
+The mirror is not trusted on assertion. `sms.test.ts` runs ten strings through the
+TypeScript implementation and asserts the exact numbers the Python one produced for the
+same strings - encoding, units, segments and headroom - copied from its output. If the two
+diverge the test fails, and the Python one is right: it is what the gateway adapter counts
+with.
+
+The numbers worth knowing, from that fixture:
+
+```
+                                            encoding  units  segments
+"Flood warning for Ganga Ihala Korale."     GSM7        79      1
+the same sentence in Sinhala                UCS2        79      2
+the same sentence in Tamil                  UCS2        91      2
+```
+
+Same warning, same meaning, twice the segments in the two languages most of the country
+reads. That is the asymmetry the module exists to make visible, and it is why the composer
+shows all three side by side rather than behind a tab.
+
+---
+
+## The alert composer, and the call it cannot make
+
+`/ops/alerts/new` does template selection, parameter filling, the live trilingual preview
+with per-language segment costs, free text that visibly forces sign-off, and the mandatory
+dry-run notice. Five Playwright tests cover it.
+
+**It cannot create the draft.** `POST /alerts` requires a `hazard_event_id`, and **no
+service exposes an endpoint that lists hazard events** - checked across all six. So the
+last call has nothing to name the event with. The button is present, disabled behaves
+correctly, and pressing it reports exactly that rather than failing obscurely.
+
+Three decisions inside the screen:
+
+**Unpublished templates are listed, not hidden.** All twelve seeded templates are `DRAFT`
+with no reviewer signatures, deliberately - a human must sign each language before an
+alert can be dispatched. An operator who cannot find the flood template needs to know it
+is awaiting a Tamil signature, not that it does not exist. The empty state names each
+template and which signature it is waiting for.
+
+**Parameters are read from the template body, not from a declaration.** The union across
+all three languages, so a placeholder present only in the Tamil body is still a field. The
+alternative renders `{shelter_name}` literally to Tamil readers and to nobody else, which
+is the kind of bug that survives review.
+
+**Two segments blocks the draft.** The segment ceiling is a release gate on templates in
+CI, and it is the same gate on an instance here. The e2e test pushes the Sinhala rendering
+over with free text and asserts the draft button disables and the reason appears.
 
 ---
 
@@ -2514,6 +2576,9 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
   factor breakdown and `unservable` list exist only in the triage agent's interrupt
   payload. The dispatch gate screen cannot show what the brief requires until this is
   widened, and it says so on screen rather than rendering an empty section.
+- **No endpoint lists hazard events (files 09/20).** `POST /alerts` requires a
+  `hazard_event_id` and nothing in any service returns one, so the alert composer can
+  compose and check a message but cannot create the draft.
 - **`ledger-svc` has no `GET /entitlements` (files 10/20).** Nothing can list entitlements
   awaiting release, so the money gate's queue cannot be assembled. The gate screen itself
   works from an entitlement id.

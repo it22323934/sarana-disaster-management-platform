@@ -347,3 +347,30 @@ export const reviewItemSchema = z.object({
 export type ReviewItem = z.infer<typeof reviewItemSchema>;
 
 export const reviewListSchema = z.array(reviewItemSchema);
+
+/**
+ * An alert template, as `GET /templates` returns it.
+ *
+ * `body` is the trilingual text with `{parameter}` placeholders. The two reviewer columns
+ * are the trilingual review gate: a template is not publishable until a human has signed
+ * the Sinhala and the Tamil, and all twelve seeded templates sit at `DRAFT` with both
+ * null. That is the gate working, not a seeding oversight.
+ */
+export const alertTemplateSchema = z.object({
+  id: z.string(),
+  code: z.string(),
+  hazard_type: z.string(),
+  severity: z.string(),
+  urgency: z.string().nullable().default(null),
+  certainty: z.string().nullable().default(null),
+  body: z.object({ si: z.string(), ta: z.string(), en: z.string() }),
+  reviewed_by_si: z.string().nullable().default(null),
+  reviewed_by_ta: z.string().nullable().default(null),
+  reviewed_at: z.string().nullable().default(null),
+  version: z.number().int().nullable().default(null),
+  status: z.string(),
+});
+
+export type AlertTemplate = z.infer<typeof alertTemplateSchema>;
+
+export const alertTemplateListSchema = z.array(alertTemplateSchema);

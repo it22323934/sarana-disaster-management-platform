@@ -23,6 +23,7 @@ import { gatewayFetch } from './gateway-client';
 import {
   PENDING_PLAN_STATUSES,
   alertListSchema,
+  alertTemplateListSchema,
   anomalyListSchema,
   dispatchPlanListSchema,
   dispatchPlanSchema,
@@ -38,6 +39,7 @@ import {
   responderListSchema,
   reviewListSchema,
   type Alert,
+  type AlertTemplate,
   type Anomaly,
   type Delivery,
   type DispatchPlan,
@@ -72,6 +74,7 @@ export const queryKeys = {
   gaps: (alertId: string) => ['alerts', alertId, 'gaps'] as const,
   ledger: (fromSeq: number) => ['ledger', fromSeq] as const,
   reviewQueue: ['review-queue'] as const,
+  templates: ['templates'] as const,
   grievanceList: (status?: string) => ['grievances', 'list', status ?? 'all'] as const,
 };
 
@@ -259,6 +262,22 @@ export function useDeliveryGaps(alertId: string): UseQueryResult<Gap[]> {
     enabled: alertId.length > 0,
     refetchInterval: LIVE_INTERVAL_MS,
     queryFn: () => gatewayFetch(`alerts/${alertId}/delivery/gaps`, { schema: gapListSchema }),
+  });
+}
+
+/**
+ * Every template, published or not.
+ *
+ * Unfiltered on purpose. The composer offers only `PUBLISHED` ones, but it lists the rest
+ * with the reason they are unavailable: an operator who cannot find the flood template
+ * needs to know it is awaiting a Tamil signature, not that it does not exist.
+ */
+export function useTemplates(): UseQueryResult<AlertTemplate[]> {
+  return useQuery({
+    queryKey: queryKeys.templates,
+    refetchInterval: REFERENCE_INTERVAL_MS,
+    queryFn: () =>
+      gatewayFetch('templates', { query: { limit: 200 }, schema: alertTemplateListSchema }),
   });
 }
 

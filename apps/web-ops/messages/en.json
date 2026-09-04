@@ -274,5 +274,28 @@
   "notBuilt": {
     "title": "This screen is not built yet",
     "body": "It is named in build file 20 and it does not exist. Nothing is hidden behind it and nothing is broken — there is simply no page here yet. The handoff lists which routes are outstanding."
+  },
+  "compose": {
+    "title": "Compose an alert",
+    "template": "Template",
+    "templateHint": "Only published templates can be dispatched.",
+    "pickTemplate": "Choose a template to begin",
+    "noPublished": "No template is published yet",
+    "noPublishedHint": "All twelve seeded templates are drafts. Before an alert can be dispatched a human must sign each language and then publish it. That is the gate working, not a missing seed.",
+    "awaitingSignature": "awaiting a signature in Sinhala or Tamil",
+    "awaitingPublish": "signed, awaiting publication",
+    "parameters": "Parameters",
+    "noParameters": "This template takes no parameters.",
+    "preview": "Preview in all three languages",
+    "segments": "{segments} of {max} segments · {encoding} · {headroom} units of headroom",
+    "freeText": "Free text",
+    "freeTextForcesSignoff": "Anything here is outside the reviewed template, so the alert goes to PENDING_SIGNOFF and a human reads it before it can be dispatched. Say what the templates cannot; just know it will wait for a person.",
+    "divisions": "GN division codes",
+    "divisionsHint": "Comma separated, e.g. LK-11-03-045. Area selection on the map is not built.",
+    "dryRunRequired": "A dry run is required before sending",
+    "dryRunExplanation": "The confirm step shows the exact target count, the per-channel breakdown and the per-language split. Sending a life-safety message to an unknown number of people is not something this console will let you do.",
+    "draft": "Create draft",
+    "draftNotWired": "The draft cannot be created from this console. POST /alerts requires a hazard_event_id, and no service exposes an endpoint that lists hazard events. Everything above is composed and checked; the last call has nothing to name the event with.",
+    "overLimitBlocks": "One of the three renderings needs more than two segments. Shorten it before drafting: the language that runs long is the one whose community gets the warning last and incomplete."
   }
 }

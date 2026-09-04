@@ -19,6 +19,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { Locale } from '@sarana/ts-shared/i18n';
 
+import { AlertComposer } from './alert-composer';
 import { AlertList, DeliveryPanel } from './alerts';
 import { AnomalyReview, AuditLedger } from './audit';
 import { DisbursementGate } from './disbursement-gate';
@@ -83,6 +84,29 @@ const ROUTES = [
   { match: 'ledger', body: [] },
   { match: 'review-queue', body: [] },
   { match: 'incidents', body: [incidentFixture()] },
+  {
+    match: 'templates',
+    body: [
+      {
+        id: '018f3c2a-000b-7e90-9c2d-00000000000b',
+        code: 'FLOOD_WARNING',
+        hazard_type: 'FLOOD',
+        severity: 'SEVERE',
+        urgency: 'EXPECTED',
+        certainty: 'LIKELY',
+        body: {
+          si: '{gn_division_name} ප්‍රදේශයේ ගංවතුර අනතුරු ඇඟවීම.',
+          ta: '{gn_division_name} பகுதியில் வெள்ள எச்சரிக்கை.',
+          en: 'Flood warning for {gn_division_name}.',
+        },
+        reviewed_by_si: '018f3c2a-000c-7e90-9c2d-00000000000c',
+        reviewed_by_ta: '018f3c2a-000d-7e90-9c2d-00000000000d',
+        reviewed_at: '2025-11-20T00:00:00Z',
+        version: 1,
+        status: 'PUBLISHED',
+      },
+    ],
+  },
 ];
 
 interface Screen {
@@ -127,6 +151,7 @@ const SCREENS: readonly Screen[] = [
   { name: 'anomaly review', render: () => <AnomalyReview /> },
   { name: 'review queue', render: () => <ReviewQueue /> },
   { name: 'grievance queue', render: () => <GrievanceQueue /> },
+  { name: 'alert composer', render: () => <AlertComposer /> },
   { name: 'not built', render: () => <NotBuilt /> },
 ];
 
