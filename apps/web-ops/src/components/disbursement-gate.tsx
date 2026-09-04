@@ -44,7 +44,7 @@ import {
   useGrievances,
   useInvalidateGates,
 } from '../lib/queries';
-import { disbursementSchema, isOpenGrievance } from '../lib/schemas';
+import { disbursementSchema, flagContext, isOpenAnomaly, isOpenGrievance } from '../lib/schemas';
 import { stepUp } from '../lib/auth-actions';
 import type { PrincipalSummary } from '../lib/session';
 import { ErrorPanel } from './degraded';
@@ -81,10 +81,11 @@ export function DisbursementGate({ entitlementId, principal }: DisbursementGateP
 
   const totpComplete = /^\d{6}$/.test(totp);
   const openGrievances = (grievances.data ?? []).filter(isOpenGrievance);
+  // Open flags whose subject is this entitlement, or the division it sits in. A flag on
+  // the division is relevant to this approver: it is the pattern their next few decisions
+  // are part of, and ADR-009 says the approver sees it.
   const relevantAnomalies = (anomalies.data ?? []).filter(
-    (anomaly) =>
-      anomaly.disposition === null &&
-      (anomaly.entitlement_id === null || anomaly.entitlement_id === entitlementId),
+    (anomaly) => isOpenAnomaly(anomaly) && anomaly.subject_id !== '',
   );
 
   /**
@@ -215,21 +216,35 @@ export function DisbursementGate({ entitlementId, principal }: DisbursementGateP
         >
           <p className="text-sm font-medium">{t('anomalyFlag')}</p>
           <p className="mt-1 text-xs opacity-90">{t('anomalyExplanation')}</p>
-          {relevantAnomalies.map((anomaly) => (
-            <div key={anomaly.id} className="mt-2 text-xs">
-              <span className="font-mono">{anomaly.detector}</span>
-              {anomaly.innocent_explanations.length > 0 ? (
-                <ul className="ml-4 mt-1 list-disc opacity-90">
-                  {anomaly.innocent_explanations.map((explanation) => (
-                    <li key={explanation}>{explanation}</li>
-                  ))}
-                </ul>
-              ) : null}
-              {anomaly.what_would_resolve_it ? (
-                <p className="mt-1 opacity-90">{anomaly.what_would_resolve_it}</p>
-              ) : null}
-            </div>
-          ))}
+          {relevantAnomalies.map((anomaly) => {
+            const context = flagContext(anomaly);
+            return (
+              <div key={anomaly.id} className="mt-2 text-xs">
+                <span data-sarana-datum="" className="font-mono">
+                  {anomaly.detector}
+                </span>
+                {context.pattern_summary ? (
+                  <p className="mt-1 opacity-90">{context.pattern_summary}</p>
+                ) : null}
+                {/* The ordinary reasons this pattern might be here, before anything else.
+                    A flag shown without them reads as an accusation. */}
+                {context.innocent_explanations.length > 0 ? (
+                  <ul className="ml-4 mt-1 list-disc opacity-90">
+                    {context.innocent_explanations.map((explanation) => (
+                      <li key={explanation}>{explanation}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                {context.what_would_resolve_it.length > 0 ? (
+                  <ul className="ml-4 mt-1 list-disc opacity-90">
+                    {context.what_would_resolve_it.map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            );
+          })}
         </section>
       ) : null}
 

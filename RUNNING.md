@@ -183,13 +183,15 @@ Sign in with any demo account below. The console talks to **one origin** - its o
 owns it, attaching the access token from an httpOnly cookie. The browser never holds a
 token, which is why there is no CORS configuration on any service for it.
 
-The two screens worth opening first are the gates, because they are what the console is
-for:
+The screens worth opening first are the gates, because they are what the console is for,
+and the delivery-gaps panel, because it is the one that changes what happens next:
 
 ```
-/en/ops/dispatch          plans awaiting a dispatch decision
-/en/ops/dispatch/<id>     the dispatch gate
-/en/disbursements/<id>    the money gate, by entitlement id
+/en/ops/dispatch                    plans awaiting a dispatch decision
+/en/ops/dispatch/<id>               the dispatch gate
+/en/disbursements/<id>              the money gate, by entitlement id
+/en/ops/alerts/<id>/delivery        delivery counts and the divisions probably unreached
+/en/audit/anomalies                 flags, their innocent explanations, disposition
 ```
 
 Swap `en` for `si` or `ta` in any URL. The locale is in the path, not only a cookie, so a
@@ -213,10 +215,10 @@ Both are backend gaps, both are in the handoff, and neither is a bug in the cons
 ### Tests
 
 ```bash
-pnpm --filter @sarana/web-ops verify-i18n   # 163 keys in si, ta and en
+pnpm --filter @sarana/web-ops verify-i18n   # 238 keys in si, ta and en
 pnpm --filter @sarana/web-ops test          # 12 unit tests over the gates
-pnpm --filter @sarana/web-ops test:a11y     # axe: 5 screens x 3 locales
-pnpm --filter @sarana/web-ops test:e2e      # 13 Playwright tests in real Chromium
+pnpm --filter @sarana/web-ops test:a11y     # axe: 14 screens x 3 locales
+pnpm --filter @sarana/web-ops test:e2e      # 16 Playwright tests in real Chromium
 ```
 
 The e2e suite starts its own dev server on port 3100 and intercepts the gateway in the
@@ -354,10 +356,11 @@ them exists. What does not exist is the screens. Working backwards from the buil
 - **The design system is built. The ops console is half-built. The public dashboard is
   not started.** `packages/ui` has tokens, a three-script type scale, 34 components and
   four CI gates. `apps/web-ops` has the shell, the gateway, sign-in and step-up, the common
-  operating picture and **both human gate screens**, with 13 Playwright tests covering the
-  approval flow, the rejection flow, the release and its refusal. What it does not have is
-  19 of its 26 routes: incidents, alerts, forecast, the review queue, approvals,
-  grievances, audit and admin are all unbuilt and their navigation links 404.
+  operating picture, **both human gate screens**, the delivery-gaps panel, the incident and
+  alert lists, the audit ledger with its anomaly disposition workflow, and the review and
+  grievance queues - 12 working routes, with 16 Playwright tests. Six more routes say "not
+  built" rather than 404ing: forecast, alert composition, field assessments, approvals,
+  chain verification and admin.
 
 - **All six agents exist, and none is wired to the live stack.** The forecast agent turns rainfall into per-division
   impact predictions with lead time, confidence and the drivers that produced them, and

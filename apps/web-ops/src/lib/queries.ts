@@ -22,22 +22,33 @@ import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-q
 import { gatewayFetch } from './gateway-client';
 import {
   PENDING_PLAN_STATUSES,
+  alertListSchema,
   anomalyListSchema,
   dispatchPlanListSchema,
   dispatchPlanSchema,
   disbursementListSchema,
   entitlementSchema,
   grievanceListSchema,
+  deliverySchema,
+  gapListSchema,
   incidentListSchema,
+  incidentSchema,
+  ledgerListSchema,
   queueSchema,
   responderListSchema,
+  reviewListSchema,
+  type Alert,
   type Anomaly,
+  type Delivery,
   type DispatchPlan,
   type Entitlement,
+  type Gap,
   type Grievance,
   type Incident,
+  type LedgerEntry,
   type QueueRow,
   type Responder,
+  type ReviewItem,
 } from './schemas';
 
 export const GATE_INTERVAL_MS = 5_000;
@@ -54,6 +65,14 @@ export const queryKeys = {
   disbursements: ['disbursements'] as const,
   grievances: (entitlementId: string) => ['grievances', entitlementId] as const,
   anomalies: (divisionCode?: string) => ['anomalies', divisionCode ?? 'all'] as const,
+  incident: (id: string) => ['incidents', id] as const,
+  incidentList: (status?: string) => ['incidents', 'list', status ?? 'all'] as const,
+  alerts: (status?: string) => ['alerts', status ?? 'all'] as const,
+  delivery: (alertId: string) => ['alerts', alertId, 'delivery'] as const,
+  gaps: (alertId: string) => ['alerts', alertId, 'gaps'] as const,
+  ledger: (fromSeq: number) => ['ledger', fromSeq] as const,
+  reviewQueue: ['review-queue'] as const,
+  grievanceList: (status?: string) => ['grievances', 'list', status ?? 'all'] as const,
 };
 
 /**
@@ -183,6 +202,88 @@ export function useAnomalies(divisionCode?: string): UseQueryResult<Anomaly[]> {
         query: { gn_division_code: divisionCode },
         schema: anomalyListSchema,
       }),
+  });
+}
+
+export function useIncident(id: string): UseQueryResult<Incident> {
+  return useQuery({
+    queryKey: queryKeys.incident(id),
+    enabled: id.length > 0,
+    refetchInterval: LIVE_INTERVAL_MS,
+    queryFn: () => gatewayFetch(`incidents/${id}`, { schema: incidentSchema }),
+  });
+}
+
+export function useIncidents(status?: string): UseQueryResult<Incident[]> {
+  return useQuery({
+    queryKey: queryKeys.incidentList(status),
+    refetchInterval: LIVE_INTERVAL_MS,
+    queryFn: () =>
+      gatewayFetch('incidents', {
+        query: { status, limit: 200 },
+        schema: incidentListSchema,
+      }),
+  });
+}
+
+export function useAlerts(status?: string): UseQueryResult<Alert[]> {
+  return useQuery({
+    queryKey: queryKeys.alerts(status),
+    refetchInterval: LIVE_INTERVAL_MS,
+    queryFn: () =>
+      gatewayFetch('alerts', { query: { status, limit: 200 }, schema: alertListSchema }),
+  });
+}
+
+export function useDelivery(alertId: string): UseQueryResult<Delivery> {
+  return useQuery({
+    queryKey: queryKeys.delivery(alertId),
+    enabled: alertId.length > 0,
+    // Faster than the reference interval: delivery receipts arrive over minutes, and an
+    // operator watching a dispatch land wants the confirmed count to move.
+    refetchInterval: LIVE_INTERVAL_MS,
+    queryFn: () => gatewayFetch(`alerts/${alertId}/delivery`, { schema: deliverySchema }),
+  });
+}
+
+/**
+ * The divisions that probably did not get the warning.
+ *
+ * Ordered worst-first by the server, and the console does not re-sort it. This is the
+ * screen that turns "we sent the warning" into "these 14 divisions probably did not get
+ * it, send a vehicle", and the order is the instruction.
+ */
+export function useDeliveryGaps(alertId: string): UseQueryResult<Gap[]> {
+  return useQuery({
+    queryKey: queryKeys.gaps(alertId),
+    enabled: alertId.length > 0,
+    refetchInterval: LIVE_INTERVAL_MS,
+    queryFn: () => gatewayFetch(`alerts/${alertId}/delivery/gaps`, { schema: gapListSchema }),
+  });
+}
+
+export function useLedger(fromSeq = 0): UseQueryResult<LedgerEntry[]> {
+  return useQuery({
+    queryKey: queryKeys.ledger(fromSeq),
+    queryFn: () =>
+      gatewayFetch('ledger', { query: { from_seq: fromSeq, limit: 200 }, schema: ledgerListSchema }),
+  });
+}
+
+export function useReviewQueue(): UseQueryResult<ReviewItem[]> {
+  return useQuery({
+    queryKey: queryKeys.reviewQueue,
+    refetchInterval: LIVE_INTERVAL_MS,
+    queryFn: () => gatewayFetch('review-queue', { schema: reviewListSchema }),
+  });
+}
+
+export function useGrievanceList(status?: string): UseQueryResult<Grievance[]> {
+  return useQuery({
+    queryKey: queryKeys.grievanceList(status),
+    refetchInterval: LIVE_INTERVAL_MS,
+    queryFn: () =>
+      gatewayFetch('grievances', { query: { status, limit: 200 }, schema: grievanceListSchema }),
   });
 }
 

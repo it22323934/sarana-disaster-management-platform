@@ -9,9 +9,10 @@ Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 ## Where the build has got to
 
 The repository is organised around 30 numbered build files in `.claude/`. Progress is
-strictly sequential. Files 03-19 are complete, and **file 20 is partial**: the console's
-foundation and both human gates are built and tested end to end in a browser; most of its
-26 routes are not. The next work is finishing 20.
+strictly sequential. Files 03-19 are complete, and **file 20 is mostly built**: the
+console's foundation, both human gates, and 12 of its 26 routes exist and are tested end
+to end in a browser. Six more routes render an honest "not built" screen rather than a
+404. The next work is finishing 20, then 21.
 
 | File | Area | State |
 |---|---|---|
@@ -32,15 +33,15 @@ foundation and both human gates are built and tested end to end in a browser; mo
 | 17 | Aid ledger & anomaly agent | Done — exposure-normalised detectors. No adapters. |
 | 18 | Supervisor & HITL | Done — routing table, both gates, conflicts. No adapters. |
 | 19 | Design system | Done — tokens, 3-script type, 34 components, 4 CI gates |
-| **20** | **Ops console** | **Partial — shell, gateway, auth, both gates, COP. 7 of 26 routes.** |
+| **20** | **Ops console** | **Mostly built — 12 of 26 routes, both gates, 16 e2e tests** |
 | **21** | **Public dashboard** | **Scaffold only** |
 | 22–24 | Mobile (foundation, citizen, field companion) | Scaffold only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-On the TypeScript side, **166 tests pass**: 64 unit and 33 axe-over-every-story in
-`packages/ui`, 29 in `packages/ts-shared`, and in `apps/web-ops` 12 unit, 15 axe across
-five screens x three locales, and **13 Playwright tests in a real Chromium**. `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of
+On the TypeScript side, **196 tests pass**: 64 unit and 33 axe-over-every-story in
+`packages/ui`, 29 in `packages/ts-shared`, and in `apps/web-ops` 12 unit, 42 axe across
+**14 screens x three locales**, and **16 Playwright tests in a real Chromium**. `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of
 Done commands are clean.
 
 On the Python side, untouched by file 19:
@@ -2072,18 +2073,29 @@ The a11y addon is installed so a reviewer sees violations while looking at a com
 ## File 20 is partial — the console's spine and both gates, and what is not there
 
 What exists: the app shell, the gateway, sign-in and step-up, the common operating
-picture, the dispatch queue, **both human gate screens**, and the degraded states. What
-does not: 19 of the 26 routes in the brief, and the map layers beyond the shell.
+picture, **both human gate screens**, the delivery-gaps panel, the incident and alert
+lists, the audit ledger and anomaly disposition workflow, the review and grievance queues,
+and the degraded states. 54 static pages build (18 routes x 3 locales).
 
 ```
-app/[locale]/           login, /, /ops, /ops/dispatch, /ops/dispatch/[planId],
-                        /disbursements, /disbursements/[entitlementId]
+app/[locale]/           login, /, /ops, /ops/incidents(+[id]), /ops/dispatch(+[planId]),
+                        /ops/alerts(+[id]/delivery), /ops/review, /disbursements(+[id]),
+                        /grievances, /audit, /audit/anomalies
+                        + 6 routes rendering NotBuilt: /ops/forecast, /ops/alerts/new,
+                          /field/assessments, /approvals, /audit/chain, /admin
 app/gateway/[...path]   the BFF proxy - one origin, five services
 src/lib/                gateway client, queries, schemas, session, auth actions
-src/components/         shell, gate banner, both gates, both queues, COP, degraded
-messages/               163 keys x si/ta/en, gated by verify-i18n
-e2e/                    13 Playwright tests, gates and three-script rendering
+src/components/         shell, gate banner, both gates, alerts, incidents, audit, queues
+messages/               238 keys x si/ta/en, gated by verify-i18n
+e2e/                    16 Playwright tests: both gates, the gaps panel, three scripts
 ```
+
+### A route that is not built says so, rather than 404ing
+
+Six routes the brief names render a `NotBuilt` screen that says the page does not exist
+yet and that nothing is hidden behind it. A 404 from a link the console's own navigation
+renders tells an operator the console is broken; during a demo it invites the conclusion
+that something failed. Saying "not built" is both true and less alarming.
 
 ### The browser never holds a token
 
@@ -2127,6 +2139,40 @@ offers direct entry by entitlement reference, and lists what has recently been r
 from the endpoint that does exist.
 
 Closing either is backend work, and both are named in the gaps below.
+
+### The delivery-gaps panel, and the denominator rule
+
+The brief singles this screen out: it is what turns "we sent the warning" into "these 14
+divisions probably did not get it, send a vehicle". Two properties are held by e2e tests
+because losing either makes the screen actively misleading.
+
+**No count appears without its denominator.** Every tile renders `n / m`, the server's own
+`summary` sentence is rendered verbatim rather than recomputed, and a test asserts that
+**no bare percentage appears anywhere on the page**. A "72%" over an unstated base is how
+a district gets reported as covered when the base was four synthetic people - which is
+exactly what file 09's targeting bug produced before it was fixed.
+
+**The order is not re-sorted.** `GET /alerts/{id}/delivery/gaps` returns worst-first and
+the console renders that order untouched, because the order is the instruction: it says
+which division the vehicle goes to first. The e2e fixture deliberately supplies rows in a
+non-obvious order and asserts they come out unchanged.
+
+### The anomaly disposition workflow enforces ADR-009 twice
+
+A flag renders its `innocent_explanations` - the ordinary reasons the pattern occurs -
+*above* anything that could read as suspicion, with `what_would_resolve_it` beside them.
+A flag shown alone is an accusation, and this platform does not accuse people. The
+reviewer-facing text lives inside `rationale` rather than at the top level, because the
+agent writes a whole `FlagContext` and `ledger-svc` stores it as it arrives.
+
+The disposition button is unreachable without a note, for **every** outcome including
+`FALSE_POSITIVE`. `ledger-svc` refuses a note-less disposition; the console makes the
+refusal impossible to trigger. A false positive is a first-class outcome, not a failure to
+hide - the published false-positive rate is only meaningful if somebody can read why each
+one was called.
+
+The auditor is also told, on the page, that their own reads are recorded. Discovering that
+later from one's own tooling is a bad way to learn it.
 
 ### The gate screens hold four properties, and each has a test
 
@@ -2189,10 +2235,18 @@ before they reach the button.
 
 ### Still placeholder, and honest about it
 
-- **19 of 26 routes do not exist.** `/ops/incidents`, `/ops/incidents/[id]`, `/ops/alerts`
-  and everything under it, `/ops/forecast`, `/ops/review`, `/field/assessments`,
-  `/approvals`, `/grievances`, `/audit` and `/admin` are all unbuilt. The navigation links
-  to them and they 404. That is the largest single piece of remaining work in file 20.
+- **Six routes render `NotBuilt` rather than working.** `/ops/forecast`,
+  `/ops/alerts/new`, `/field/assessments`, `/approvals`, `/audit/chain` and `/admin`. Two
+  of those are blocked on backend gaps (`/approvals` needs a `GET /entitlements` list;
+  `/audit/chain` needs the range-verification surface), and four are unstarted work.
+- **Alert composition is the biggest missing piece.** `/ops/alerts/new` is specified in
+  detail - template selection, typed parameters, a live trilingual preview with SMS
+  segment counts, map area selection, and a mandatory dry run before send - and none of it
+  is built. The alerting API behind it is complete, so this is console work only.
+- **`/ops/incidents/[id]` shows no reports, no audio and no dedup links.** It shows the
+  incident and what its location confidence means for dispatch. The linked reports with
+  original-language text and playback, the transcription confidence per report, and the
+  similarity links are all specified and unbuilt.
 - **The map has a shell and no layers.** `MapShell` mounts and renders its accessible
   fallback list; the GN division, incident, heat and delivery-gap layers are built as pure
   functions in `packages/ui` and nothing calls them yet. `NEXT_PUBLIC_SARANA_MAP_STYLE_URL`

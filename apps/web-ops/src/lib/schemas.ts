@@ -209,22 +209,141 @@ export function isOpenGrievance(grievance: Grievance): boolean {
 /**
  * An anomaly flag.
  *
- * `innocent_explanations` is not decoration. ADR-009 requires that a flag is shown with
- * the ordinary reasons it might be there, because a flag presented alone reads as an
- * accusation and this system never accuses anybody.
+ * The reviewer-facing text lives inside `rationale`, not at the top level - the agent
+ * writes a `FlagContext` and `ledger-svc` stores it whole. `innocent_explanations` is
+ * non-empty by construction on the agent side: ADR-009 requires a flag to arrive with the
+ * ordinary reasons it might be there, because a flag presented alone reads as an
+ * accusation and this system never accuses anybody. The console reads it defensively
+ * anyway, because a flag written before that rule existed would have none.
  */
+export const flagContextSchema = z.object({
+  pattern_summary: z.string().default(''),
+  innocent_explanations: z.array(z.string()).default([]),
+  what_would_resolve_it: z.array(z.string()).default([]),
+  suggested_priority: z.string().optional(),
+  confidence: z.coerce.number().optional(),
+  method: z.string().optional(),
+});
+
+export type FlagContext = z.infer<typeof flagContextSchema>;
+
 export const anomalySchema = z.object({
   id: z.string(),
+  subject_type: z.string(),
+  subject_id: z.string(),
   detector: z.string(),
-  gn_division_code: z.string().nullable().default(null),
-  entitlement_id: z.string().nullable().default(null),
-  severity: z.string().optional(),
-  flagged_at: z.string().optional(),
-  disposition: z.string().nullable().default(null),
-  innocent_explanations: z.array(z.string()).default([]),
-  what_would_resolve_it: z.string().nullable().default(null),
+  detector_version: z.string(),
+  score: z.coerce.number(),
+  // Whatever the detector recorded. Parsed leniently and read through `flagContextSchema`
+  // where the console needs the reviewer text.
+  rationale: z.record(z.string(), z.unknown()).default({}),
+  raised_at: z.string(),
+  disposition: z.string(),
+  disposed_by: z.string().nullable().default(null),
+  disposed_at: z.string().nullable().default(null),
+  disposition_note: z.string().nullable().default(null),
 });
 
 export type Anomaly = z.infer<typeof anomalySchema>;
 
 export const anomalyListSchema = z.array(anomalySchema);
+
+/** Every outcome but `OPEN`. `FALSE_POSITIVE` is first-class, not a failure to hide. */
+export const ANOMALY_DISPOSITIONS = [
+  'REVIEWED_NO_ACTION',
+  'REVIEWED_ESCALATED',
+  'FALSE_POSITIVE',
+] as const;
+
+export type AnomalyDisposition = (typeof ANOMALY_DISPOSITIONS)[number];
+
+export function isOpenAnomaly(anomaly: Anomaly): boolean {
+  return anomaly.disposition === 'OPEN';
+}
+
+/** Pull the reviewer-facing context out of a flag's rationale, tolerating an old shape. */
+export function flagContext(anomaly: Anomaly): FlagContext {
+  return flagContextSchema.parse(anomaly.rationale ?? {});
+}
+
+/** `AlertResponse` plus what the list endpoint returns alongside it. */
+export const alertSchema = z.object({
+  id: z.string(),
+  cap_identifier: z.string(),
+  status: z.string(),
+  requires_human_signoff: z.boolean().default(false),
+  headline: z.unknown().nullable().default(null),
+  severity: z.coerce.number().nullable().default(null),
+  effective_at: z.string().nullable().default(null),
+  expires_at: z.string().nullable().default(null),
+  created_at: z.string().nullable().default(null),
+});
+
+export type Alert = z.infer<typeof alertSchema>;
+
+export const alertListSchema = z.array(alertSchema);
+
+/**
+ * Delivery counts, always with their denominator.
+ *
+ * `summary` is the server's own sentence and the console renders it verbatim. A
+ * percentage computed here from the counts would be a second, drifting statement of the
+ * same fact - and the rule this whole screen exists to keep is that no delivery figure
+ * appears without what it is a fraction of.
+ */
+export const deliverySchema = z.object({
+  targeted: z.number().int(),
+  confirmed: z.number().int(),
+  unconfirmed: z.number().int(),
+  failed: z.number().int(),
+  no_channel: z.number().int(),
+  by_channel: z.record(z.string(), z.record(z.string(), z.number())),
+  by_language: z.record(z.string(), z.number()),
+  summary: z.string(),
+});
+
+export type Delivery = z.infer<typeof deliverySchema>;
+
+/** One division that probably did not get the warning. Worst first, from the server. */
+export const gapSchema = z.object({
+  gn_division_code: z.string(),
+  targeted: z.number().int(),
+  confirmed: z.number().int(),
+  confirmed_fraction: z.coerce.number(),
+  summary: z.string(),
+});
+
+export type Gap = z.infer<typeof gapSchema>;
+
+export const gapListSchema = z.array(gapSchema);
+
+/** A ledger entry, as the public and audit views read it. */
+export const ledgerEntrySchema = z.object({
+  seq: z.number().int(),
+  id: z.string(),
+  entry_type: z.string().optional(),
+  amount_lkr_cents: z.number().int().nullable().default(null),
+  prev_hash: z.string(),
+  entry_hash: z.string(),
+  anchor_date: z.string().nullable().default(null),
+  created_at: z.string().optional(),
+});
+
+export type LedgerEntry = z.infer<typeof ledgerEntrySchema>;
+
+export const ledgerListSchema = z.array(ledgerEntrySchema);
+
+/** A transcription or report held back for a person to look at. */
+export const reviewItemSchema = z.object({
+  id: z.string(),
+  report_id: z.string().optional(),
+  transcript: z.string().nullable().default(null),
+  language: z.string().nullable().default(null),
+  confidence: z.coerce.number().nullable().default(null),
+  status: z.string().optional(),
+  created_at: z.string().optional(),
+});
+
+export type ReviewItem = z.infer<typeof reviewItemSchema>;
+
+export const reviewListSchema = z.array(reviewItemSchema);

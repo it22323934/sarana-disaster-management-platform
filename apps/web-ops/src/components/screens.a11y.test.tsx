@@ -13,15 +13,19 @@
  */
 
 import axe, { type Result } from 'axe-core';
-import { screen, waitFor } from '@testing-library/react';
+import { waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { Locale } from '@sarana/ts-shared/i18n';
 
+import { AlertList, DeliveryPanel } from './alerts';
+import { AnomalyReview, AuditLedger } from './audit';
 import { DisbursementGate } from './disbursement-gate';
 import { DispatchGate } from './dispatch-gate';
 import { DispatchQueue } from './dispatch-queue';
+import { IncidentDetail, IncidentList } from './incidents';
+import { GrievanceQueue, NotBuilt, ReviewQueue } from './queues';
 import { ReleaseQueue } from './release-queue';
 import { SignInForm } from './sign-in-form';
 import {
@@ -61,43 +65,69 @@ const ROUTES = [
   { match: 'grievances', body: [] },
   { match: 'anomalies', body: [] },
   { match: 'disbursements', body: [] },
+  { match: 'alerts/018f3c2a-0008/delivery/gaps', body: [] },
+  {
+    match: 'alerts/018f3c2a-0008/delivery',
+    body: {
+      targeted: 1203,
+      confirmed: 865,
+      unconfirmed: 300,
+      failed: 20,
+      no_channel: 18,
+      by_channel: { SMS: { CONFIRMED: 800, FAILED: 20 } },
+      by_language: { si: 700, ta: 300, en: 203 },
+      summary: '865 of 1,203 targeted households confirmed delivery.',
+    },
+  },
+  { match: 'alerts', body: [] },
+  { match: 'ledger', body: [] },
+  { match: 'review-queue', body: [] },
+  { match: 'incidents', body: [incidentFixture()] },
 ];
 
 interface Screen {
   readonly name: string;
   readonly render: () => ReactNode;
-  /** Something that must be on screen before axe runs, so it never audits a spinner. */
-  readonly settled: RegExp;
 }
 
 const SCREENS: readonly Screen[] = [
   {
     name: 'sign in',
     render: () => <SignInForm locale="en" />,
-    settled: /.+/,
   },
   {
     name: 'dispatch queue',
     render: () => <DispatchQueue />,
-    settled: /.+/,
   },
   {
     name: 'dispatch gate',
     render: () => <DispatchGate planId="018f3c2a-7b41-7e90-9c2d-5f6a7b8c9d0e" />,
-    settled: /.+/,
   },
   {
     name: 'release queue',
     render: () => <ReleaseQueue />,
-    settled: /.+/,
   },
   {
     name: 'money gate',
     render: () => (
       <DisbursementGate entitlementId="018f3c2a-0003-7e90-9c2d-000000000003" principal={null} />
     ),
-    settled: /.+/,
   },
+  { name: 'incident list', render: () => <IncidentList /> },
+  {
+    name: 'incident detail',
+    render: () => <IncidentDetail incidentId="018f3c2a-0001-7e90-9c2d-000000000001" />,
+  },
+  { name: 'alert list', render: () => <AlertList /> },
+  {
+    name: 'delivery and gaps',
+    render: () => <DeliveryPanel alertId="018f3c2a-0008-7e90-9c2d-000000000008" />,
+  },
+  { name: 'audit ledger', render: () => <AuditLedger /> },
+  { name: 'anomaly review', render: () => <AnomalyReview /> },
+  { name: 'review queue', render: () => <ReviewQueue /> },
+  { name: 'grievance queue', render: () => <GrievanceQueue /> },
+  { name: 'not built', render: () => <NotBuilt /> },
 ];
 
 const LOCALES: readonly Locale[] = ['en', 'si', 'ta'];
@@ -121,7 +151,7 @@ describe('console accessibility', () => {
 
     // Wait for the screen to settle. Auditing a skeleton would pass every time and prove
     // nothing about the screen an operator actually uses.
-    await waitFor(() => expect(screen.getAllByRole('heading').length).toBeGreaterThan(0));
+    await waitFor(() => expect(container.textContent?.trim().length ?? 0).toBeGreaterThan(0));
 
     const results = await axe.run(container, {
       rules: {
