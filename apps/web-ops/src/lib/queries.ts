@@ -18,13 +18,16 @@
  */
 
 import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import type { z } from 'zod';
 
 import { gatewayFetch } from './gateway-client';
 import {
   PENDING_PLAN_STATUSES,
   alertListSchema,
   alertTemplateListSchema,
+  anchorResponseSchema,
   anomalyListSchema,
+  assessmentListSchema,
   dispatchPlanListSchema,
   dispatchPlanSchema,
   disbursementListSchema,
@@ -38,9 +41,11 @@ import {
   queueSchema,
   responderListSchema,
   reviewListSchema,
+  verifySchema,
   type Alert,
   type AlertTemplate,
   type Anomaly,
+  type Assessment,
   type Delivery,
   type DispatchPlan,
   type Entitlement,
@@ -51,6 +56,7 @@ import {
   type QueueRow,
   type Responder,
   type ReviewItem,
+  type VerifyResult,
 } from './schemas';
 
 export const GATE_INTERVAL_MS = 5_000;
@@ -75,6 +81,8 @@ export const queryKeys = {
   ledger: (fromSeq: number) => ['ledger', fromSeq] as const,
   reviewQueue: ['review-queue'] as const,
   templates: ['templates'] as const,
+  anchors: ['ledger', 'anchors'] as const,
+  assessments: (division?: string) => ['assessments', division ?? 'all'] as const,
   grievanceList: (status?: string) => ['grievances', 'list', status ?? 'all'] as const,
 };
 
@@ -303,6 +311,42 @@ export function useGrievanceList(status?: string): UseQueryResult<Grievance[]> {
     refetchInterval: LIVE_INTERVAL_MS,
     queryFn: () =>
       gatewayFetch('grievances', { query: { status, limit: 200 }, schema: grievanceListSchema }),
+  });
+}
+
+export function useAnchors(): UseQueryResult<z.infer<typeof anchorResponseSchema>> {
+  return useQuery({
+    queryKey: queryKeys.anchors,
+    refetchInterval: REFERENCE_INTERVAL_MS,
+    queryFn: () =>
+      gatewayFetch('ledger/anchors', { query: { limit: 400 }, schema: anchorResponseSchema }),
+  });
+}
+
+export function useAssessments(division?: string): UseQueryResult<Assessment[]> {
+  return useQuery({
+    queryKey: queryKeys.assessments(division),
+    refetchInterval: LIVE_INTERVAL_MS,
+    queryFn: () =>
+      gatewayFetch('assessments', {
+        query: { division, limit: 200 },
+        schema: assessmentListSchema,
+      }),
+  });
+}
+
+/**
+ * Recompute the hash chain over a range.
+ *
+ * Deliberately **not** a `useQuery`. Verification is an action an auditor takes and reads
+ * the result of, not something a page does on its own: a range that silently re-verified
+ * every fifteen seconds would turn a deliberate check into background noise, and the
+ * answer would scroll past unread.
+ */
+export async function verifyChain(fromSeq?: number, toSeq?: number): Promise<VerifyResult> {
+  return gatewayFetch('audit/verify', {
+    query: { from_seq: fromSeq, to_seq: toSeq },
+    schema: verifySchema,
   });
 }
 

@@ -21,7 +21,9 @@ import type { Locale } from '@sarana/ts-shared/i18n';
 
 import { AlertComposer } from './alert-composer';
 import { AlertList, DeliveryPanel } from './alerts';
+import { AssessmentList } from './assessments';
 import { AnomalyReview, AuditLedger } from './audit';
+import { ChainVerification } from './chain';
 import { DisbursementGate } from './disbursement-gate';
 import { DispatchGate } from './dispatch-gate';
 import { DispatchQueue } from './dispatch-queue';
@@ -152,6 +154,8 @@ const SCREENS: readonly Screen[] = [
   { name: 'review queue', render: () => <ReviewQueue /> },
   { name: 'grievance queue', render: () => <GrievanceQueue /> },
   { name: 'alert composer', render: () => <AlertComposer /> },
+  { name: 'chain verification', render: () => <ChainVerification /> },
+  { name: 'assessments', render: () => <AssessmentList /> },
   { name: 'not built', render: () => <NotBuilt /> },
 ];
 

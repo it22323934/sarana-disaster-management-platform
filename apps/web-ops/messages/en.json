@@ -297,5 +297,43 @@
     "draft": "Create draft",
     "draftNotWired": "The draft cannot be created from this console. POST /alerts requires a hazard_event_id, and no service exposes an endpoint that lists hazard events. Everything above is composed and checked; the last call has nothing to name the event with.",
     "overLimitBlocks": "One of the three renderings needs more than two segments. Shorten it before drafting: the language that runs long is the one whose community gets the warning last and incomplete."
+  },
+  "chain": {
+    "title": "Chain verification",
+    "subtitle": "Recompute the hash chain and compare it against the published daily anchors. This is where the claim that a record cannot be edited after it is written gets tested rather than read.",
+    "verifyRange": "Verify a range",
+    "verifyRangeHint": "Leave both blank to check the whole chain. A result always names the range it covers, so a partial check is never mistaken for a whole one.",
+    "fromSeq": "From seq",
+    "toSeq": "To seq",
+    "verify": "Verify",
+    "intact": "Intact — the chain recomputes",
+    "diverged": "Diverged — the chain does not recompute",
+    "checkedRange": "{checked} entries checked, seq {from} to {to}",
+    "divergenceAt": "First divergence at seq",
+    "reason": "Reason",
+    "expected": "Expected",
+    "found": "Found",
+    "anchors": "Daily anchors",
+    "anchorsHint": "One Merkle root per day, each chained to the day before, so removing a whole day is as detectable as altering one row inside it.",
+    "scheme": "Published hashing scheme",
+    "date": "Date",
+    "range": "Seq range",
+    "entries": "Entries",
+    "merkleRoot": "Merkle root",
+    "externalAnchor": "External anchor",
+    "anchored": "Object-locked",
+    "notAnchored": "Not anchored",
+    "noAnchors": "No anchors have been published",
+    "noAnchorsHint": "An anchor is written once a day has entries to anchor.",
+    "noExternalAnchor": "{count, plural, one {# day has no external anchor} other {# days have no external anchor}}",
+    "noExternalAnchorHint": "The root is computed and chained, but it has not been written to storage outside this system. Until it is, the chain is verifiable against a database the operator controls — which is a weaker claim than it looks, and the external anchor is the half that survives an operator rewriting it."
+  },
+  "assessments": {
+    "title": "Assessments",
+    "readOnly": "Read-only. Creating an assessment needs photographs, GPS and an offline queue, which is the Field Companion’s job — a form here would be a way of entering damage figures nobody stood in front of.",
+    "empty": "No assessments have been submitted",
+    "emptyHint": "Assessments arrive from the Field Companion, or by sync when a handset regains signal.",
+    "costEstimate": "Officer’s estimate",
+    "assessedAt": "Assessed"
   }
 }

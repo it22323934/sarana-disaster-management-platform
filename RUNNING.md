@@ -193,6 +193,7 @@ and the delivery-gaps panel, because it is the one that changes what happens nex
 /en/ops/alerts/<id>/delivery        delivery counts and the divisions probably unreached
 /en/audit/anomalies                 flags, their innocent explanations, disposition
 /en/ops/alerts/new                  compose an alert, with live per-language SMS cost
+/en/audit/chain                     recompute the hash chain, and the daily anchors
 ```
 
 `/ops/alerts/new` is worth opening even with nothing seeded. It previews the message in
@@ -223,10 +224,10 @@ Both are backend gaps, both are in the handoff, and neither is a bug in the cons
 ### Tests
 
 ```bash
-pnpm --filter @sarana/web-ops verify-i18n   # 259 keys in si, ta and en
+pnpm --filter @sarana/web-ops verify-i18n   # 293 keys in si, ta and en
 pnpm --filter @sarana/web-ops test          # 12 unit tests over the gates
-pnpm --filter @sarana/web-ops test:a11y     # axe: 15 screens x 3 locales
-pnpm --filter @sarana/web-ops test:e2e      # 21 Playwright tests in real Chromium
+pnpm --filter @sarana/web-ops test:a11y     # axe: 17 screens x 3 locales
+pnpm --filter @sarana/web-ops test:e2e      # 25 Playwright tests in real Chromium
 ```
 
 The e2e suite starts its own dev server on port 3100 and intercepts the gateway in the
@@ -366,9 +367,9 @@ them exists. What does not exist is the screens. Working backwards from the buil
   four CI gates. `apps/web-ops` has the shell, the gateway, sign-in and step-up, the common
   operating picture, **both human gate screens**, the delivery-gaps panel, the incident and
   alert lists, the audit ledger with its anomaly disposition workflow, and the review and
-  grievance queues and the alert composer - 13 working routes, with 21 Playwright tests.
-  Five more routes say "not built" rather than 404ing: forecast, field assessments,
-  approvals, chain verification and admin.
+  grievance queues, the alert composer, chain verification and the assessment list - 15
+  working routes, with 25 Playwright tests. Three routes say "not built" rather than
+  404ing: forecast, approvals and admin.
 
 - **All six agents exist, and none is wired to the live stack.** The forecast agent turns rainfall into per-division
   impact predictions with lead time, confidence and the drivers that produced them, and

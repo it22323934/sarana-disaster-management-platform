@@ -10,9 +10,9 @@ Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 
 The repository is organised around 30 numbered build files in `.claude/`. Progress is
 strictly sequential. Files 03-19 are complete, and **file 20 is mostly built**: the
-console's foundation, both human gates, the alert composer and 13 of its 26 routes exist
-and are tested end to end in a browser. Five more routes render an honest "not built"
-screen rather than a 404. The next work is finishing 20, then 21.
+console's foundation, both human gates, the alert composer, chain verification and 15 of
+its 26 routes exist and are tested end to end in a browser. Three routes render an honest
+"not built" screen rather than a 404. The next work is finishing 20, then 21.
 
 | File | Area | State |
 |---|---|---|
@@ -33,15 +33,15 @@ screen rather than a 404. The next work is finishing 20, then 21.
 | 17 | Aid ledger & anomaly agent | Done — exposure-normalised detectors. No adapters. |
 | 18 | Supervisor & HITL | Done — routing table, both gates, conflicts. No adapters. |
 | 19 | Design system | Done — tokens, 3-script type, 34 components, 4 CI gates |
-| **20** | **Ops console** | **Mostly built — 13 of 26 routes, both gates, 21 e2e tests** |
+| **20** | **Ops console** | **Mostly built — 15 of 26 routes, both gates, 25 e2e tests** |
 | **21** | **Public dashboard** | **Scaffold only** |
 | 22–24 | Mobile (foundation, citizen, field companion) | Scaffold only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-On the TypeScript side, **216 tests pass**: 64 unit and 33 axe-over-every-story in
-`packages/ui`, 54 in `packages/ts-shared`, and in `apps/web-ops` 12 unit, 45 axe across
-**15 screens x three locales**, and **21 Playwright tests in a real Chromium**. `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of
+On the TypeScript side, **226 tests pass**: 64 unit and 33 axe-over-every-story in
+`packages/ui`, 54 in `packages/ts-shared`, and in `apps/web-ops` 12 unit, 51 axe across
+**17 screens x three locales**, and **25 Playwright tests in a real Chromium**. `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of
 Done commands are clean.
 
 On the Python side, untouched by file 19:
@@ -2075,19 +2075,21 @@ The a11y addon is installed so a reviewer sees violations while looking at a com
 What exists: the app shell, the gateway, sign-in and step-up, the common operating
 picture, **both human gate screens**, the delivery-gaps panel, the incident and alert
 lists, the audit ledger and anomaly disposition workflow, the review and grievance queues,
-and the degraded states. 54 static pages build (18 routes x 3 locales).
+and the degraded states. 54 static pages build (18 route entries x 3 locales).
 
 ```
 app/[locale]/           login, /, /ops, /ops/incidents(+[id]), /ops/dispatch(+[planId]),
-                        /ops/alerts(+[id]/delivery), /ops/review, /disbursements(+[id]),
-                        /grievances, /audit, /audit/anomalies
-                        + 6 routes rendering NotBuilt: /ops/forecast, /ops/alerts/new,
-                          /field/assessments, /approvals, /audit/chain, /admin
+                        /ops/alerts(+[id]/delivery), /ops/alerts/new, /ops/review,
+                        /disbursements(+[id]), /field/assessments, /grievances,
+                        /audit, /audit/anomalies, /audit/chain
+                        + 3 rendering NotBuilt: /ops/forecast, /approvals, /admin
 app/gateway/[...path]   the BFF proxy - one origin, five services
 src/lib/                gateway client, queries, schemas, session, auth actions
-src/components/         shell, gate banner, both gates, alerts, incidents, audit, queues
-messages/               238 keys x si/ta/en, gated by verify-i18n
-e2e/                    16 Playwright tests: both gates, the gaps panel, three scripts
+src/components/         shell, gate banner, both gates, alerts, composer, incidents,
+                        audit, chain, assessments, queues
+messages/               293 keys x si/ta/en, gated by verify-i18n
+e2e/                    25 Playwright tests: both gates, the gaps panel, the composer's
+                        segment ceiling, chain verification, three scripts
 ```
 
 ### A route that is not built says so, rather than 404ing
@@ -2235,10 +2237,11 @@ before they reach the button.
 
 ### Still placeholder, and honest about it
 
-- **Five routes render `NotBuilt` rather than working.** `/ops/forecast`,
-  `/field/assessments`, `/approvals`, `/audit/chain` and `/admin`. Two are blocked on
-  backend gaps (`/approvals` needs a `GET /entitlements` list; `/audit/chain` needs the
-  range-verification surface); three are unstarted work.
+- **Three routes render `NotBuilt` rather than working.** `/ops/forecast`, `/approvals`
+  and `/admin`. `/approvals` is blocked on the missing `GET /entitlements` list; the other
+  two are unstarted work. `/ops/forecast` additionally has no data to show - nothing
+  triggers the forecast agent in a running stack and it has never run against the live
+  services.
 - **Area selection is a text field, not a map.** The composer takes comma-separated GN
   division codes. The brief asks for selection on the map by division, DS division,
   district or a drawn polygon snapping to boundaries, and the map has no layers yet.
@@ -2327,6 +2330,57 @@ is the kind of bug that survives review.
 **Two segments blocks the draft.** The segment ceiling is a release gate on templates in
 CI, and it is the same gate on an instance here. The e2e test pushes the Sinhala rendering
 over with free text and asserts the draft button disables and the reason appears.
+
+---
+
+## Chain verification is built, and it was never blocked
+
+An earlier note in this handoff said `/audit/chain` was blocked on a missing
+range-verification surface. That was wrong: `GET /audit/verify` on core-api has existed
+since file 05, takes `from_seq` and `to_seq`, and returns the first divergence with what
+was expected and what was found. The screen is now built against it.
+
+Three properties, each with a Playwright test, because each is a way the screen could
+quietly weaken the claim it exists to test:
+
+**A green result names its range.** "The chain is intact" over an unstated range is a
+claim about nothing. Every result renders `N entries checked, seq X to Y`, so an auditor
+who verified a hundred entries does not walk away believing they verified the ledger.
+
+**A red result names the exact divergence.** The `seq`, the reason, the expected hash and
+the found hash. "The chain is broken" is not actionable; "entry 4,117 carries a prev_hash
+of X where the previous entry hashes to Y" is.
+
+**A chain with no external anchor is reported as such.** The daily Merkle root is computed,
+chained to the previous day and published - but `s3_object_lock_uri` is null until an
+object store is wired, and that URI is the entire external half of the guarantee. Without
+it the chain is verifiable only against a database the operator controls, which is a much
+weaker claim than a green tick suggests. The screen counts the unanchored days and says so
+above the table.
+
+The published hashing scheme is rendered too, so a verifier reading this page needs no
+access to the source.
+
+### Verification is an action, not a poll
+
+`verifyChain` is a plain async call rather than a `useQuery`. A range that silently
+re-verified every fifteen seconds would turn a deliberate check into background noise, and
+the answer would scroll past unread. The previous result is cleared before a new call, so
+a stale green cannot sit on screen while a different range is being checked.
+
+---
+
+## `/field/assessments` is read-only, deliberately
+
+The Field Companion is the real tool: a GN officer assesses damage standing in front of a
+house, usually with no signal. This screen exists for the case where the handset is dead,
+lost or never issued, and for a DS officer reviewing what their division has submitted.
+
+It does not offer a create form. Creating an assessment needs photographs with EXIF GPS, an
+offline queue and a capability token issued before going into the field - all of which are
+the mobile app's job and none of which a browser at a desk can honestly provide. A form
+here that accepted an assessment without evidence would be a way of entering damage figures
+nobody stood in front of.
 
 ---
 

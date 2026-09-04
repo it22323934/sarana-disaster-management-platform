@@ -374,3 +374,70 @@ export const alertTemplateSchema = z.object({
 export type AlertTemplate = z.infer<typeof alertTemplateSchema>;
 
 export const alertTemplateListSchema = z.array(alertTemplateSchema);
+
+/**
+ * The result of recomputing a range of the hash chain.
+ *
+ * `divergence` names the first `seq` that stopped adding up, with what was expected and
+ * what was found. That precision is the point: "the chain is broken" is not actionable,
+ * and "entry 4,117 has prev_hash X where the previous entry hashes to Y" is.
+ */
+export const divergenceSchema = z.object({
+  seq: z.number().int(),
+  reason: z.string(),
+  expected: z.string().nullable().default(null),
+  found: z.string().nullable().default(null),
+});
+
+export const verifySchema = z.object({
+  intact: z.boolean(),
+  checked: z.number().int(),
+  from_seq: z.number().int(),
+  to_seq: z.number().int(),
+  divergence: divergenceSchema.nullable().default(null),
+});
+
+export type VerifyResult = z.infer<typeof verifySchema>;
+
+/**
+ * One day's Merkle root.
+ *
+ * `s3_object_lock_uri` is null until an object store is wired. That absence is the whole
+ * of the external anchor - the half that survives an operator rewriting the database - so
+ * the console reports it as missing rather than omitting the column.
+ */
+export const anchorSchema = z.object({
+  date: z.string(),
+  merkle_root: z.string(),
+  entry_count: z.number().int(),
+  first_seq: z.number().int(),
+  last_seq: z.number().int(),
+  prev_anchor_hash: z.string().nullable().default(null),
+  s3_object_lock_uri: z.string().nullable().default(null),
+  published_at: z.string().nullable().default(null),
+});
+
+export type Anchor = z.infer<typeof anchorSchema>;
+
+export const anchorResponseSchema = z.object({
+  anchors: z.array(anchorSchema),
+  /** The published hashing rules, so a verifier needs no access to this source. */
+  scheme: z.record(z.string(), z.string()).default({}),
+});
+
+export const assessmentSchema = z.object({
+  id: z.string(),
+  public_ref: z.string(),
+  household_id: z.string(),
+  gn_division_code: z.string(),
+  hazard_event_id: z.string(),
+  assessed_by: z.string(),
+  assessed_at: z.string(),
+  category: z.string(),
+  cost_estimate_lkr_cents: z.number().int(),
+  status: z.string(),
+});
+
+export type Assessment = z.infer<typeof assessmentSchema>;
+
+export const assessmentListSchema = z.array(assessmentSchema);
