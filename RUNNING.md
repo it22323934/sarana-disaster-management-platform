@@ -244,7 +244,8 @@ and none is a bug in the console.
 pnpm --filter @sarana/web-ops verify-i18n   # 579 keys x si/ta/en, and every key the code uses
 pnpm --filter @sarana/web-ops test          # 59 unit: gates, quiet hours, CSV, map transform
 pnpm --filter @sarana/web-ops test:a11y     # axe: 25 screens x 3 locales
-pnpm --filter @sarana/web-ops test:e2e      # 68 Playwright tests in real Chromium
+pnpm --filter @sarana/web-ops test:e2e      # 93 Playwright tests in real Chromium
+pnpm --filter @sarana/web-ops test:layout   # 24 routes x 3 scripts, checked for overflow
 pnpm --filter @sarana/web-ops build:local   # a production build that finishes on Windows
 pnpm --filter @sarana/web-ops lighthouse    # per-route JS budget, gzipped
 ```
@@ -279,6 +280,13 @@ megabytes per route. Rebuild with `build:local` before measuring.
 `verify-i18n` checks two different things. The first is that every key exists in all three
 locales. The second is that every key the *code* asks for exists at all - a key missing from
 all three passes the first check and then renders its own path, in English, to everybody.
+
+`test:layout` is the visual-regression gate. It opens every route in all three scripts and
+asserts two things: the page does not scroll sideways, and no element clips its own text. It
+measures overflow rather than comparing screenshots, because a baseline captured on one
+operating system with one set of fonts differs from CI for reasons that have nothing to do
+with the console - and the failure worth catching is specific: a Tamil label breaking a slot
+that was sized in English.
 
 The e2e suite starts its own dev server on port 3100 and intercepts the gateway in the
 browser, so it needs neither Docker nor a seeded database. It does not prove the services
@@ -421,7 +429,7 @@ them exists. What does not exist is the screens. Working backwards from the buil
   the audit ledger with CSV export and the published anchors, the anomaly disposition
   workflow, the review and grievance queues, the entitlement approval detail, the user
   directory and role catalogue, and the desk fallback for filing an assessment. 25 routes,
-  60 static pages, 68 Playwright tests. **No route says "not built".**
+  60 static pages, 93 Playwright tests. **No route says "not built".**
 
 - **All six agents exist, and none is wired to the live stack.** The forecast agent turns rainfall into per-division
   impact predictions with lead time, confidence and the drivers that produced them, and

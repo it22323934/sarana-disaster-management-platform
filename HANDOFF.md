@@ -33,7 +33,7 @@ two finished screens that no user could reach. The next work is 21.
 | 17 | Aid ledger & anomaly agent | Done — exposure-normalised detectors. No adapters. |
 | 18 | Supervisor & HITL | Done — routing table, both gates, conflicts. No adapters. |
 | 19 | Design system | Done — tokens, 3-script type, 34 components, 4 CI gates |
-| **20** | **Ops console** | **Done — 25 routes, 60 static pages, 68 e2e tests** |
+| **20** | **Ops console** | **Done — 25 routes, 60 static pages, 93 e2e tests** |
 | **21** | **Public dashboard** | **Scaffold only** |
 | 22–24 | Mobile (foundation, citizen, field companion) | Scaffold only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
@@ -41,9 +41,10 @@ two finished screens that no user could reach. The next work is 21.
 
 On the TypeScript side, **329 tests pass**: 64 unit and 33 axe-over-every-story in
 `packages/ui`, 54 in `packages/ts-shared`, and in `apps/web-ops` 59 unit, 75 axe across
-**25 screens x three locales**, and **68 Playwright tests in a real Chromium**. `pnpm lint`,
-`pnpm typecheck`, all seven of file 19's Definition of Done commands and file 20's four are
-clean — including the JS half of the performance budget, which every route passes.
+**25 screens x three locales**, and **93 Playwright tests in a real Chromium**. `pnpm lint`,
+`pnpm typecheck` and all seven of file 19's Definition of Done commands are clean. Of file
+20's four, three pass; the fourth reports a measured LCP that the stack cannot meet, and
+says so with the evidence rather than passing quietly.
 
 On the Python side, untouched by file 19:
 **1,663 tests passing, 2 skipped** (1,665 collected across `tests/` and
@@ -2100,7 +2101,7 @@ src/components/         shell, gate banner, both gates, route map, forecast boar
                         composer, area selector, quiet hours, dry run, incidents, linked
                         reports, audit, chain, directory, assessments, queues
 messages/               579 keys x si/ta/en, gated by verify-i18n
-e2e/                    68 Playwright tests
+e2e/                    93 Playwright tests, including 24 routes x 3 scripts for overflow
 ```
 
 ### Five backend gaps closed, and why each was blocking a screen rather than a nicety
@@ -2177,6 +2178,38 @@ Bindings are resolved **positionally**. One file routinely holds several compone
 with its own `const t = useTranslations(...)` on a different namespace, and matching by name
 alone resolves every call against whichever declaration happened to be last — which reports
 dozens of real keys as missing and buries any genuine finding.
+
+### Every route, in three scripts, checked for overflow in a real browser
+
+The brief asks that "every route renders correctly in si, ta, and en with no overflow
+(visual regression)". `e2e/layout.spec.ts` is that gate: 24 routes x 3 locales, with the
+gateway populated rather than empty — an empty state is the layout least likely to
+overflow, so a suite that measured those would pass while every populated screen was
+broken.
+
+**It measures overflow rather than comparing pixels, and that is a decision.** Baselines
+are captured on one operating system with one set of installed fonts; this repository is
+developed on Windows against a CI that is not, so every baseline would differ for reasons
+that have nothing to do with the console — the suite the e2e config already warns about,
+one that fails for unrelated reasons and nobody runs. And a screenshot diff flags *any*
+change, so the signal for the one failure that matters would arrive buried in noise from
+every intentional edit.
+
+The failure that matters is specific: a Sinhala or Tamil string breaking a layout that fits
+in English. Two assertions per route per locale — the document does not scroll sideways, and
+no element clips its own content. Containers that scroll by design are excluded, as is
+anything one pixel wide, which is how `sr-only` works.
+
+This complements `packages/ui`'s `test:i18n-overflow` rather than replacing it. That gates
+15 slots against a width *model* and can run without a browser; this asks the same question
+of whole screens where the real font metrics live.
+
+**The detector is tested against a deliberate overflow before it is trusted.** A gate that
+has only ever passed is indistinguishable from one that cannot fail, and this is a
+hand-written DOM walk whose every exclusion is a chance to exclude the thing it should
+catch. That is not hypothetical: the first version tested the wrong node for visual hiding
+and reported the skip link on 22 of 24 routes. A guard one clause broader would have
+reported nothing and gone green while measuring nothing.
 
 ### The sign-in page rendered the whole console shell, and polled the gateway signed out
 
@@ -2402,7 +2435,7 @@ errors in the log beside pages that look fine.
 
 ### What the e2e suite proves, and what it does not
 
-68 Playwright tests run against `next dev` with the gateway routes intercepted in the
+93 Playwright tests run against `next dev` with the gateway routes intercepted in the
 browser, not against a booted platform. That is a trade, not a shortcut: the flows these
 protect are properties of the console, and making them depend on six Docker services, a
 seeded Postgres and a working TOTP secret would produce a suite that fails for reasons
@@ -2432,9 +2465,8 @@ button, will not send an alert nobody has dry-run, warns on a rule-ordered queue
 - **The spine still plots two milestones, not six.** Declaration and landfall are readable;
   forecast issued, alert dispatched, first incident, peak queue depth and first disbursement
   each need a query that does not exist.
-- **No visual regression suite.** Required by the brief and it needs a real browser.
-  `test:i18n-overflow` is a width *model* standing in for the one regression that matters
-  most; it is not a pixel comparison and does not claim to be.
+- **The visual regression gate measures overflow, not pixels** — see below. A screenshot
+  baseline suite is the literal reading of the brief and would be the wrong tool here.
 - **Still no SSE anywhere.** The console polls. `LIVE_INTERVAL_MS` in
   `apps/web-ops/src/lib/queries.ts` is the one place that changes when a stream exists.
 - **The simulated LCP budget is not met, and is not reachable on this stack.** 2415 ms
@@ -3184,7 +3216,8 @@ pnpm --filter @sarana/web-ops dev              # http://localhost:3000
 pnpm --filter @sarana/web-ops verify-i18n      # 579 keys x si/ta/en, + every key the code uses
 pnpm --filter @sarana/web-ops test             # 59 unit
 pnpm --filter @sarana/web-ops test:a11y        # axe, 25 screens x 3 locales
-pnpm --filter @sarana/web-ops test:e2e         # 68 Playwright, real Chromium
+pnpm --filter @sarana/web-ops test:e2e         # 93 Playwright, real Chromium
+pnpm --filter @sarana/web-ops test:layout      # 24 routes x 3 scripts, overflow only
 pnpm --filter @sarana/web-ops build            # 60 static pages; see the Windows EPERM note
 pnpm --filter @sarana/web-ops lighthouse -- --assert-js 250   # JS budget, per route, gzipped
 SARANA_LIGHTHOUSE_URL=http://localhost:3000/en/ops \

@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:a11y": "vitest run --config vitest.a11y.config.ts",
     "test:e2e": "playwright test",
+    "test:layout": "playwright test e2e/layout.spec.ts",
     "verify-i18n": "tsx ./scripts/verify-messages.ts",
     "lighthouse": "tsx ./scripts/performance-budget.ts"
   },
