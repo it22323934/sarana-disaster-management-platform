@@ -26,8 +26,9 @@ function row(overrides: Partial<QueueRow> = {}): QueueRow {
     location_confidence: 0.82,
     lon: 80.7718,
     lat: 7.8731,
-    triage_score: null,
-    triage_factors: null,
+    score: 0.71,
+    model_version: 'triage-rules-1',
+    factors: null,
     ...overrides,
   };
 }

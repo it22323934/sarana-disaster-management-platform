@@ -17,6 +17,9 @@
 
 import {
   EmptyState,
+  PopoverContent,
+  PopoverRoot,
+  PopoverTrigger,
   ReferenceCode,
   RelativeTime,
   SeverityPill,
@@ -69,6 +72,21 @@ export function CommonOperatingPicture() {
   // render would hydrate mismatched.
   useEffect(() => setLayout(readLayout()), []);
 
+  /**
+   * One clock for the whole queue.
+   *
+   * Ticking every thirty seconds so rows age on screen between polls: an operator who
+   * walked away must come back to a queue whose ages have moved, not to one frozen at the
+   * last fetch. Shared rather than per-row so every row ages against the same instant -
+   * two rows a second apart must not straddle the threshold because they rendered in
+   * different ticks.
+   */
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+
   function persist(next: Layout): void {
     setLayout(next);
     try {
@@ -78,14 +96,36 @@ export function CommonOperatingPicture() {
     }
   }
 
-  const rows = queue.data ?? [];
-  // True when nothing in the queue carries an agent-produced score. That is the platform's
-  // state today — the triage agent has no adapters — and the operator has to be told.
-  const assistedRanking = rows.some((row) => row.triage_score !== null);
+  const rows = queue.data?.entries ?? [];
+
+  /**
+   * Whether an agent produced this ordering.
+   *
+   * Read from the response, never inferred. `incident-svc` computes a score for every row
+   * from the published rule when nothing has stored one - so "has a score" is always true
+   * and inferring from it would mean the degraded banner never appeared. The `assisted`
+   * flag is the only thing that knows.
+   */
+  const assistedRanking = queue.data?.assisted ?? false;
 
   return (
     <div className="flex h-[calc(100vh-9rem)] flex-col gap-3 p-4">
-      {!assistedRanking && rows.length > 0 ? <DegradedBanner kind="agent" /> : null}
+      {/* The console's own trilingual banner rather than the server's `banner` string,
+          which is English only. The ordering rule is shown beside it, because "manual
+          ordering" is less useful to a dispatcher than the name of the rule doing it. */}
+      {!assistedRanking && rows.length > 0 ? (
+        <div className="flex flex-col gap-1">
+          <DegradedBanner kind="agent" />
+          {queue.data?.ordering ? (
+            <p className="text-2xs text-[var(--text-muted)]">
+              {t('orderedBy')}:{' '}
+              <span data-sarana-datum="" className="font-mono">
+                {queue.data.ordering}
+              </span>
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="flex min-h-0 flex-1 gap-3">
         <section
@@ -115,6 +155,7 @@ export function CommonOperatingPicture() {
                   rank={index + 1}
                   selected={selected?.id === row.id}
                   onSelect={() => setSelected(row)}
+                  now={now}
                 />
               ))}
             </ol>
@@ -222,52 +263,140 @@ function Divider({
   );
 }
 
+/**
+ * How old a row has to be before it starts reading as waiting.
+ *
+ * Twenty minutes. Long enough that a busy queue is not a wall of pending-blue, short
+ * enough that an incident nobody has touched for a shift is unmissable. The colour is
+ * `--pending`, which on this platform means exactly one thing - a human has to act - and
+ * an incident sitting unworked in the queue is precisely that.
+ */
+const AGEING_AFTER_SECONDS = 20 * 60;
+
+function ageOf(row: QueueRow, now: Date): number {
+  return Math.max(0, (now.getTime() - new Date(row.first_reported_at).getTime()) / 1000);
+}
+
 function QueueRowItem({
   row,
   rank,
   selected,
   onSelect,
+  now,
 }: {
   readonly row: QueueRow;
   readonly rank: number;
   readonly selected: boolean;
   readonly onSelect: () => void;
+  readonly now: Date;
 }) {
   const t = useTranslations('cop');
+  const ageing = ageOf(row, now) >= AGEING_AFTER_SECONDS;
+
   return (
     <li>
-      <button
-        type="button"
-        onClick={onSelect}
-        aria-current={selected ? 'true' : undefined}
+      <div
         className={cn(
-          'flex w-full flex-col gap-1 border-b border-[var(--divider)] px-3 py-2 text-left',
-          'min-h-[var(--touch-target-min)] transition-colors duration-[var(--motion-state)]',
-          'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-ring)]',
+          'flex items-start gap-1 border-b border-[var(--divider)]',
           selected ? 'bg-[var(--surface-card)]' : 'hover:bg-[var(--surface-raised)]',
         )}
       >
-        <span className="flex items-center gap-2">
-          <span data-sarana-datum="" className="font-mono text-2xs text-[var(--text-muted)]">
-            {rank}
+        <button
+          type="button"
+          onClick={onSelect}
+          aria-current={selected ? 'true' : undefined}
+          className={cn(
+            'flex min-h-[var(--touch-target-min)] flex-1 flex-col gap-1 px-3 py-2 text-left',
+            'transition-colors duration-[var(--motion-state)]',
+            'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-ring)]',
+          )}
+        >
+          <span className="flex items-center gap-2">
+            <span data-sarana-datum="" className="font-mono text-2xs text-[var(--text-muted)]">
+              {rank}
+            </span>
+            <SeverityPill level={row.severity as SeverityLevel} locale="en" />
+            <ReferenceCode code={row.public_ref} />
           </span>
-          <SeverityPill level={row.severity as SeverityLevel} locale="en" />
-          <ReferenceCode code={row.public_ref} />
-        </span>
-        <span className="flex flex-wrap items-baseline gap-x-3 text-2xs text-[var(--text-muted)]">
-          <span data-sarana-datum="" className="font-mono">
-            {row.gn_division_code}
-          </span>
-          <span>
-            {t('peopleAtRisk')}:{' '}
+          <span className="flex flex-wrap items-baseline gap-x-3 text-2xs text-[var(--text-muted)]">
             <span data-sarana-datum="" className="font-mono">
-              {row.people_at_risk}
+              {row.gn_division_code}
+            </span>
+            <span>
+              {t('peopleAtRisk')}:{' '}
+              <span data-sarana-datum="" className="font-mono">
+                {row.people_at_risk}
+              </span>
+            </span>
+            {/* The age turns `--pending` as it ages. Not a severity colour: how long an
+                incident has waited is a fact about this console's queue, not about the
+                hazard, and painting it amber would say the hazard got worse. */}
+            <span
+              data-ageing={ageing}
+              className={ageing ? 'font-medium text-[var(--pending)]' : undefined}
+            >
+              <RelativeTime value={row.first_reported_at} now={now} />
             </span>
           </span>
-          <RelativeTime value={row.first_reported_at} />
-        </span>
-      </button>
+        </button>
+
+        <FactorBreakdown row={row} />
+      </div>
     </li>
+  );
+}
+
+/**
+ * Why this row sits where it does, one click away and without leaving the screen.
+ *
+ * A popover rather than a detail pane: an operator comparing row 3 against row 4 has to
+ * see both reasons in the same few seconds, and a pane that replaces the context panel
+ * loses the row they were comparing against.
+ */
+function FactorBreakdown({ row }: { readonly row: QueueRow }) {
+  const t = useTranslations('cop');
+
+  const factors = Object.entries(row.factors ?? {})
+    .filter((entry): entry is [string, number] => typeof entry[1] === 'number')
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+
+  return (
+    <PopoverRoot>
+      <PopoverTrigger
+        aria-label={t('whyThisRank')}
+        className={cn(
+          'mr-1 mt-2 shrink-0 rounded-[var(--radius-cell)] px-2 py-1 text-2xs',
+          'text-[var(--text-muted)] hover:text-[var(--text-accent)]',
+          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]',
+        )}
+      >
+        {row.score === null ? '—' : row.score.toFixed(2)}
+      </PopoverTrigger>
+      <PopoverContent>
+        <h3 className="mb-2 text-sm font-medium">{t('whyThisRank')}</h3>
+        <p className="mb-2 text-2xs text-[var(--text-muted)]">
+          {t('orderedBy')}:{' '}
+          <span data-sarana-datum="" className="font-mono">
+            {row.model_version ?? '—'}
+          </span>
+        </p>
+        {factors.length === 0 ? (
+          // Not an empty list under a "why" heading, which would read as "nothing counted".
+          <p className="text-xs text-[var(--text-muted)]">{t('noFactors')}</p>
+        ) : (
+          <dl className="flex flex-col gap-1">
+            {factors.map(([name, value]) => (
+              <div key={name} className="flex items-baseline justify-between gap-4 text-xs">
+                <dt>{name}</dt>
+                <dd data-sarana-datum="" className="font-mono">
+                  {value.toFixed(3)}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </PopoverContent>
+    </PopoverRoot>
   );
 }
 
@@ -303,18 +432,21 @@ function SelectedIncident({
         </Definition>
       </dl>
 
-      {assisted && row.triage_factors && row.triage_factors.length > 0 ? (
+      {assisted && row.factors && Object.keys(row.factors).length > 0 ? (
         <section>
           <h3 className="mb-1 text-sm font-medium">{t('whyThisRank')}</h3>
           <ul className="flex flex-col gap-1">
-            {row.triage_factors.map((factor) => (
-              <li key={factor.name} className="flex items-baseline justify-between text-xs">
-                <span>{factor.name}</span>
-                <span data-sarana-datum="" className="font-mono">
-                  {factor.contribution.toFixed(2)}
-                </span>
-              </li>
-            ))}
+            {Object.entries(row.factors)
+              .filter((entry): entry is [string, number] => typeof entry[1] === 'number')
+              .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+              .map(([name, value]) => (
+                <li key={name} className="flex items-baseline justify-between text-xs">
+                  <span>{name}</span>
+                  <span data-sarana-datum="" className="font-mono">
+                    {value.toFixed(3)}
+                  </span>
+                </li>
+              ))}
           </ul>
         </section>
       ) : null}

@@ -177,13 +177,18 @@ export function SituationMap({ rows, className }: SituationMapProps) {
 
   return (
     <div className={className}>
-      <MapShell
-        styleUrl={styleUrl}
-        label={t('map')}
-        onReady={onReady}
-        className="h-full w-full"
-        fallback={
-          <div className="flex flex-col gap-2">
+      {/* `min-h-0` and `flex-1` so the map takes the space left over rather than all of
+          it. Without them the map is `h-full` inside a flex column and the controls below
+          are pushed out of an `overflow-hidden` parent - clipped, not scrolled, so the
+          unplaceable count silently disappears. */}
+      <div className="min-h-0 flex-1">
+        <MapShell
+          styleUrl={styleUrl}
+          label={t('map')}
+          onReady={onReady}
+          className="h-full w-full"
+          fallback={
+            <div className="flex flex-col gap-2">
             <h3 className="text-sm font-medium">{t('mapFallback')}</h3>
             {/* The same facts as the map, as a list. Not a summary of it: this is what a
                 screen reader user, a printed situation report and a browser that failed
@@ -204,9 +209,10 @@ export function SituationMap({ rows, className }: SituationMapProps) {
             </ul>
           </div>
         }
-      />
+        />
+      </div>
 
-      <div className="mt-2 flex flex-wrap items-start gap-4">
+      <div className="mt-2 flex shrink-0 flex-wrap items-start gap-4">
         <fieldset className="flex flex-col gap-1">
           <legend className="sr-only">{t('layers')}</legend>
           {/* Only the layer that has data. The other three are specified in the brief and
@@ -236,7 +242,7 @@ export function SituationMap({ rows, className }: SituationMapProps) {
       {missing > 0 ? (
         // Never silently dropped. An incident the map cannot place is still an incident,
         // and an operator reading the map needs to know the count is not the whole queue.
-        <p role="status" className="mt-2 text-2xs text-[var(--sev-2-fg)]">
+        <p role="status" className="mt-2 shrink-0 text-2xs text-[var(--sev-2-fg)]">
           {t('unplaceable', { count: missing })}
         </p>
       ) : null}

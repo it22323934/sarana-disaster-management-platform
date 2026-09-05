@@ -109,32 +109,45 @@ export type Incident = z.infer<typeof incidentSchema>;
 export const incidentListSchema = z.array(incidentSchema);
 
 /**
- * A queue row.
+ * A queue row, as `QueueEntry` returns it.
  *
- * `incident-svc`'s `/incidents/queue` returns the incident plus its triage score and the
- * factor breakdown when a triage agent produced one. Both are optional here because the
- * agent has no adapters yet: today the endpoint answers with the deterministic ordering
- * and no factors, and the console has to say so rather than presenting a rule-based rank
- * as if it were a model's.
+ * `score` and `factors` are always present: `incident-svc` computes them from the
+ * published rule when nothing has stored one, rather than dropping an unranked incident
+ * to the bottom of a long queue where nobody reaches it. So their presence says nothing
+ * about whether an agent was involved - only the response's `assisted` flag does.
  */
 export const queueRowSchema = incidentSchema.extend({
-  triage_score: z.coerce.number().nullable().default(null),
-  triage_factors: z
-    .array(
-      z.object({
-        name: z.string(),
-        weight: z.coerce.number(),
-        value: z.coerce.number(),
-        contribution: z.coerce.number(),
-      }),
-    )
-    .nullable()
-    .default(null),
+  score: z.coerce.number().nullable().default(null),
+  model_version: z.string().nullable().default(null),
+  /**
+   * The per-factor breakdown behind the score.
+   *
+   * A free-shaped object because the triage model owns its factor names and the console
+   * must not pin them. Rendered as name/value pairs sorted by contribution, so an operator
+   * can see why row 3 outranks row 4 without leaving the screen.
+   */
+  factors: z.record(z.string(), z.unknown()).nullable().default(null),
 });
 
 export type QueueRow = z.infer<typeof queueRowSchema>;
 
-export const queueSchema = z.array(queueRowSchema);
+/**
+ * The queue, and an unmissable statement of how it was ordered.
+ *
+ * The endpoint returns an object, not a list. `assisted` is the **only** authority on
+ * whether an agent produced this ordering - inferring it from the presence of a score
+ * would always say yes, because the service always computes one.
+ */
+export const queueSchema = z.object({
+  assisted: z.boolean(),
+  /** The server's own words for the degraded state. English only; see the console note. */
+  banner: z.string().nullable().default(null),
+  /** The rule or model that ordered this list, e.g. a triage model version. */
+  ordering: z.string(),
+  entries: z.array(queueRowSchema).default([]),
+});
+
+export type Queue = z.infer<typeof queueSchema>;
 
 export const responderSchema = z.object({
   id: z.string(),

@@ -229,10 +229,10 @@ Both are backend gaps, both are in the handoff, and neither is a bug in the cons
 ### Tests
 
 ```bash
-pnpm --filter @sarana/web-ops verify-i18n   # 312 keys in si, ta and en
+pnpm --filter @sarana/web-ops verify-i18n   # 314 keys in si, ta and en
 pnpm --filter @sarana/web-ops test          # 19 unit tests: the gates and the map transform
 pnpm --filter @sarana/web-ops test:a11y     # axe: 19 screens x 3 locales
-pnpm --filter @sarana/web-ops test:e2e      # 30 Playwright tests in real Chromium
+pnpm --filter @sarana/web-ops test:e2e      # 35 Playwright tests in real Chromium
 ```
 
 The e2e suite starts its own dev server on port 3100 and intercepts the gateway in the

@@ -55,7 +55,7 @@ import {
   type Grievance,
   type Incident,
   type LedgerEntry,
-  type QueueRow,
+  type Queue,
   type Responder,
   type ReviewItem,
   type VerifyResult,
@@ -128,7 +128,7 @@ export function usePlan(planId: string): UseQueryResult<DispatchPlan> {
   });
 }
 
-export function useTriageQueue(divisionCode?: string): UseQueryResult<QueueRow[]> {
+export function useTriageQueue(divisionCode?: string): UseQueryResult<Queue> {
   return useQuery({
     queryKey: queryKeys.queue(divisionCode),
     refetchInterval: LIVE_INTERVAL_MS,

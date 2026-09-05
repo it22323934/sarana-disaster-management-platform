@@ -64,7 +64,15 @@ const ROUTES = [
   { match: 'dispatch-plans/018f3c2a-7b41', body: planFixture() },
   { match: 'dispatch-plans', body: [planFixture()] },
   { match: 'incidents/018f3c2a-0001', body: incidentFixture() },
-  { match: 'incidents/queue', body: [incidentFixture()] },
+  {
+    match: 'incidents/queue',
+    body: {
+      assisted: false,
+      banner: 'Assisted triage unavailable - manual ordering',
+      ordering: 'triage-rules-1',
+      entries: [{ ...incidentFixture(), score: 0.71, model_version: 'triage-rules-1', factors: { severity: 0.4, people_at_risk: 0.31 } }],
+    },
+  },
   { match: 'responders', body: [] },
   { match: 'entitlements/018f3c2a-0003', body: entitlementFixture() },
   { match: 'grievances', body: [] },

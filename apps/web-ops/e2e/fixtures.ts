@@ -70,6 +70,10 @@ export function incidentBody(overrides: Record<string, unknown> = {}) {
     status: 'VERIFIED',
     first_reported_at: new Date(Date.now() - 40 * 60_000).toISOString(),
     location_confidence: 0.82,
+    // Pallekele, roughly. A fixture with no coordinate would make every incident
+    // unplaceable and quietly turn the map tests into tests of the empty case.
+    lon: 80.7718,
+    lat: 7.2906,
     ...overrides,
   };
 }

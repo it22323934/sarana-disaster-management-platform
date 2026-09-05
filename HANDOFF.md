@@ -40,9 +40,9 @@ finishing 20, then 21.
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-On the TypeScript side, **244 tests pass**: 64 unit and 33 axe-over-every-story in
+On the TypeScript side, **249 tests pass**: 64 unit and 33 axe-over-every-story in
 `packages/ui`, 54 in `packages/ts-shared`, and in `apps/web-ops` 19 unit, 57 axe across
-**19 screens x three locales**, and **30 Playwright tests in a real Chromium**. `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of
+**19 screens x three locales**, and **35 Playwright tests in a real Chromium**. `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of
 Done commands are clean.
 
 On the Python side, untouched by file 19:
@@ -2466,6 +2466,51 @@ drops the layer's paint state even when it does not.
 The GeoJSON is memoised on `rows`, which TanStack Query keeps referentially stable between
 polls through structural sharing. Without that the object is new on every render and the
 `setData` effect fires on renders that changed nothing.
+
+---
+
+## The queue endpoint returns an object, and the console was reading it wrong
+
+`GET /incidents/queue` returns a `QueueResponse` - `{assisted, banner, ordering, entries}` -
+not a bare list. The console's zod schema had it as an array, which would have thrown at
+the boundary on the first real request. Two things followed from getting it right, and the
+second is the one that mattered:
+
+**`assisted` is the only authority on whether an agent ranked the queue.** The console was
+inferring it from whether any row carried a score. That inference can never be false:
+`incident-svc` computes a score from the published rule for every row that has none,
+deliberately, so an unranked incident is not dropped to the bottom of a long queue where
+nobody reaches it. So the degraded banner would have stayed hidden while no model was
+running, and a dispatcher would have worked a rule-ordered queue believing a model had
+ordered it. That is the single most misleading thing this console could do, and it was
+doing it. An e2e test now pins it: `assisted: false` with a score on every row must still
+warn.
+
+**The ordering rule is named beside the banner.** "Manual ordering" tells a dispatcher less
+than `triage-rules-1`. The server's own `banner` string is available but English-only, so
+the console renders its own trilingual one and shows the server's `ordering` value beside
+it.
+
+### The queue rows now age, and say why they are ranked
+
+Rows past twenty minutes turn `--pending`. Not a severity colour: how long an incident has
+waited is a fact about this console's queue, not about the hazard, and painting it amber
+would say the hazard got worse. One clock ticks for the whole queue every thirty seconds,
+shared rather than per-row - two rows a second apart must not straddle the threshold
+because they rendered in different ticks.
+
+The score is a popover trigger showing the per-factor breakdown, sorted by contribution.
+A popover rather than a detail pane: an operator comparing row 3 against row 4 has to see
+both reasons within a few seconds, and a pane that replaced the context panel would lose
+the row being compared against.
+
+### Two layout bugs the e2e suite found
+
+The map pane was `h-full` inside a flex column, so the layer controls and the unplaceable
+count were clipped out of an `overflow-hidden` parent - present in the DOM, invisible on
+screen. And the e2e incident fixture carried no coordinates at all, which made every
+incident unplaceable and would have quietly turned the map tests into tests of the empty
+case.
 
 ---
 

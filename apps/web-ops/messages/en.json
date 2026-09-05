@@ -90,7 +90,9 @@
     "layerDeliveryGaps": "Delivery gaps",
     "noCoordinate": "no coordinate",
     "unplaceable": "{count, plural, one {# incident has no coordinate and is not on the map} other {# incidents have no coordinate and are not on the map}}",
-    "layersNotBuilt": "Division boundaries, report density and delivery gaps are specified but not built. They are absent rather than shown as empty layers."
+    "layersNotBuilt": "Division boundaries, report density and delivery gaps are specified but not built. They are absent rather than shown as empty layers.",
+    "orderedBy": "Ordered by",
+    "noFactors": "No factor breakdown was recorded for this incident."
   },
   "dispatch": {
     "title": "Dispatch approval",
