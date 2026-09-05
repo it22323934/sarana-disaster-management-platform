@@ -40,9 +40,9 @@ next work is finishing 20, then 21.
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-On the TypeScript side, **260 tests pass**: 64 unit and 33 axe-over-every-story in
-`packages/ui`, 54 in `packages/ts-shared`, and in `apps/web-ops` 19 unit, 60 axe across
-**20 screens x three locales**, and **43 Playwright tests in a real Chromium**. `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of
+On the TypeScript side, **270 tests pass**: 64 unit and 33 axe-over-every-story in
+`packages/ui`, 54 in `packages/ts-shared`, and in `apps/web-ops` 27 unit, 60 axe across
+**20 screens x three locales**, and **45 Playwright tests in a real Chromium**. `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of
 Done commands are clean.
 
 On the Python side, untouched by file 19:
@@ -2250,8 +2250,9 @@ before they reach the button.
   division codes. The brief asks for selection on the map by division, DS division,
   district or a drawn polygon snapping to boundaries, and the map has no layers yet.
 - **The composer's dry run is a notice, not a call.** It says a dry run is required and
-  why. `POST /alerts/{id}/dispatch` with `dry_run` is not wired, because there is no draft
-  to dispatch - see the hazard-event gap.
+  why. Drafting now works, so the next step is a draft detail screen that runs
+  `POST /alerts/{id}/dispatch` with `dry_run`, shows the counts, and only then offers the
+  send behind sign-off.
 - **No screen shows linked reports, audio or dedup links.** Both `/ops/incidents/[id]` and
   the `/ops` context pane are blocked on the same thing: `GET /incidents/{id}`'s docstring
   promises linked reports and its SQL joins none. The context pane does now show the real
@@ -2259,8 +2260,9 @@ before they reach the button.
 - **The map draws incidents and nothing else.** Division boundaries, report density and
   delivery-gap shading have builders in `packages/ui` and no data path; they are named on
   screen as not built. `NEXT_PUBLIC_SARANA_MAP_STYLE_URL` points at MapLibre's demo tiles.
-- **The time spine is not on the console.** `TimeSpine` exists and is storied; the shell
-  does not mount it, because nothing yet supplies a landfall instant or the milestone list.
+- **The spine plots two milestones, not six.** Declaration and landfall are readable;
+  forecast issued, alert dispatched, first incident, peak queue depth and first
+  disbursement each need a query that does not exist.
 - **The gate banner counts dispatches only.** Disbursements are not counted, because there
   is no endpoint to count them - see the release-queue gap above. The banner therefore
   under-reports, which is recorded here rather than hidden.
@@ -2595,6 +2597,58 @@ first.
 
 ---
 
+## `GET /hazard-events` exists, and it unblocked two things at once
+
+The second backend change for file 20, and it was blocking more than it looked.
+`hazard.hazard_event` has existed since file 04 with `landfall_at` on it, and nothing
+exposed it. That single absence stopped two separate things:
+
+- **The alert composer could not create a draft.** `POST /alerts` requires a
+  `hazard_event_id`, so an operator could compose a message, check its segment cost in
+  three languages, and then have no way to name the event it was about.
+- **The time spine had nothing to anchor to.** `landfall_at` is T+0, and the signature
+  element of the design system sat in Storybook and on no screen.
+
+It is read-only on purpose. A hazard event is declared by the forecast agent from a
+meteorological feed or by DMC through the inbound path, and a console that could create one
+would let an operator invent a cyclone. Closing one is a state transition with consequences
+for every alert and incident hanging off it, and it belongs with the agent that owns the
+lifecycle rather than behind a button.
+
+It sits on **agent-svc**, which owns the schema, and reads with `incident:read` rather than
+an agent scope - everyone who works an incident needs to know which event they are working,
+including a GN officer holding no agent scope at all.
+
+### The spine renders nothing between events, which is most of the time
+
+An event under monitoring has no landfall, so `DisasterSpine` draws nothing rather than
+anchoring the rail to the declaration time - a fabricated T+0 across the top of every
+operational screen would be worse than no rail. `anchorEvent` picks the most recent event
+that *has* a landfall rather than simply the newest, so the console is not anchored to a
+depression nobody is working yet.
+
+The phase - anticipatory, response, recovery - is derived from the offset and returned as a
+**message key**, not a label, so it is never an English word on a Tamil console. Eight unit
+tests pin the boundaries, including that landfall itself is response rather than
+anticipatory.
+
+Only the milestones the platform can actually date are plotted: the event's declaration and
+its landfall. The brief also lists forecast issued, alert dispatched, first incident, peak
+queue depth and first disbursement, and none of those has a query behind it. Three hollow
+markers labelled with things nothing has measured would be worse than two that are real.
+
+### The composer drafts now, and drafting is still not sending
+
+`POST /alerts` is wired. The screen creates a draft and stops: dispatch is a separate call
+behind a mandatory dry run, and one button that drafted and sent is how a national fan-out
+happens by accident. The confirmation says the draft still needs sign-off and a dry run.
+
+Division codes go to the server as codes; `gn_division_ids` is sent empty and the service
+resolves them. Sending both would be two sources of truth for the same area and a chance
+for them to disagree.
+
+---
+
 ## Things that will bite you
 
 These each cost real debugging time. They are written down so they cost you none.
@@ -2841,9 +2895,6 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
   factor breakdown and `unservable` list exist only in the triage agent's interrupt
   payload. The dispatch gate screen cannot show what the brief requires until this is
   widened, and it says so on screen rather than rendering an empty section.
-- **No endpoint lists hazard events (files 09/20).** `POST /alerts` requires a
-  `hazard_event_id` and nothing in any service returns one, so the alert composer can
-  compose and check a message but cannot create the draft.
 - **No SSE anywhere (files 07/20).** The console polls. `LIVE_INTERVAL_MS` in
   `apps/web-ops/src/lib/queries.ts` is the one place that changes when a stream exists.
 - **No visual regression suite (file 19).** Required by the brief, and it needs a real

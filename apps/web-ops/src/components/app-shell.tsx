@@ -19,27 +19,46 @@ import type { PrincipalSummary } from '../lib/session';
 import { DisasterSpine } from './disaster-spine';
 import { PendingGates } from './pending-gates';
 
-/** A navigation entry and the scope that makes it useful. */
+/**
+ * A navigation entry and the scopes that make it useful.
+ *
+ * `scopes` is **any-of**, not all-of. An approver holds `entitlement:approve_ds` or
+ * `entitlement:approve_district` and rarely both, and a link that demanded both would hide
+ * from most of the people it is for.
+ *
+ * Every string here has to be a scope the platform actually issues, and getting that wrong
+ * fails silently: `includes()` is simply false for everybody, the link never renders, and
+ * a finished screen becomes unreachable from the navigation while working fine at its URL.
+ * Two entries were wrong in exactly that way - `/approvals` named `entitlement:approve` and
+ * `/admin` named `admin:write`, neither of which exists - so
+ * `tests/auth/test_console_scopes.py` now parses this table and checks it against the
+ * Python `Scope` enum. TypeScript cannot import that enum, so the check runs from the side
+ * that owns the vocabulary.
+ */
 interface NavItem {
   readonly href: string;
   readonly labelKey: string;
-  /** Undefined means everyone signed in sees it. */
-  readonly scope?: string;
+  /** Empty means everyone signed in sees it. Any one of these is enough. */
+  readonly scopes?: readonly string[];
 }
 
 const NAV: readonly NavItem[] = [
-  { href: '/ops', labelKey: 'operations', scope: 'incident:read' },
-  { href: '/ops/incidents', labelKey: 'incidents', scope: 'incident:read' },
-  { href: '/ops/dispatch', labelKey: 'dispatch', scope: 'dispatch:commit' },
-  { href: '/ops/alerts', labelKey: 'alerts', scope: 'alert:read' },
-  { href: '/ops/forecast', labelKey: 'forecast', scope: 'incident:read' },
-  { href: '/ops/review', labelKey: 'reviewQueue', scope: 'incident:write' },
-  { href: '/field/assessments', labelKey: 'assessments', scope: 'assessment:write' },
-  { href: '/approvals', labelKey: 'approvals', scope: 'entitlement:approve' },
-  { href: '/disbursements', labelKey: 'disbursements', scope: 'disbursement:release' },
-  { href: '/grievances', labelKey: 'grievances', scope: 'grievance:read' },
-  { href: '/audit', labelKey: 'audit', scope: 'ledger:read' },
-  { href: '/admin', labelKey: 'admin', scope: 'admin:write' },
+  { href: '/ops', labelKey: 'operations', scopes: ['incident:read'] },
+  { href: '/ops/incidents', labelKey: 'incidents', scopes: ['incident:read'] },
+  { href: '/ops/dispatch', labelKey: 'dispatch', scopes: ['dispatch:commit'] },
+  { href: '/ops/alerts', labelKey: 'alerts', scopes: ['alert:read'] },
+  { href: '/ops/forecast', labelKey: 'forecast', scopes: ['forecast:read'] },
+  { href: '/ops/review', labelKey: 'reviewQueue', scopes: ['incident:verify'] },
+  { href: '/field/assessments', labelKey: 'assessments', scopes: ['assessment:read'] },
+  {
+    href: '/approvals',
+    labelKey: 'approvals',
+    scopes: ['entitlement:approve_ds', 'entitlement:approve_district'],
+  },
+  { href: '/disbursements', labelKey: 'disbursements', scopes: ['disbursement:release'] },
+  { href: '/grievances', labelKey: 'grievances', scopes: ['grievance:read'] },
+  { href: '/audit', labelKey: 'audit', scopes: ['ledger:read'] },
+  { href: '/admin', labelKey: 'admin', scopes: ['system:admin'] },
 ];
 
 export interface AppShellProps {
@@ -74,8 +93,9 @@ export function AppShell({
     };
   }, []);
 
+  const held = new Set(principal?.scopes ?? []);
   const visible = NAV.filter(
-    (item) => !item.scope || (principal?.scopes.includes(item.scope) ?? false),
+    (item) => !item.scopes?.length || item.scopes.some((scope) => held.has(scope)),
   );
 
   return (

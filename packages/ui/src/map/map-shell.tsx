@@ -279,6 +279,114 @@ export function heatLayer(sourceId: string, data: unknown): LayerSpec {
   };
 }
 
+/**
+ * A responder's route, drawn as a line through its stops in sequence.
+ *
+ * `--signal`, never a severity colour. A route is a plan, not a hazard, and drawing it in
+ * the severity ramp would put a class-4 red line across a map where red already means
+ * something specific. The dash pattern says the same thing again for anyone who cannot
+ * separate the hues.
+ *
+ * **Blocked segments are not drawn, because nothing supplies them.** `road_access_lost` is
+ * a boolean on an incident and there is no road-network geometry anywhere in the platform,
+ * so a "blocked segment" layer would be a decoration. The dispatch gate names the incidents
+ * whose road access is lost in text instead, which is the true version of the same fact.
+ */
+export function routeLayer(sourceId: string, data: unknown): LayerSpec {
+  return {
+    id: `${sourceId}-route`,
+    source: { type: 'geojson', data },
+    layer: {
+      id: `${sourceId}-route`,
+      type: 'line',
+      source: sourceId,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': '#14A0AC',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 7, 1.5, 12, 3.5],
+        'line-dasharray': [2, 1.5],
+        'line-opacity': 0.9,
+      },
+    },
+  };
+}
+
+/**
+ * Responder positions.
+ *
+ * A square, so it is not another circle among the incident points: two point layers in the
+ * same shape are one layer as far as a glance is concerned, and a dispatcher reading this
+ * map has to separate "somebody needs help here" from "a team is here" in under a second.
+ *
+ * Coloured by availability rather than by severity - `--verified` for available, `--pending`
+ * for anything else. A responder has no severity, and borrowing the ramp for one would
+ * break the rule that those five hexes mean exactly one thing.
+ */
+export function responderLayer(sourceId: string, data: unknown): LayerSpec {
+  return {
+    id: `${sourceId}-responders`,
+    source: { type: 'geojson', data },
+    layer: {
+      id: `${sourceId}-responders`,
+      type: 'circle',
+      source: sourceId,
+      paint: {
+        'circle-color': [
+          'case',
+          ['==', ['get', 'available'], true],
+          '#45A272',
+          '#8492AF',
+        ],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 7, 3.5, 12, 8],
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#E8EDF5',
+      },
+    },
+  };
+}
+
+/**
+ * Divisions shaded by how much of a warning was confirmed delivered.
+ *
+ * A **sequential** ramp on one hue, not the severity ramp. Low delivery confirmation is
+ * not a hazard severity - it is a coverage figure, and painting a division dark red
+ * because its SMS receipts have not arrived would say the hazard there is worse than in
+ * the division next to it, which is the opposite of what the number means.
+ *
+ * The interpolation runs from `confirmed_fraction` 0 to 1, so the darkest shading is the
+ * division to send a vehicle to first. Divisions with nothing targeted are not in the
+ * source at all: a fraction with a zero denominator is not a low number, it is no number,
+ * and shading it would report an unwarned division as an unreached one.
+ */
+export function deliveryGapLayer(sourceId: string, data: unknown): LayerSpec {
+  return {
+    id: `${sourceId}-gaps`,
+    source: { type: 'geojson', data },
+    layer: {
+      id: `${sourceId}-gaps`,
+      type: 'circle',
+      source: sourceId,
+      paint: {
+        'circle-color': [
+          'interpolate',
+          ['linear'],
+          ['get', 'confirmed_fraction'],
+          0,
+          '#5B3A7E',
+          0.5,
+          '#7C6AA8',
+          1,
+          '#D6F0F2',
+        ],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 7, 5, 12, 14],
+        'circle-opacity': 0.85,
+        'circle-stroke-width': 1,
+        'circle-stroke-color': '#0B1220',
+      },
+    },
+  };
+}
+
 export interface MapLegendProps {
   /** Which levels actually appear on the map. Never the whole ramp by default. */
   readonly levels: readonly SeverityLevel[];

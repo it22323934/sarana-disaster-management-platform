@@ -56,6 +56,148 @@ class PlanSummary(BaseModel):
     rejection_reason: str | None = None
 
 
+class RouteStop(BaseModel):
+    """One incident on one responder's route, in the order it will be reached."""
+
+    model_config = ConfigDict(frozen=True)
+
+    incident_id: str
+    sequence: int
+    eta_minutes: float
+
+
+class ResponderRoute(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    responder_id: str
+    stops: list[RouteStop] = Field(default_factory=list)
+    total_minutes: float = 0.0
+
+
+class UnservableIncident(BaseModel):
+    """An incident no responder could be routed to, and why.
+
+    Never a silent omission. This is the entry a dispatcher escalates to a different
+    agency, and a plan that quietly left it out would look complete while somebody waited.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    incident_id: str
+    reason: str
+    detail: str = ""
+
+
+class IncidentFactors(BaseModel):
+    """Why one incident sits where it does in the plan's ranking.
+
+    `factors` stays a free-shaped mapping because the triage model owns its factor names.
+    Pinning them here would mean a model that added a term produced a 500 on the gate
+    screen, which is the one screen that must not fail.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    incident_id: str
+    rank: int | None = None
+    score: float | None = None
+    dispatchability: float | None = None
+    dispatchable: bool | None = None
+    model_version: str | None = None
+    method: str | None = None
+    factors: dict[str, Any] = Field(default_factory=dict)
+    explanation: str | None = None
+
+
+class PlanReasoning(BaseModel):
+    """What the agent did and why, as the `route` column recorded it.
+
+    This is the payload build file 20 requires the dispatch gate to render "expanded by
+    default". It has been in the database since file 16 - `Plan.as_route_column()` writes
+    exactly this shape - and the only thing missing was a response model that exposed it.
+
+    It is a whole object or nothing. A plan proposed by something that wrote no route
+    column has no reasoning, and `None` says that; a half-populated object would let the
+    gate screen render an empty factor list under a "why these are ranked here" heading,
+    which reads as *the agent considered nothing* rather than *nothing recorded a reason*.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    routes: list[ResponderRoute] = Field(default_factory=list)
+    unservable: list[UnservableIncident] = Field(default_factory=list)
+    factors: list[IncidentFactors] = Field(default_factory=list)
+    method: str | None = None
+    status: str | None = None
+    rationale: str | None = None
+    rationale_method: str | None = None
+
+
+class PlanDetail(PlanSummary):
+    """One plan, with the reasoning behind it.
+
+    Separate from `PlanSummary` rather than widening it: the list endpoint is polled every
+    five seconds for the gate banner's count, and a national event puts hundreds of plans
+    in it. Sending every factor breakdown on every poll would make the cheapest query in
+    the console the most expensive one.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    langgraph_thread_id: str | None = None
+    reasoning: PlanReasoning | None = Field(
+        default=None,
+        description="None when this plan carries no recorded reasoning at all.",
+    )
+
+
+def _reasoning_from(route: Any) -> PlanReasoning | None:
+    """Read the `route` JSONB column into the gate screen's contract.
+
+    Tolerant on the way in and strict on the way out. The column is written by the triage
+    agent and could have been written by an older version of it, so a missing key becomes
+    an empty list rather than a 500 on the one screen that must not fail. An empty or
+    absent column returns None, which the console renders as "no reasoning was recorded"
+    rather than as "the agent considered nothing".
+    """
+    if not isinstance(route, dict) or not route:
+        return None
+    return PlanReasoning(
+        routes=[r for r in route.get("routes") or [] if isinstance(r, dict)],
+        unservable=[u for u in route.get("unservable") or [] if isinstance(u, dict)],
+        factors=[f for f in route.get("factors") or [] if isinstance(f, dict)],
+        method=route.get("method"),
+        status=route.get("status"),
+        rationale=route.get("rationale"),
+        rationale_method=route.get("rationale_method"),
+    )
+
+
+class ResponderSummary(BaseModel):
+    """A team or vehicle, and where it currently is.
+
+    Typed rather than left as a bare dict, because it was not: the console had guessed a
+    `callsign` field this service has never had, and an untyped endpoint let the guess
+    survive to the browser, where it failed at the zod boundary and quietly emptied the
+    responder list on the dispatch gate. A response model makes the vocabulary a contract.
+
+    `lon`/`lat` are the responder's last known position and are nullable, which is the
+    honest state for a team that has not reported one. The map draws only the ones that
+    have a position and says how many it could not place, exactly as it does for incidents.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    org: str
+    type: str
+    capacity: int
+    status: str
+    home_gn_division_id: str | None = None
+    lon: float | None = None
+    lat: float | None = None
+
+
 class ApproveRequest(BaseModel):
     """A dispatcher releasing a plan.
 
@@ -109,16 +251,28 @@ async def list_plans(
     return await queries.list_plans(session, status=status_filter, limit=limit, offset=offset)
 
 
-@router.get("/dispatch-plans/{plan_id}", response_model=PlanSummary)
+@router.get("/dispatch-plans/{plan_id}", response_model=PlanDetail)
 async def get_plan(
     plan_id: UUID,
     session: SessionDep,
     principal: Principal = ReadPrincipal,
 ) -> Any:
+    """One plan, with the reasoning the human gate is required to show.
+
+    The factor breakdown and the `unservable` list are read from the plan's own `route`
+    column rather than from the agent's interrupt payload. They are the same data - the
+    triage agent writes both from one `Plan` - and reading the column means the gate screen
+    works for a plan whose reasoning thread has already been checkpointed away, which is
+    every plan more than an hour old.
+    """
     row = await queries.get_plan(session, plan_id)
     if row is None:
         raise NotFound("No such dispatch plan.", context={"plan_id": str(plan_id)})
-    return {**row, "id": str(row["id"])}
+    return {
+        **row,
+        "id": str(row["id"]),
+        "reasoning": _reasoning_from(row.get("route")),
+    }
 
 
 def _caller_token(request: Request) -> str | None:
@@ -282,7 +436,7 @@ async def reject_plan(
     }
 
 
-@router.get("/responders")
+@router.get("/responders", response_model=list[ResponderSummary])
 async def list_responders(
     session: SessionDep,
     principal: Principal = ReadPrincipal,

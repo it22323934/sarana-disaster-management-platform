@@ -8,10 +8,13 @@
 export {
   MapLegend,
   MapShell,
+  deliveryGapLayer,
   isGeoJsonSource,
   gnDivisionLayer,
   heatLayer,
   incidentLayer,
+  responderLayer,
+  routeLayer,
   severityColourExpression,
   type GeoJsonSourceLike,
   type LayerSpec,

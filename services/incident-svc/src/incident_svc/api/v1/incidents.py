@@ -71,6 +71,84 @@ class QueueResponse(BaseModel):
     entries: list[QueueEntry]
 
 
+class LinkedReport(BaseModel):
+    """One report behind an incident, as the console's context pane renders it.
+
+    **The original-language text is the point.** A dispatcher reading only the English
+    translation of a Tamil report is reading a machine's guess at what a frightened person
+    said, with no way to tell how good the guess was. So `text_original` travels with its
+    `detected_language` and its `confidence`, and the console renders it with `lang` set.
+
+    No field here identifies the sender. The query never selects the number hash or the
+    household id - see `_INCIDENT_REPORTS` for why that is the guarantee rather than
+    redaction here.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    report_id: str
+    channel: str
+    received_at: datetime
+    similarity: float | None = Field(
+        default=None,
+        description="How closely dedup matched this report. Null when a human linked it.",
+    )
+    linked_by: str | None = None
+    raw_text: str | None = None
+    reported_language: str | None = None
+    raw_audio_uri: str | None = Field(
+        default=None,
+        description="Object key, not a signed URL. Playback needs the object store wired.",
+    )
+    location_source: str | None = None
+    location_accuracy_m: int | None = None
+    processing_status: str | None = None
+
+    detected_language: str | None = None
+    text_original: str | None = None
+    text_en: str | None = None
+    confidence: float | None = None
+    needs_human_review: bool | None = None
+    reviewed_at: datetime | None = None
+
+
+class ClusterSibling(BaseModel):
+    """Another incident dedup folded into the same cluster as this one."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    public_ref: str
+    status: str
+    type: str
+    severity: int
+    gn_division_code: str
+    is_cluster_primary: bool
+    first_reported_at: datetime
+
+
+class IncidentDetail(IncidentSummary):
+    """One incident, and everything a dispatcher needs to decide about it.
+
+    The docstring on `GET /incidents/{id}` promised linked reports from the day it was
+    written and the SQL behind it joined none, so the console's context pane and the
+    incident detail screen both had to say so on screen. This is the shape that closes it.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    subtype: str | None = None
+    summary: dict[str, Any] | None = None
+    location_confidence: float | None = None
+    cluster_id: str | None = None
+    is_cluster_primary: bool | None = None
+    verified_at: datetime | None = None
+    resolved_at: datetime | None = None
+    correlation_id: str | None = None
+    reports: list[LinkedReport] = Field(default_factory=list)
+    dedup_links: list[ClusterSibling] = Field(default_factory=list)
+
+
 class StatusPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -180,17 +258,33 @@ async def incident_queue(
     }
 
 
-@router.get("/incidents/{incident_id}")
+@router.get("/incidents/{incident_id}", response_model=IncidentDetail)
 async def get_incident(
     incident_id: UUID,
     session: SessionDep,
     principal: Principal = ReadPrincipal,
 ) -> Any:
-    """One incident, with its linked reports and triage factors."""
+    """One incident, with its linked reports and the cluster dedup put it in.
+
+    Three reads rather than one join. The reports and the siblings are both one-to-many, so
+    a single statement would multiply the incident row by their product and every consumer
+    would have to un-fan it. Two extra round trips on a detail view is the cheaper answer
+    than a query nobody can read.
+
+    `dedup_links` is empty for an incident dedup never clustered, which is most of them.
+    """
     row = await queries.get_incident(session, incident_id)
     if row is None:
         raise NotFound("No such incident.", context={"incident_id": str(incident_id)})
-    return row
+
+    reports = await queries.incident_reports(session, incident_id)
+    cluster_id = row.get("cluster_id")
+    siblings = (
+        await queries.cluster_siblings(session, UUID(str(cluster_id)), incident_id)
+        if cluster_id
+        else []
+    )
+    return {**row, "reports": reports, "dedup_links": siblings}
 
 
 @router.patch("/incidents/{incident_id}", response_model=IncidentSummary)

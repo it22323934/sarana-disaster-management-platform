@@ -91,6 +91,67 @@ FROM incident.incident i
 WHERE i.id = :incident_id
 """
 
+# The reports behind one incident, with the transcription that decided each one's fate.
+#
+# **No column here identifies a person.** `sender_msisdn_hash` and `sender_household_id`
+# are deliberately not selected: the console renders this pane to a dispatcher who needs
+# the words and the confidence, not the caller. A query that never selects a name cannot
+# leak one, which is a stronger guarantee than redacting it downstream.
+#
+# The LATERAL picks the most recent transcription per report rather than joining all of
+# them, because a report re-transcribed after a human correction has two rows and the
+# older one is the machine's rejected guess. Showing both would put a superseded
+# transcript beside the corrected one with nothing to say which is which.
+_INCIDENT_REPORTS = """
+SELECT r.id::text AS report_id,
+       l.similarity,
+       l.linked_by,
+       r.channel,
+       r.received_at,
+       r.raw_text,
+       r.reported_language,
+       r.raw_audio_uri,
+       r.location_source,
+       r.location_accuracy_m,
+       r.processing_status,
+       t.detected_language,
+       t.text_original,
+       t.text_en,
+       t.confidence,
+       t.needs_human_review,
+       t.reviewed_at
+FROM incident.report_incident_link l
+JOIN incident.raw_report r ON r.id = l.raw_report_id
+LEFT JOIN LATERAL (
+    SELECT tr.detected_language, tr.text_original, tr.text_en, tr.confidence,
+           tr.needs_human_review, tr.reviewed_at,
+           COALESCE(tr.reviewed_text, tr.text_original) AS best_text
+    FROM incident.report_transcription tr
+    WHERE tr.raw_report_id = r.id
+    ORDER BY tr.created_at DESC
+    LIMIT 1
+) t ON true
+WHERE l.incident_id = :incident_id
+ORDER BY r.received_at
+LIMIT :limit
+"""
+
+# The other incidents dedup folded into this one's cluster, with when each arrived.
+#
+# `similarity` lives on the report link rather than here, so the sibling row carries the
+# cluster relationship and not a number: an incident is merged into a cluster by a human
+# or by the dedup rule, and quoting a similarity for the pair would imply a comparison
+# that was never made between these two rows.
+_CLUSTER_SIBLINGS = """
+SELECT i.id::text, i.public_ref, i.status, i.type, i.severity,
+       i.gn_division_code, i.is_cluster_primary, i.first_reported_at
+FROM incident.incident i
+WHERE i.cluster_id = CAST(:cluster_id AS uuid)
+  AND i.id <> :incident_id
+ORDER BY i.first_reported_at
+LIMIT 50
+"""
+
 _LIST_INCIDENTS = """
 SELECT i.id::text, i.public_ref, i.gn_division_id::text, i.gn_division_code, i.type,
        i.status, i.people_at_risk, i.severity, i.first_reported_at,
@@ -295,6 +356,31 @@ async def get_incident(session: AsyncSession, incident_id: UUID) -> dict[str, An
     result = await session.execute(text(_GET_INCIDENT), {"incident_id": incident_id})
     row = result.mappings().first()
     return dict(row) if row else None
+
+
+async def incident_reports(
+    session: AsyncSession, incident_id: UUID, *, limit: int = 50
+) -> list[dict[str, Any]]:
+    """Every report linked to this incident, oldest first.
+
+    Oldest first because the first report is the one that opened the incident and the ones
+    after it are corroboration. Reversing that would put the newest fragment at the top of
+    a pane whose whole job is to say what was originally reported.
+    """
+    result = await session.execute(
+        text(_INCIDENT_REPORTS), {"incident_id": incident_id, "limit": limit}
+    )
+    return [dict(row) for row in result.mappings()]
+
+
+async def cluster_siblings(
+    session: AsyncSession, cluster_id: UUID, incident_id: UUID
+) -> list[dict[str, Any]]:
+    """The other incidents in this one's dedup cluster."""
+    result = await session.execute(
+        text(_CLUSTER_SIBLINGS), {"cluster_id": cluster_id, "incident_id": incident_id}
+    )
+    return [dict(row) for row in result.mappings()]
 
 
 async def list_incidents(

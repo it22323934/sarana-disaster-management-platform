@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from agent_svc.api.v1 import agents, hazard_events
+from agent_svc.api.v1 import agents, forecasts, hazard_events
 
 router = APIRouter()
 router.include_router(agents.router)
 router.include_router(hazard_events.router)
+router.include_router(forecasts.router)

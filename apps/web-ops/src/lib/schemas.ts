@@ -52,6 +52,87 @@ export type DispatchPlan = z.infer<typeof dispatchPlanSchema>;
 
 export const dispatchPlanListSchema = z.array(dispatchPlanSchema);
 
+/** One responder's assigned sequence of stops, in the order they will be reached. */
+export const responderRouteSchema = z.object({
+  responder_id: z.string(),
+  stops: z
+    .array(
+      z.object({
+        incident_id: z.string(),
+        sequence: z.number().int(),
+        eta_minutes: z.coerce.number(),
+      }),
+    )
+    .default([]),
+  total_minutes: z.coerce.number().default(0),
+});
+
+export type ResponderRoute = z.infer<typeof responderRouteSchema>;
+
+/**
+ * An incident the solver could not fit, and why.
+ *
+ * Rendered prominently rather than as a footnote. It is the entry a dispatcher escalates
+ * to a different agency, and a gate screen that buried it would let somebody approve a
+ * plan while a household they never saw was left unreached.
+ */
+export const unservableSchema = z.object({
+  incident_id: z.string(),
+  reason: z.string(),
+  detail: z.string().default(''),
+});
+
+export type Unservable = z.infer<typeof unservableSchema>;
+
+/**
+ * Why one incident sits where it does in the plan's ranking.
+ *
+ * `factors` stays free-shaped because the triage model owns its factor names. The console
+ * walks it structurally and renders every key, because the term it does not recognise is
+ * the one the model just started using.
+ */
+export const incidentFactorsSchema = z.object({
+  incident_id: z.string(),
+  rank: z.number().int().nullable().default(null),
+  score: z.coerce.number().nullable().default(null),
+  dispatchability: z.coerce.number().nullable().default(null),
+  dispatchable: z.boolean().nullable().default(null),
+  model_version: z.string().nullable().default(null),
+  method: z.string().nullable().default(null),
+  factors: z.record(z.string(), z.unknown()).default({}),
+  explanation: z.string().nullable().default(null),
+});
+
+export type IncidentFactors = z.infer<typeof incidentFactorsSchema>;
+
+/**
+ * The agent's own account of the plan, read from `dispatch_plan.route`.
+ *
+ * **Null and empty are different claims.** Null means nothing recorded a reason; an empty
+ * factor list under a "why these are ranked here" heading would say the agent weighed
+ * nothing, which is worse and untrue. The gate screen shows the degraded banner for null
+ * and the breakdown for anything else.
+ */
+export const planReasoningSchema = z.object({
+  routes: z.array(responderRouteSchema).default([]),
+  unservable: z.array(unservableSchema).default([]),
+  factors: z.array(incidentFactorsSchema).default([]),
+  method: z.string().nullable().default(null),
+  status: z.string().nullable().default(null),
+  rationale: z.string().nullable().default(null),
+  /** How the prose was produced. "TEMPLATE" and a model name are weighed differently. */
+  rationale_method: z.string().nullable().default(null),
+});
+
+export type PlanReasoning = z.infer<typeof planReasoningSchema>;
+
+export const dispatchPlanDetailSchema = dispatchPlanSchema.extend({
+  langgraph_thread_id: z.string().nullable().default(null),
+  reasoning: planReasoningSchema.nullable().default(null),
+});
+
+export type DispatchPlanDetail = z.infer<typeof dispatchPlanDetailSchema>;
+
 /** The fixed taxonomy `incident-svc` accepts. Free text is a separate `note` field. */
 export const REJECTION_REASONS = [
   'INCORRECT_PRIORITISATION',
@@ -109,6 +190,82 @@ export type Incident = z.infer<typeof incidentSchema>;
 export const incidentListSchema = z.array(incidentSchema);
 
 /**
+ * One report behind an incident, with the transcription that decided its fate.
+ *
+ * **The original-language text is the point.** A dispatcher reading only the English
+ * translation of a Tamil report is reading a machine's guess at what a frightened person
+ * said, with no way to tell how good the guess was. So `text_original` travels with its
+ * `detected_language` and its `confidence`, and the console renders it with `lang` set so
+ * it appears in the right face and a screen reader uses the right voice.
+ *
+ * No field here identifies the sender. The query behind it never selects the number hash
+ * or the household id, which is a stronger guarantee than redacting one here.
+ */
+export const linkedReportSchema = z.object({
+  report_id: z.string(),
+  channel: z.string(),
+  received_at: z.string(),
+  /** How closely dedup matched. Null when a human made the link. */
+  similarity: z.coerce.number().nullable().default(null),
+  linked_by: z.string().nullable().default(null),
+  raw_text: z.string().nullable().default(null),
+  reported_language: z.string().nullable().default(null),
+  /**
+   * An object key, not a signed URL.
+   *
+   * Media signing is not wired (file 08), so this cannot be played. The console says the
+   * recording exists and that playback needs the object store, rather than rendering an
+   * audio element that silently fails - an operator who presses play and hears nothing
+   * concludes the recording is empty.
+   */
+  raw_audio_uri: z.string().nullable().default(null),
+  location_source: z.string().nullable().default(null),
+  location_accuracy_m: z.number().int().nullable().default(null),
+  processing_status: z.string().nullable().default(null),
+  detected_language: z.string().nullable().default(null),
+  text_original: z.string().nullable().default(null),
+  text_en: z.string().nullable().default(null),
+  confidence: z.coerce.number().nullable().default(null),
+  needs_human_review: z.boolean().nullable().default(null),
+  reviewed_at: z.string().nullable().default(null),
+});
+
+export type LinkedReport = z.infer<typeof linkedReportSchema>;
+
+/** Another incident dedup folded into the same cluster as this one. */
+export const clusterSiblingSchema = z.object({
+  id: z.string(),
+  public_ref: z.string(),
+  status: z.string(),
+  type: z.string(),
+  severity: z.number().int(),
+  gn_division_code: z.string(),
+  is_cluster_primary: z.boolean(),
+  first_reported_at: z.string(),
+});
+
+export type ClusterSibling = z.infer<typeof clusterSiblingSchema>;
+
+/**
+ * One incident with its linked reports and the cluster dedup put it in.
+ *
+ * `GET /incidents/{id}` promised linked reports from the day it was written and joined
+ * none, so both the context pane and the detail screen had to say so on screen. The
+ * service now returns them and this is the shape.
+ */
+export const incidentDetailSchema = incidentSchema.extend({
+  cluster_id: z.string().nullable().default(null),
+  is_cluster_primary: z.boolean().nullable().default(null),
+  verified_at: z.string().nullable().default(null),
+  resolved_at: z.string().nullable().default(null),
+  correlation_id: z.string().nullable().default(null),
+  reports: z.array(linkedReportSchema).default([]),
+  dedup_links: z.array(clusterSiblingSchema).default([]),
+});
+
+export type IncidentDetail = z.infer<typeof incidentDetailSchema>;
+
+/**
  * A queue row, as `QueueEntry` returns it.
  *
  * `score` and `factors` are always present: `incident-svc` computes them from the
@@ -149,12 +306,27 @@ export const queueSchema = z.object({
 
 export type Queue = z.infer<typeof queueSchema>;
 
+/**
+ * A responder, as `GET /responders` returns it.
+ *
+ * The field names here were guessed once - `callsign` and `gn_division_code`, neither of
+ * which this service has ever had - and the guess failed at this zod boundary, which
+ * quietly emptied the responder list on the dispatch gate. The endpoint now carries a
+ * response model so the vocabulary is a contract rather than an assumption.
+ *
+ * `lon`/`lat` are the last reported position and stay nullable: a team that has not
+ * reported one is not at (0, 0), and the map counts what it cannot place.
+ */
 export const responderSchema = z.object({
   id: z.string(),
-  callsign: z.string(),
+  /** The organisation, e.g. "Sri Lanka Navy". There is no per-unit callsign in the schema. */
+  org: z.string(),
   type: z.string(),
+  capacity: z.number().int().default(0),
   status: z.string(),
-  gn_division_code: z.string().nullable().default(null),
+  home_gn_division_id: z.string().nullable().default(null),
+  lon: z.coerce.number().nullable().default(null),
+  lat: z.coerce.number().nullable().default(null),
 });
 
 export type Responder = z.infer<typeof responderSchema>;
@@ -617,3 +789,172 @@ export const hazardEventListSchema = z.array(hazardEventSchema);
 export function anchorEvent(events: readonly HazardEvent[]): HazardEvent | null {
   return events.find((event) => event.landfall_at !== null) ?? null;
 }
+
+/**
+ * One division's forecast impact, and what moved it there.
+ *
+ * `drivers` is required non-empty by a CHECK constraint on the table and it is the reason
+ * this screen is worth having. "150mm of rain" is a meteorological fact; "these 40
+ * divisions, this many households, this likely loss of road access, because the catchment
+ * is already at capacity" is a decision. The console renders every driver key it is given
+ * rather than a known subset, because the driver it does not know about is the one the
+ * model added.
+ *
+ * `method` is `RULE_THRESHOLD` or `MODEL`, and the screen says which. A rule-derived class
+ * shown as if a model produced it is the same lie the triage queue's `assisted` flag
+ * exists to prevent, one screen further upstream.
+ */
+export const impactForecastSchema = z.object({
+  id: z.string(),
+  hazard_event_id: z.string(),
+  gn_division_id: z.string(),
+  gn_division_code: z.string(),
+  generated_at: z.string(),
+  valid_from: z.string(),
+  valid_to: z.string(),
+  impact_class: z.number().int().min(0).max(4),
+  confidence: z.coerce.number(),
+  lead_time_hours: z.number().int(),
+  method: z.string(),
+  model_version: z.string().nullable().default(null),
+  drivers: z.record(z.string(), z.unknown()).default({}),
+  expected_households_affected: z.number().int(),
+  expected_road_access_loss: z.boolean(),
+  correlation_id: z.string(),
+});
+
+export type ImpactForecast = z.infer<typeof impactForecastSchema>;
+
+export const impactForecastListSchema = z.array(impactForecastSchema);
+
+/**
+ * A pre-agreed condition, and what happened when it fired.
+ *
+ * `condition` is data rather than code so it can be published and argued about in the
+ * quiet years, which is the only time that argument is useful. A fired trigger always
+ * names an action - a CHECK enforces it - so one that did nothing says `NO_ACTION` rather
+ * than leaving the question open.
+ */
+export const anticipatoryTriggerSchema = z.object({
+  id: z.string(),
+  hazard_event_id: z.string(),
+  gn_division_code: z.string().nullable().default(null),
+  condition: z.record(z.string(), z.unknown()).default({}),
+  fired_at: z.string().nullable().default(null),
+  action_taken: z.string().nullable().default(null),
+  forecast_id: z.string().nullable().default(null),
+  notes: z.string().nullable().default(null),
+  created_at: z.string(),
+});
+
+export type AnticipatoryTrigger = z.infer<typeof anticipatoryTriggerSchema>;
+
+export const anticipatoryTriggerListSchema = z.array(anticipatoryTriggerSchema);
+
+/** One role held by one user, within one administrative area. */
+export const roleGrantSchema = z.object({
+  grant_id: z.string(),
+  role_code: z.string(),
+  role_name: z.record(z.string(), z.string()).default({}),
+  scope_type: z.string(),
+  scope_code: z.string(),
+});
+
+export type RoleGrant = z.infer<typeof roleGrantSchema>;
+
+/**
+ * An operator account and everything it can do.
+ *
+ * `mfa_enrolled` is on the row rather than behind a detail view because it is the question
+ * the screen exists to answer during an incident: an approver with no second factor cannot
+ * pass a gate, and finding that out when the gate refuses them is finding out too late.
+ */
+export const directoryUserSchema = z.object({
+  id: z.string(),
+  email: z.string().nullable().default(null),
+  full_name: z.string().nullable().default(null),
+  status: z.string(),
+  last_login_at: z.string().nullable().default(null),
+  created_at: z.string().nullable().default(null),
+  mfa_enrolled: z.boolean().default(false),
+  grants: z.array(roleGrantSchema).default([]),
+  scopes: z.array(z.string()).default([]),
+});
+
+export type DirectoryUser = z.infer<typeof directoryUserSchema>;
+
+export const directoryUserListSchema = z.array(directoryUserSchema);
+
+/** A role and the scopes it carries, read from the code that enforces them. */
+export const roleDefinitionSchema = z.object({
+  id: z.string(),
+  code: z.string(),
+  name: z.record(z.string(), z.string()).default({}),
+  scopes: z.array(z.string()).default([]),
+  grants_human_gate: z.boolean().default(false),
+});
+
+export type RoleDefinition = z.infer<typeof roleDefinitionSchema>;
+
+export const roleDefinitionListSchema = z.array(roleDefinitionSchema);
+
+/** The administrative scope levels `admin.user_role` accepts, and the code shape of each. */
+export const SCOPE_TYPES = ['NATIONAL', 'DISTRICT', 'DS', 'GN'] as const;
+
+export type ScopeType = (typeof SCOPE_TYPES)[number];
+
+/**
+ * What an alert would do, computed without sending anything.
+ *
+ * The mandatory step before a dispatch. A misconfigured area selection that targets all
+ * 14,022 divisions has to be caught here, before twenty million messages - which is why
+ * `exceeds_cap` is a field and not a comparison the console makes for itself.
+ */
+export const dryRunSchema = z.object({
+  dry_run: z.literal(true),
+  targeted: z.number().int(),
+  by_channel: z.record(z.string(), z.number()),
+  by_language: z.record(z.string(), z.number()),
+  estimated_cost_lkr: z.coerce.number(),
+  exceeds_cap: z.boolean(),
+  cap: z.number().int(),
+});
+
+export type DryRun = z.infer<typeof dryRunSchema>;
+
+/** What a real dispatch returns: the server's own sentence, never a bare percentage. */
+export const dispatchResultSchema = z.object({
+  dry_run: z.literal(false),
+  alert_id: z.string(),
+  summary: z.string(),
+});
+
+/**
+ * A GN division from the hierarchy, for area selection.
+ *
+ * The code is the identity and the name is only a label: several divisions share a name,
+ * and transliteration between the three scripts is not one-to-one. `GNDivisionPicker`
+ * matches on the code and on all three names for the same reason.
+ */
+export const gnDivisionSchema = z.object({
+  id: z.string(),
+  code: z.string(),
+  name: z.record(z.string(), z.string()).default({}),
+  ds_division_id: z.string(),
+  population: z.number().int().default(0),
+  household_count: z.number().int().default(0),
+  /**
+   * The division's centroid, for placing a boundary-free marker on the map.
+   *
+   * Used for the area-selection map and nowhere else. An *incident* is never placed at
+   * its division centroid - that invents a precision the report does not have - but a
+   * division legitimately has one, and it is what lets an operator pick an area by
+   * clicking rather than by typing fourteen-character codes.
+   */
+  centroid_lon: z.coerce.number().nullable().default(null),
+  centroid_lat: z.coerce.number().nullable().default(null),
+});
+
+export type GNDivisionRow = z.infer<typeof gnDivisionSchema>;
+
+export const gnDivisionListSchema = z.array(gnDivisionSchema);

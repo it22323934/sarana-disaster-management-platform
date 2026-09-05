@@ -225,10 +225,10 @@ That is a backend gap, it is in the handoff, and it is not a bug in the console.
 ### Tests
 
 ```bash
-pnpm --filter @sarana/web-ops verify-i18n   # 330 keys in si, ta and en
-pnpm --filter @sarana/web-ops test          # 19 unit tests: the gates and the map transform
+pnpm --filter @sarana/web-ops verify-i18n   # 335 keys in si, ta and en
+pnpm --filter @sarana/web-ops test          # 27 unit: gates, map transform, disaster phase
 pnpm --filter @sarana/web-ops test:a11y     # axe: 20 screens x 3 locales
-pnpm --filter @sarana/web-ops test:e2e      # 43 Playwright tests in real Chromium
+pnpm --filter @sarana/web-ops test:e2e      # 45 Playwright tests in real Chromium
 ```
 
 The e2e suite starts its own dev server on port 3100 and intercepts the gateway in the

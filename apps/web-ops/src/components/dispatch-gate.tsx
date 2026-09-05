@@ -24,6 +24,17 @@
  * an easy decision is fast, but the form does not submit on Enter and the approve button
  * stays disabled until six digits are present. A dispatcher resting a hand on the keyboard
  * must not be able to send responders towards a hazard.
+ *
+ * **`unservable` is above the decision, not below it.** It is often the most
+ * decision-relevant thing on the page: the incident nobody can reach is the one that gets
+ * escalated to a different agency, and a plan that showed only what it proposed would let
+ * somebody approve while a household they never saw was left waiting.
+ *
+ * The reasoning is read from the plan's own `route` column rather than from the agent's
+ * live interrupt payload, so it is still there for a plan whose thread was checkpointed
+ * away hours ago. When the column is empty the screen says nothing recorded a reason -
+ * which is a different and weaker claim than an empty factor list under a "why" heading,
+ * and the difference is why `reasoning` is nullable rather than defaulted.
  */
 
 import {
@@ -43,7 +54,7 @@ import {
   cn,
 } from '@sarana/ui';
 import { useTranslations } from 'next-intl';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Link } from '../i18n/routing';
 import { gatewayFetch } from '../lib/gateway-client';
@@ -52,8 +63,13 @@ import {
   REJECTION_REASONS,
   decisionResponseSchema,
   type Incident,
+  type IncidentFactors,
+  type PlanReasoning,
   type RejectionReason,
+  type Responder,
+  type Unservable,
 } from '../lib/schemas';
+import { RouteMap } from './route-map';
 import { stepUp } from '../lib/auth-actions';
 import { DegradedBanner, ErrorPanel } from './degraded';
 

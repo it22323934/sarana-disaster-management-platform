@@ -24,46 +24,61 @@ import { gatewayFetch } from './gateway-client';
 import {
   PENDING_PLAN_STATUSES,
   alertListSchema,
+  alertSchema,
   alertTemplateListSchema,
   anchorResponseSchema,
   anomalyListSchema,
+  anticipatoryTriggerListSchema,
   assessmentListSchema,
   auditEntryListSchema,
   costScheduleListSchema,
+  directoryUserListSchema,
+  dispatchPlanDetailSchema,
   dispatchPlanListSchema,
-  dispatchPlanSchema,
   disbursementListSchema,
   entitlementSchema,
   entitlementSummaryListSchema,
+  gnDivisionListSchema,
   grievanceListSchema,
   hazardEventListSchema,
   deliverySchema,
   gapListSchema,
+  impactForecastListSchema,
+  incidentDetailSchema,
   incidentListSchema,
-  incidentSchema,
   ledgerListSchema,
   queueSchema,
   responderListSchema,
   reviewListSchema,
+  roleDefinitionListSchema,
+  dryRunSchema,
   verifySchema,
   type Alert,
   type AlertTemplate,
   type Anomaly,
+  type AnticipatoryTrigger,
   type Assessment,
   type AuditEntry,
   type CostSchedule,
   type Delivery,
+  type DirectoryUser,
   type DispatchPlan,
+  type DispatchPlanDetail,
   type Entitlement,
   type EntitlementSummary,
   type Gap,
+  type GNDivisionRow,
   type Grievance,
   type HazardEvent,
+  type ImpactForecast,
   type Incident,
+  type IncidentDetail,
   type LedgerEntry,
   type Queue,
   type Responder,
   type ReviewItem,
+  type RoleDefinition,
+  type DryRun,
   type VerifyResult,
 } from './schemas';
 
@@ -98,6 +113,15 @@ export const queryKeys = {
     ['audit', subjectType, subjectId] as const,
   assessments: (division?: string) => ['assessments', division ?? 'all'] as const,
   grievanceList: (status?: string) => ['grievances', 'list', status ?? 'all'] as const,
+  forecasts: (hazardEventId?: string, minClass?: number) =>
+    ['impact-forecasts', hazardEventId ?? 'all', minClass ?? 0] as const,
+  forecastHistory: (divisionCode: string) => ['impact-forecasts', 'history', divisionCode] as const,
+  triggers: (hazardEventId?: string) => ['anticipatory-triggers', hazardEventId ?? 'all'] as const,
+  directoryUsers: (roleCode?: string, query?: string) =>
+    ['admin', 'users', roleCode ?? 'all', query ?? ''] as const,
+  roles: ['admin', 'roles'] as const,
+  gnDivisions: (query?: string) => ['admin', 'gn-divisions', query ?? ''] as const,
+  alert: (id: string) => ['alerts', 'one', id] as const,
 };
 
 /**
@@ -131,11 +155,20 @@ export function usePendingPlans(): UseQueryResult<DispatchPlan[]> {
   });
 }
 
-export function usePlan(planId: string): UseQueryResult<DispatchPlan> {
+/**
+ * One plan, with the reasoning the human gate is required to show.
+ *
+ * The detail schema, not the list one. `GET /dispatch-plans/{id}` carries the per-incident
+ * factor breakdown and the `unservable` list read from the plan's own `route` column - the
+ * same data the triage agent writes into its interrupt payload, but readable long after
+ * the reasoning thread has been checkpointed away, which is every plan more than an hour
+ * old.
+ */
+export function usePlan(planId: string): UseQueryResult<DispatchPlanDetail> {
   return useQuery({
     queryKey: queryKeys.plan(planId),
     refetchInterval: LIVE_INTERVAL_MS,
-    queryFn: () => gatewayFetch(`dispatch-plans/${planId}`, { schema: dispatchPlanSchema }),
+    queryFn: () => gatewayFetch(`dispatch-plans/${planId}`, { schema: dispatchPlanDetailSchema }),
   });
 }
 
@@ -251,12 +284,20 @@ export function useAnomalies(divisionCode?: string): UseQueryResult<Anomaly[]> {
   });
 }
 
-export function useIncident(id: string): UseQueryResult<Incident> {
+/**
+ * One incident, with its linked reports and dedup cluster.
+ *
+ * The reports carry the original-language text, the transcription confidence and the audio
+ * key. Until `GET /incidents/{id}` joined them, the context pane and the detail screen both
+ * had to say the reports could not be read - the endpoint's docstring had promised them
+ * since it was written and its SQL joined none.
+ */
+export function useIncident(id: string): UseQueryResult<IncidentDetail> {
   return useQuery({
     queryKey: queryKeys.incident(id),
     enabled: id.length > 0,
     refetchInterval: LIVE_INTERVAL_MS,
-    queryFn: () => gatewayFetch(`incidents/${id}`, { schema: incidentSchema }),
+    queryFn: () => gatewayFetch(`incidents/${id}`, { schema: incidentDetailSchema }),
   });
 }
 
@@ -438,6 +479,158 @@ export async function verifyChain(fromSeq?: number, toSeq?: number): Promise<Ver
   return gatewayFetch('audit/verify', {
     query: { from_seq: fromSeq, to_seq: toSeq },
     schema: verifySchema,
+  });
+}
+
+/**
+ * The current forecast per division, worst first.
+ *
+ * `minImpactClass` is applied server-side. Class 0 is most of the country on most days,
+ * and pulling fourteen thousand "no expected impact" rows to filter them in the browser
+ * is the difference between a screen that opens and one that does not.
+ *
+ * Polled at the live interval rather than the reference one: a forecast run during an
+ * approaching cyclone is generated every few minutes, and a stale impact class is the one
+ * number on this screen whose age changes what an operator does.
+ */
+export function useImpactForecasts(
+  hazardEventId?: string,
+  minImpactClass = 1,
+): UseQueryResult<ImpactForecast[]> {
+  return useQuery({
+    queryKey: queryKeys.forecasts(hazardEventId, minImpactClass),
+    refetchInterval: LIVE_INTERVAL_MS,
+    queryFn: () =>
+      gatewayFetch('impact-forecasts', {
+        query: {
+          hazard_event_id: hazardEventId,
+          min_impact_class: minImpactClass,
+          limit: 500,
+        },
+        schema: impactForecastListSchema,
+      }),
+  });
+}
+
+/**
+ * Every forecast run for one division, newest first.
+ *
+ * Fetched only when a division is selected. This is what answers "did we see this coming",
+ * which is the question asked after the event every time, and it cannot be answered from
+ * the latest run alone.
+ */
+export function useForecastHistory(divisionCode: string): UseQueryResult<ImpactForecast[]> {
+  return useQuery({
+    queryKey: queryKeys.forecastHistory(divisionCode),
+    enabled: divisionCode.length > 0,
+    queryFn: () =>
+      gatewayFetch('impact-forecasts/history', {
+        query: { gn_division_code: divisionCode, limit: 50 },
+        schema: impactForecastListSchema,
+      }),
+  });
+}
+
+/** Anticipatory triggers for an event, fired ones first. */
+export function useAnticipatoryTriggers(
+  hazardEventId?: string,
+): UseQueryResult<AnticipatoryTrigger[]> {
+  return useQuery({
+    queryKey: queryKeys.triggers(hazardEventId),
+    refetchInterval: LIVE_INTERVAL_MS,
+    queryFn: () =>
+      gatewayFetch('anticipatory-triggers', {
+        query: { hazard_event_id: hazardEventId, limit: 200 },
+        schema: anticipatoryTriggerListSchema,
+      }),
+  });
+}
+
+/**
+ * The operator directory.
+ *
+ * Filtering by role answers the question the admin screen exists for during an incident:
+ * who can release money in this district, and is any of them enrolled for a second factor.
+ */
+export function useDirectoryUsers(
+  roleCode?: string,
+  query?: string,
+): UseQueryResult<DirectoryUser[]> {
+  return useQuery({
+    queryKey: queryKeys.directoryUsers(roleCode, query),
+    refetchInterval: REFERENCE_INTERVAL_MS,
+    queryFn: () =>
+      gatewayFetch('admin/users', {
+        query: { role_code: roleCode, q: query, limit: 200 },
+        schema: directoryUserListSchema,
+      }),
+  });
+}
+
+/**
+ * Every role, with the scopes it carries.
+ *
+ * The scopes come from the same table `require()` authorises against, so a reviewer
+ * reading this screen is reading what the platform enforces rather than a description of
+ * it that can drift.
+ */
+export function useRoles(): UseQueryResult<RoleDefinition[]> {
+  return useQuery({
+    queryKey: queryKeys.roles,
+    refetchInterval: REFERENCE_INTERVAL_MS,
+    queryFn: () => gatewayFetch('admin/roles', { schema: roleDefinitionListSchema }),
+  });
+}
+
+/**
+ * GN divisions, for area selection.
+ *
+ * There are roughly 14,000 and no screen wants all of them, so this is always a search:
+ * the query goes to the server rather than filtering a downloaded list, because the list
+ * that would have to be downloaded is the problem.
+ *
+ * `enabled` on a two-character minimum. A one-letter query matches thousands of divisions
+ * and returns a page of them in an order nobody asked for, which trains an operator to
+ * ignore the results.
+ */
+export function useGNDivisions(query: string): UseQueryResult<GNDivisionRow[]> {
+  return useQuery({
+    queryKey: queryKeys.gnDivisions(query),
+    enabled: query.trim().length >= 2,
+    // Reference data in the strongest sense: boundaries change by gazette, not by event.
+    staleTime: REFERENCE_INTERVAL_MS,
+    queryFn: () =>
+      gatewayFetch('admin/gn-divisions', {
+        query: { q: query.trim(), limit: 200 },
+        schema: gnDivisionListSchema,
+      }),
+  });
+}
+
+/** One alert, for the draft detail screen that runs the dry run. */
+export function useAlert(alertId: string): UseQueryResult<Alert> {
+  return useQuery({
+    queryKey: queryKeys.alert(alertId),
+    enabled: alertId.length > 0,
+    refetchInterval: LIVE_INTERVAL_MS,
+    queryFn: () => gatewayFetch(`alerts/${alertId}`, { schema: alertSchema }),
+  });
+}
+
+/**
+ * Ask what an alert would do. Sends nothing.
+ *
+ * Deliberately **not** a `useQuery`, for the same reason `verifyChain` is not: a dry run
+ * that re-ran itself every fifteen seconds would turn a deliberate check into background
+ * noise, and the operator would send against a count they never actually read. It is an
+ * action, its result is held on the screen, and it is cleared the moment anything that
+ * would change it changes.
+ */
+export async function dryRunAlert(alertId: string): Promise<DryRun> {
+  return gatewayFetch(`alerts/${alertId}/dispatch`, {
+    method: 'POST',
+    body: { dry_run: true },
+    schema: dryRunSchema,
   });
 }
 
