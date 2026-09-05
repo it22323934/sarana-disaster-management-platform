@@ -361,5 +361,20 @@
     "noSchedulesHint": "Schedules arrive with the seed data or by migration.",
     "rate": "Rate",
     "cap": "Cap"
+  },
+  "approvals": {
+    "title": "Approvals",
+    "subtitle": "Entitlements waiting for a signature. Oldest first: the household that has waited longest is the one to reach first.",
+    "empty": "Nothing is waiting for an approval",
+    "emptyHint": "An entitlement appears here once an assessment has been accepted and valued.",
+    "waitingFor": "Waiting for",
+    "needs": "Needs {level}",
+    "fullyApproved": "Fully approved",
+    "calculated": "Calculated",
+    "signTitle": "Sign this entitlement",
+    "sign": "Approve as {level}",
+    "totpLabel": "Authenticator code",
+    "totpHint": "Six digits from your authenticator app. An approval is the signature the money gate relies on.",
+    "notARelease": "Approving is not releasing. A different person confirms the money should move, and the service refuses a release by whoever approved it."
   }
 }

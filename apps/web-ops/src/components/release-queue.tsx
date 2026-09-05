@@ -1,23 +1,20 @@
 'use client';
 
 /**
- * `/disbursements` — the release queue, and the endpoint it does not have.
+ * `/disbursements` — the release queue.
  *
- * `ledger-svc` exposes `GET /entitlements/{id}` but **no list endpoint**, so there is no
- * way to ask "which entitlements are approved and waiting to be released". The gate
- * screen itself works — it takes an entitlement id — but the queue in front of it cannot
- * be assembled from the API as it stands.
+ * `GET /entitlements?awaiting_release=true` is what fills it, and the service applies the
+ * approval rule rather than the console: readiness is decided by `domain/approval.py`,
+ * which is the same module the disbursement gate refuses with. A second copy of that rule
+ * here would drift, and the way drift presents is a queue offering an approver work the
+ * gate then rejects — which teaches approvers that refusals are noise.
  *
- * Rather than fake it, this screen does three honest things:
+ * Oldest first, from the server. The household that has waited longest is the one to reach
+ * first, and a newest-first list buries them under everything written since.
  *
- *   1. says the list is not available and why, so nobody concludes the queue is empty;
- *   2. offers direct entry by entitlement id, which is how approvers are told about work
- *      today — out of band, from an assessment reference;
- *   3. shows what has recently been released, from `GET /disbursements`, so an approver
- *      can confirm their own release landed.
- *
- * An empty list here would be the most dangerous screen in the console: it would tell a
- * district approver there is no money waiting when there might be a hundred households.
+ * Direct entry by reference stays, because an approver is still often told about a
+ * specific entitlement out of band. What has recently been released stays too, so an
+ * approver can confirm their own release landed.
  */
 
 import {
@@ -34,15 +31,16 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { useRouter } from '../i18n/routing';
-import { useDisbursements } from '../lib/queries';
-import type { Disbursement } from '../lib/schemas';
-import { DegradedBanner, ErrorPanel } from './degraded';
+import { useDisbursements, useEntitlementQueue } from '../lib/queries';
+import type { Disbursement, EntitlementSummary } from '../lib/schemas';
+import { ErrorPanel } from './degraded';
 
 export function ReleaseQueue() {
   const t = useTranslations('disbursement');
   const common = useTranslations('common');
   const router = useRouter();
   const released = useDisbursements();
+  const waiting = useEntitlementQueue(true);
   const [entitlementId, setEntitlementId] = useState('');
 
   const rows = (released.data ?? []) as Disbursement[];
@@ -51,9 +49,64 @@ export function ReleaseQueue() {
     <div className="flex flex-col gap-4 p-6">
       <h1 className="text-xl font-semibold">{t('queueTitle')}</h1>
 
-      {/* The gap, stated. Not an empty state — an empty state would be a claim that
-          nothing is waiting, and nothing here knows that. */}
-      <DegradedBanner kind="list" />
+      {waiting.isError ? (
+        <ErrorPanel error={waiting.error} />
+      ) : (
+        <DataTable<EntitlementSummary>
+          caption={t('queueTitle')}
+          rows={waiting.data ?? []}
+          rowKey={(row) => row.id}
+          height="24rem"
+          onRowActivate={(row) => router.push(`/disbursements/${row.id}`)}
+          empty={<EmptyState title={t('queueEmpty')} description={t('queueEmptyHint')} />}
+          columns={[
+            {
+              key: 'ref',
+              header: t('household'),
+              width: '14rem',
+              cell: (row) => <ReferenceCode code={row.assessment_ref} />,
+            },
+            {
+              key: 'division',
+              header: t('division'),
+              width: '11rem',
+              cell: (row) => (
+                <span data-sarana-datum="" className="font-mono text-xs">
+                  {row.gn_division_code}
+                </span>
+              ),
+            },
+            {
+              key: 'amount',
+              header: t('finalAmount'),
+              width: '13rem',
+              numeric: true,
+              cell: (row) => <LKRAmount cents={row.calculated_lkr_cents} />,
+            },
+            {
+              key: 'approvals',
+              header: t('approvals'),
+              width: '12rem',
+              // The levels that signed, not a count. Two signatures at one level are not
+              // two levels, and the gate checks levels.
+              cell: (row) => (
+                <span className="flex flex-wrap gap-1">
+                  {row.approved_levels.map((level) => (
+                    <Badge key={level} tone="verified">
+                      {level}
+                    </Badge>
+                  ))}
+                </span>
+              ),
+            },
+            {
+              key: 'waiting',
+              header: t('approvalAt'),
+              cell: (row) => <RelativeTime value={row.calculated_at} />,
+            },
+          ]}
+        />
+      )}
 
       <form
         className="flex flex-wrap items-end gap-3 rounded-[var(--radius-default)] border border-[var(--divider)] p-4"

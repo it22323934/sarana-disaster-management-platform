@@ -182,6 +182,32 @@ async def list_assessments(
     return [dict(row) for row in result.mappings()]
 
 
+async def list_entitlements(
+    session: AsyncSession,
+    *,
+    status: str | None = None,
+    division: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    """Entitlements, oldest first.
+
+    Oldest first rather than newest, because this feeds a work queue: the household that
+    has waited longest is the one an approver should reach first, and a newest-first list
+    buries them under every assessment written since.
+    """
+    result = await session.execute(
+        text(_LIST_ENTITLEMENTS),
+        {
+            "status": status,
+            "division": division,
+            "limit": limit,
+            "offset": offset,
+        },
+    )
+    return [dict(row) for row in result.mappings()]
+
+
 async def set_assessment_status(
     session: AsyncSession, assessment_id: UUID, status: str
 ) -> dict[str, Any] | None:
@@ -293,6 +319,39 @@ FROM aid.entitlement e
 JOIN aid.damage_assessment a ON a.id = e.assessment_id
 WHERE e.id = :entitlement_id
 """
+
+# Entitlements, for the approval and release queues.
+#
+# `released` counts live payments only: a reversed disbursement is money that came back, so
+# the entitlement is unpaid again and must appear in the release queue a second time.
+# Without that clause a reversal would quietly remove the household from every queue that
+# could pay them.
+#
+# `approved_levels` is an array rather than a count, because two approvals at the same
+# level are not two levels. The caller decides readiness from `domain.approval`, which is
+# the same rule the disbursement gate refuses with.
+_LIST_ENTITLEMENTS = """
+SELECT e.id::text, e.assessment_id::text, e.cost_schedule_version,
+       e.calculated_lkr_cents, e.calculated_at, e.status,
+       a.public_ref AS assessment_ref, a.household_id::text, a.gn_division_code,
+       a.category,
+       COALESCE(
+           (SELECT array_agg(DISTINCT ap.level)
+              FROM aid.approval ap
+             WHERE ap.entitlement_id = e.id AND ap.decision = 'APPROVED'),
+           ARRAY[]::text[]
+       ) AS approved_levels,
+       EXISTS (SELECT 1 FROM aid.disbursement d
+                WHERE d.entitlement_id = e.id AND d.reversed_at IS NULL) AS released
+FROM aid.entitlement e
+JOIN aid.damage_assessment a ON a.id = e.assessment_id
+WHERE (CAST(:status AS text) IS NULL OR e.status = CAST(:status AS text))
+  AND (CAST(:division AS text) IS NULL
+       OR a.gn_division_code LIKE CAST(:division AS text) || '%')
+ORDER BY e.calculated_at ASC
+LIMIT :limit OFFSET :offset
+"""
+
 
 _SET_ENTITLEMENT_STATUS = """
 UPDATE aid.entitlement

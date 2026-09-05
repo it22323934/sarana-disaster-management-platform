@@ -13,6 +13,7 @@ trigger answers "is this particular person allowed to be the one signing".
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
@@ -38,6 +39,41 @@ class ApprovalIncomplete(Exception):
 
 class SelfApproval(Exception):
     """The same person would be signing twice, or signing their own assessment."""
+
+
+def required_levels(
+    amount_lkr_cents: LKRCents,
+    *,
+    threshold_cents: LKRCents = DEFAULT_DISTRICT_THRESHOLD_CENTS,
+) -> frozenset[ApprovalLevel]:
+    """Which approval levels an amount needs before it can be released.
+
+    The same rule `ApprovalState.is_fully_approved` applies, expressed over an amount
+    alone so a queue can ask the question without loading every approver id. Both read
+    this threshold, so a queue that says an entitlement is ready and a gate that then
+    refuses it cannot disagree.
+    """
+    if amount_lkr_cents > threshold_cents:
+        return frozenset({ApprovalLevel.DS, ApprovalLevel.DISTRICT})
+    return frozenset({ApprovalLevel.DS})
+
+
+def is_ready_to_release(
+    amount_lkr_cents: LKRCents,
+    approved_levels: Iterable[str],
+    *,
+    threshold_cents: LKRCents = DEFAULT_DISTRICT_THRESHOLD_CENTS,
+) -> bool:
+    """Whether the recorded approvals cover every level this amount needs.
+
+    Levels, not a count. Two approvals at the same level are not two levels, and a queue
+    that counted rows would offer an approver work the gate is about to refuse.
+    """
+    recorded = {str(level) for level in approved_levels}
+    return all(
+        level.value in recorded
+        for level in required_levels(amount_lkr_cents, threshold_cents=threshold_cents)
+    )
 
 
 @dataclass(frozen=True, slots=True)

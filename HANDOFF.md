@@ -11,9 +11,9 @@ Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 The repository is organised around 30 numbered build files in `.claude/`. Progress is
 strictly sequential. Files 03-19 are complete, and **file 20 is mostly built**: the
 console's foundation, both human gates, the alert composer, chain verification, the
-template review gate and 16 of its 26 routes exist and are tested end to end in a browser.
-Two routes render an honest "not built" screen rather than a 404. The next work is
-finishing 20, then 21.
+template review gate, the approval queue and 17 of its 26 routes exist and are tested end
+to end in a browser. One route renders an honest "not built" screen rather than a 404. The
+next work is finishing 20, then 21.
 
 | File | Area | State |
 |---|---|---|
@@ -34,15 +34,15 @@ finishing 20, then 21.
 | 17 | Aid ledger & anomaly agent | Done — exposure-normalised detectors. No adapters. |
 | 18 | Supervisor & HITL | Done — routing table, both gates, conflicts. No adapters. |
 | 19 | Design system | Done — tokens, 3-script type, 34 components, 4 CI gates |
-| **20** | **Ops console** | **Mostly built — 16 of 26 routes, three gates, 30 e2e tests** |
+| **20** | **Ops console** | **Mostly built — 17 of 26 routes, three gates, 43 e2e tests** |
 | **21** | **Public dashboard** | **Scaffold only** |
 | 22–24 | Mobile (foundation, citizen, field companion) | Scaffold only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-On the TypeScript side, **251 tests pass**: 64 unit and 33 axe-over-every-story in
-`packages/ui`, 54 in `packages/ts-shared`, and in `apps/web-ops` 19 unit, 57 axe across
-**19 screens x three locales**, and **37 Playwright tests in a real Chromium**. `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of
+On the TypeScript side, **260 tests pass**: 64 unit and 33 axe-over-every-story in
+`packages/ui`, 54 in `packages/ts-shared`, and in `apps/web-ops` 19 unit, 60 axe across
+**20 screens x three locales**, and **43 Playwright tests in a real Chromium**. `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of
 Done commands are clean.
 
 On the Python side, untouched by file 19:
@@ -2238,10 +2238,9 @@ before they reach the button.
 
 ### Still placeholder, and honest about it
 
-- **Two routes render `NotBuilt` rather than working.** `/ops/forecast` and `/approvals`.
-  `/approvals` is blocked on the missing `GET /entitlements` list. `/ops/forecast` has no
-  data to show - nothing triggers the forecast agent in a running stack and it has never
-  run against the live services - so building the screen would mean building an empty one.
+- **One route renders `NotBuilt`.** `/ops/forecast` has no data to show: nothing triggers
+  the forecast agent in a running stack and it has never run against the live services, so
+  building the screen would mean building an empty one.
 - **`/admin` has templates and schedules, not users or roles.** The brief also names user
   and role administration and the gov-mock scenario controls. Users and roles need
   endpoints core-api does not expose; the scenario controls live on gov-mock at port 8006,
@@ -2552,6 +2551,50 @@ incident-svc work, and it is what unblocks that half of the pane.
 
 ---
 
+## `GET /entitlements` now exists, and the rule behind it lives in one place
+
+This is the first backend change made for file 20, and it was the only way to finish the
+money screens. `ledger-svc` had `GET /entitlements/{id}` and no list, so nothing could ask
+"what is waiting" - the console said so on screen rather than rendering an empty list,
+because an empty list would have told a district approver no money was waiting when there
+might have been a hundred households.
+
+Three decisions inside it:
+
+**`approved_levels` is an array, not a count.** Two approvals at the same level are not two
+levels. A queue that counted rows would offer an approver work the gate then refuses, and
+an approver who learns that refusals are noise is the one habit a human gate cannot afford.
+
+**`awaiting_release` filters in Python, not in SQL.** Readiness is decided by
+`domain.approval.is_ready_to_release`, the same module the disbursement gate refuses with.
+A WHERE clause encoding the same rule is a second copy that can drift, and the way drift
+presents is exactly the queue-offers-what-the-gate-rejects failure above.
+
+**`released` counts live payments only.** A reversed disbursement is money that came back,
+so the entitlement is unpaid again and must appear in the release queue a second time.
+Without that clause a reversal would quietly remove the household from every queue that
+could pay them.
+
+The rule moved into `domain/approval.py` as `required_levels` and `is_ready_to_release`,
+beside `ApprovalState`, so the queue and the gate read the same threshold. **20 parametrised
+tests assert the two never disagree** across every amount either side of the threshold and
+every combination of recorded levels - that agreement is the whole reason the helper exists
+rather than being inlined.
+
+### `/approvals` and the real release queue
+
+`/approvals` shows what each entitlement is still waiting for **by level**: "Needs DS" and
+"Needs DISTRICT" go to different people, and a generic "pending" misroutes the work.
+Signing requires a second factor, and the screen says plainly that approving is not
+releasing - a different person confirms the money should move, and `ledger-svc` refuses a
+release by whoever approved it.
+
+`/disbursements` no longer says its queue cannot be listed. It lists what is ready, oldest
+first from the server, because the household that has waited longest is the one to reach
+first.
+
+---
+
 ## Things that will bite you
 
 These each cost real debugging time. They are written down so they cost you none.
@@ -2801,9 +2844,6 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
 - **No endpoint lists hazard events (files 09/20).** `POST /alerts` requires a
   `hazard_event_id` and nothing in any service returns one, so the alert composer can
   compose and check a message but cannot create the draft.
-- **`ledger-svc` has no `GET /entitlements` (files 10/20).** Nothing can list entitlements
-  awaiting release, so the money gate's queue cannot be assembled. The gate screen itself
-  works from an entitlement id.
 - **No SSE anywhere (files 07/20).** The console polls. `LIVE_INTERVAL_MS` in
   `apps/web-ops/src/lib/queries.ts` is the one place that changes when a stream exists.
 - **No visual regression suite (file 19).** Required by the brief, and it needs a real

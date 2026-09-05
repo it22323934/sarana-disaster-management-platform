@@ -34,6 +34,7 @@ import {
   dispatchPlanSchema,
   disbursementListSchema,
   entitlementSchema,
+  entitlementSummaryListSchema,
   grievanceListSchema,
   deliverySchema,
   gapListSchema,
@@ -53,6 +54,7 @@ import {
   type Delivery,
   type DispatchPlan,
   type Entitlement,
+  type EntitlementSummary,
   type Gap,
   type Grievance,
   type Incident,
@@ -87,6 +89,8 @@ export const queryKeys = {
   templates: ['templates'] as const,
   anchors: ['ledger', 'anchors'] as const,
   costSchedules: ['cost-schedules'] as const,
+  entitlementQueue: (awaitingRelease: boolean) =>
+    ['entitlements', 'queue', awaitingRelease] as const,
   auditFor: (subjectType: string, subjectId: string) =>
     ['audit', subjectType, subjectId] as const,
   assessments: (division?: string) => ['assessments', division ?? 'all'] as const,
@@ -175,6 +179,27 @@ export function useResponders(): UseQueryResult<Responder[]> {
     queryKey: queryKeys.responders,
     refetchInterval: REFERENCE_INTERVAL_MS,
     queryFn: () => gatewayFetch('responders', { schema: responderListSchema }),
+  });
+}
+
+/**
+ * Entitlements waiting for a person, oldest first.
+ *
+ * `awaitingRelease` asks the service to apply the approval rule rather than filtering
+ * here: the rule lives in `domain/approval.py`, the disbursement gate refuses with it, and
+ * a second copy in the console is a second copy that can drift.
+ */
+export function useEntitlementQueue(
+  awaitingRelease: boolean,
+): UseQueryResult<EntitlementSummary[]> {
+  return useQuery({
+    queryKey: queryKeys.entitlementQueue(awaitingRelease),
+    refetchInterval: LIVE_INTERVAL_MS,
+    queryFn: () =>
+      gatewayFetch('entitlements', {
+        query: { awaiting_release: awaitingRelease, limit: 200 },
+        schema: entitlementSummaryListSchema,
+      }),
   });
 }
 

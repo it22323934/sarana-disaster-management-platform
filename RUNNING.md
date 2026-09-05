@@ -195,6 +195,7 @@ and the delivery-gaps panel, because it is the one that changes what happens nex
 /en/ops/alerts/new                  compose an alert, with live per-language SMS cost
 /en/audit/chain                     recompute the hash chain, and the daily anchors
 /en/admin                           sign and publish alert templates; cost schedules
+/en/approvals                       entitlements waiting for a DS or District signature
 ```
 
 `/admin` is where the twelve seeded templates get their Sinhala and Tamil signatures. Until
@@ -211,7 +212,7 @@ most of the country reads.
 Swap `en` for `si` or `ta` in any URL. The locale is in the path, not only a cookie, so a
 link to a plan opens in the language the sender was reading it in.
 
-### Two screens tell you something is missing, on purpose
+### One screen tells you something is missing, on purpose
 
 The dispatch gate shows a banner saying the agent reasoning is not attached. That is true:
 `GET /dispatch-plans/{id}` does not return the factor breakdown or the unservable list, and
@@ -219,20 +220,15 @@ the triage agent has no adapters, so no plan carries a reasoning thread. The scr
 rather than rendering an empty "why these are ranked here" section, which would read as
 *the agent considered nothing*.
 
-`/disbursements` says the queue cannot be listed. Also true: `ledger-svc` has no
-`GET /entitlements`, so nothing can ask which entitlements are waiting. An empty list there
-would tell a district approver no money is waiting when there might be a hundred
-households, so it says why and offers direct entry by entitlement reference instead.
-
-Both are backend gaps, both are in the handoff, and neither is a bug in the console.
+That is a backend gap, it is in the handoff, and it is not a bug in the console.
 
 ### Tests
 
 ```bash
-pnpm --filter @sarana/web-ops verify-i18n   # 317 keys in si, ta and en
+pnpm --filter @sarana/web-ops verify-i18n   # 330 keys in si, ta and en
 pnpm --filter @sarana/web-ops test          # 19 unit tests: the gates and the map transform
-pnpm --filter @sarana/web-ops test:a11y     # axe: 19 screens x 3 locales
-pnpm --filter @sarana/web-ops test:e2e      # 37 Playwright tests in real Chromium
+pnpm --filter @sarana/web-ops test:a11y     # axe: 20 screens x 3 locales
+pnpm --filter @sarana/web-ops test:e2e      # 43 Playwright tests in real Chromium
 ```
 
 The e2e suite starts its own dev server on port 3100 and intercepts the gateway in the
@@ -372,9 +368,9 @@ them exists. What does not exist is the screens. Working backwards from the buil
   four CI gates. `apps/web-ops` has the shell, the gateway, sign-in and step-up, the common
   operating picture, **both human gate screens**, the delivery-gaps panel, the incident and
   alert lists, the audit ledger with its anomaly disposition workflow, and the review and
-  grievance queues, the alert composer, chain verification, the assessment list and the
-  template review gate - 16 working routes, with 30 Playwright tests. Two routes say "not
-  built" rather than 404ing: forecast and approvals.
+  grievance queues, the alert composer, chain verification, the assessment list, the
+  template review gate and the approval queue - 17 working routes, with 43 Playwright
+  tests. One route says "not built" rather than 404ing: forecast.
 
 - **All six agents exist, and none is wired to the live stack.** The forecast agent turns rainfall into per-division
   impact predictions with lead time, confidence and the drivers that produced them, and

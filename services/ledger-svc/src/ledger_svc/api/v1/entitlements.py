@@ -17,7 +17,7 @@ from typing import Any
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from ledger_svc.adapters.events import publish
@@ -29,6 +29,7 @@ from ledger_svc.domain.approval import (
     ApprovalLevel,
     ApprovalState,
     SelfApproval,
+    is_ready_to_release,
 )
 from ledger_svc.repo import chain_writer, queries
 from sarana_shared.auth.dependencies import require
@@ -95,6 +96,35 @@ class EntitlementOut(BaseModel):
     approvals: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class EntitlementSummary(BaseModel):
+    """One entitlement in a work queue.
+
+    Deliberately without `calculation_trace`. The trace is the product and it belongs on
+    the detail view where somebody is about to act on it; carrying it in a list of two
+    hundred rows would make the queue expensive to load and would not be read on the way
+    past.
+
+    `approved_levels` and `released` are what a queue is filtered on, and both are computed
+    from the tables that are the record rather than from a denormalised column that can
+    disagree with them.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    assessment_id: str
+    assessment_ref: str
+    household_id: str
+    gn_division_code: str
+    category: str
+    cost_schedule_version: str
+    calculated_lkr_cents: int
+    calculated_at: datetime
+    status: str
+    approved_levels: list[str] = Field(default_factory=list)
+    released: bool = False
+
+
 class ApprovalOut(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -106,6 +136,44 @@ class ApprovalOut(BaseModel):
     decided_at: datetime
     prev_hash: str
     entry_hash: str
+
+
+@router.get("/entitlements", response_model=list[EntitlementSummary])
+async def list_entitlements(
+    session: SessionDep,
+    principal: Principal = ReadPrincipal,
+    status: str | None = Query(default=None, max_length=24),
+    division: str | None = Query(default=None, max_length=16),
+    awaiting_release: bool = Query(
+        default=False,
+        description="Only entitlements carrying every approval they need and not yet paid.",
+    ),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> Any:
+    """Entitlements, oldest first.
+
+    The queue behind both money screens. Without it a district approver has no way to ask
+    what is waiting, and a console rendering an empty list would be telling them no money
+    is waiting when there might be a hundred households.
+
+    `awaiting_release` is decided by `domain.approval.is_ready_to_release` rather than by a
+    WHERE clause, so the queue and the disbursement gate answer from the same rule. A
+    second copy of it in SQL is a second copy that can drift, and the way that drift
+    presents is a queue offering an approver work the gate then refuses.
+    """
+    rows = await queries.list_entitlements(
+        session, status=status, division=division, limit=limit, offset=offset
+    )
+    if not awaiting_release:
+        return rows
+
+    return [
+        row
+        for row in rows
+        if not row["released"]
+        and is_ready_to_release(int(row["calculated_lkr_cents"]), row["approved_levels"])
+    ]
 
 
 @router.post("/entitlements", response_model=EntitlementOut, status_code=201)

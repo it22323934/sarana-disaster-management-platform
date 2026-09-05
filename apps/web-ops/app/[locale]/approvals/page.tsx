@@ -1,10 +1,10 @@
 /**
- * `/approvals` - entitlement approvals. Not built.
+ * `/approvals` - entitlements waiting for a DS or District signature.
  */
 
 import { setRequestLocale } from 'next-intl/server';
 
-import { NotBuilt } from '../../../src/components/queues';
+import { ApprovalQueue } from '../../../src/components/approvals';
 
 export default async function ApprovalsPage({
   params,
@@ -13,5 +13,5 @@ export default async function ApprovalsPage({
 }) {
   const { locale } = await params;
   setRequestLocale(locale);
-  return <NotBuilt />;
+  return <ApprovalQueue />;
 }

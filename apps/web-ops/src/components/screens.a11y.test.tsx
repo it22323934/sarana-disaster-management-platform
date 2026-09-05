@@ -20,6 +20,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Locale } from '@sarana/ts-shared/i18n';
 
 import { Admin } from './admin';
+import { ApprovalQueue } from './approvals';
 import { AlertComposer } from './alert-composer';
 import { AlertList, DeliveryPanel } from './alerts';
 import { AssessmentList } from './assessments';
@@ -167,6 +168,7 @@ const SCREENS: readonly Screen[] = [
   { name: 'alert composer', render: () => <AlertComposer /> },
   { name: 'chain verification', render: () => <ChainVerification /> },
   { name: 'admin', render: () => <Admin /> },
+  { name: 'approvals', render: () => <ApprovalQueue /> },
   { name: 'assessments', render: () => <AssessmentList /> },
   { name: 'not built', render: () => <NotBuilt /> },
 ];

@@ -527,3 +527,57 @@ export const auditEntrySchema = z.object({
 export type AuditEntry = z.infer<typeof auditEntrySchema>;
 
 export const auditEntryListSchema = z.array(auditEntrySchema);
+
+/**
+ * One entitlement in a work queue, from `GET /entitlements`.
+ *
+ * No `calculation_trace`: the trace is the product and it belongs on the detail view where
+ * somebody is about to act on it, not in a list of two hundred rows nobody reads on the
+ * way past.
+ *
+ * `approved_levels` is levels, not a count. Two approvals at the same level are not two
+ * levels, and a console that counted rows would offer an approver work the gate then
+ * refuses - which teaches approvers that refusals are noise.
+ */
+export const entitlementSummarySchema = z.object({
+  id: z.string(),
+  assessment_id: z.string(),
+  assessment_ref: z.string(),
+  household_id: z.string(),
+  gn_division_code: z.string(),
+  category: z.string(),
+  cost_schedule_version: z.string(),
+  calculated_lkr_cents: z.number().int(),
+  calculated_at: z.string(),
+  status: z.string(),
+  approved_levels: z.array(z.string()).default([]),
+  released: z.boolean().default(false),
+});
+
+export type EntitlementSummary = z.infer<typeof entitlementSummarySchema>;
+
+export const entitlementSummaryListSchema = z.array(entitlementSummarySchema);
+
+/** The two approval levels `ledger-svc` accepts. */
+export const APPROVAL_LEVELS = ['DS', 'DISTRICT'] as const;
+
+export type ApprovalLevel = (typeof APPROVAL_LEVELS)[number];
+
+/**
+ * Above this, an entitlement needs District approval as well as DS.
+ *
+ * Mirrors `DEFAULT_DISTRICT_THRESHOLD_CENTS`. Used only to tell an approver which level
+ * their signature will be; the service decides what is required, and refuses if this is
+ * ever wrong.
+ */
+export const DISTRICT_THRESHOLD_CENTS = 50_000_000;
+
+export function levelsRequiredFor(amountCents: number): readonly ApprovalLevel[] {
+  return amountCents > DISTRICT_THRESHOLD_CENTS ? ['DS', 'DISTRICT'] : ['DS'];
+}
+
+export function outstandingLevels(row: EntitlementSummary): readonly ApprovalLevel[] {
+  return levelsRequiredFor(row.calculated_lkr_cents).filter(
+    (level) => !row.approved_levels.includes(level),
+  );
+}
