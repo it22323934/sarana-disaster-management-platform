@@ -32,9 +32,10 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useEffect, useRef, useState } from 'react';
 
 import { AuditTrail } from '@sarana/ui';
-import { useAuditTrail, useTriageQueue } from '../lib/queries';
+import { useAuditTrail, useIncident, useTriageQueue } from '../lib/queries';
 import type { QueueRow } from '../lib/schemas';
 import { DegradedBanner, ErrorPanel } from './degraded';
+import { DedupLinks, LinkedReports } from './linked-reports';
 import { SituationMap } from './situation-map';
 
 const LAYOUT_KEY = 'sarana.ops.layout';
@@ -497,6 +498,10 @@ function SelectedIncident({
 }) {
   const t = useTranslations('cop');
   const audit = useAuditTrail('incident', row.id);
+  // The queue row carries no reports - the queue query is one statement over thousands of
+  // incidents and joining every report to it would be the most expensive query on the
+  // platform. The detail read happens only for the selected row, which is one at a time.
+  const detail = useIncident(row.id);
 
   return (
     <div className="flex flex-col gap-3">
@@ -532,6 +537,20 @@ function SelectedIncident({
           </ul>
         </section>
       ) : null}
+
+      <section>
+        <h3 className="mb-1 text-sm font-medium">{t('reports')}</h3>
+        {/* The original-language text, the transcription confidence and the audio. Blocked
+            until `GET /incidents/{id}` joined its reports; the endpoint's docstring had
+            promised them from the day it was written and its SQL joined none. */}
+        <LinkedReports
+          reports={detail.data?.reports ?? []}
+          loading={detail.isPending}
+          failed={detail.isError}
+        />
+      </section>
+
+      <DedupLinks links={detail.data?.dedup_links ?? []} />
 
       <section>
         <h3 className="mb-1 text-sm font-medium">{t('auditTrail')}</h3>

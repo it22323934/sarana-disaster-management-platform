@@ -18,7 +18,7 @@ import type { ReactNode } from 'react';
 
 import { cn } from '@sarana/ui';
 
-export type DegradedKind = 'agent' | 'backend' | 'reasoning' | 'list';
+export type DegradedKind = 'agent' | 'backend' | 'reasoning';
 
 export interface DegradedBannerProps {
   readonly kind: DegradedKind;
@@ -37,10 +37,6 @@ export function DegradedBanner({ kind, age, className }: DegradedBannerProps) {
       body: t('backendExplanation', { age: age ?? '' }),
     },
     reasoning: { title: t('reasoningUnavailable'), body: t('reasoningExplanation') },
-    // Distinct from `backend`: the service is up and answering, and the endpoint this
-    // screen needs was never built. Telling an approver the platform is down would send
-    // them to look for an outage that is not there.
-    list: { title: t('listUnavailable'), body: t('listExplanation') },
   };
 
   return (

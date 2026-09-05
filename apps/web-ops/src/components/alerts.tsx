@@ -34,6 +34,15 @@ import { Link } from '../i18n/routing';
 import { useAlerts, useDelivery, useDeliveryGaps } from '../lib/queries';
 import type { Alert, Gap } from '../lib/schemas';
 import { ErrorPanel } from './degraded';
+import { GapMap } from './gap-map';
+
+/**
+ * Statuses from which a dispatch is still possible.
+ *
+ * Kept beside the list rather than imported from the dispatch screen, so this module does
+ * not pull a client component's whole dependency tree in for one array.
+ */
+const DISPATCHABLE_STATUSES = ['DRAFT', 'PENDING_SIGNOFF', 'APPROVED'];
 
 export function AlertList() {
   const t = useTranslations('alerts');
@@ -98,13 +107,23 @@ export function AlertList() {
               alert.effective_at ? <RelativeTime value={alert.effective_at} /> : '—',
           },
           {
-            key: 'delivery',
+            key: 'actions',
             header: t('delivery'),
-            width: '10rem',
+            width: '16rem',
+            // Two destinations, and which one is useful depends on the row. A draft goes
+            // to the dry run; a dispatched alert goes to its delivery. Offering both on
+            // every row would put "send" beside an alert that has already gone out.
             cell: (alert) => (
-              <Button asChild size="sm" variant="secondary">
-                <Link href={`/ops/alerts/${alert.id}/delivery`}>{common('review')}</Link>
-              </Button>
+              <span className="flex flex-wrap gap-2">
+                {DISPATCHABLE_STATUSES.includes(alert.status) ? (
+                  <Button asChild size="sm" variant="primary">
+                    <Link href={`/ops/alerts/${alert.id}`}>{t('openDraft')}</Link>
+                  </Button>
+                ) : null}
+                <Button asChild size="sm" variant="secondary">
+                  <Link href={`/ops/alerts/${alert.id}/delivery`}>{common('review')}</Link>
+                </Button>
+              </span>
             ),
           },
         ]}
@@ -195,6 +214,11 @@ export function DeliveryPanel({ alertId }: DeliveryPanelProps) {
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-medium">{t('gaps')}</h2>
         <p className="text-xs text-[var(--text-muted)]">{t('gapsHint')}</p>
+        {/* Shaded by confirmed fraction on a single-hue sequential ramp, never the
+            severity ramp: a division whose receipts have not arrived is not a worse
+            hazard than the one next to it, and borrowing those five colours would say so.
+            The table below is the authority and stays in the server's order. */}
+        <GapMap gaps={gaps.data ?? []} />
         {gaps.isError ? (
           <ErrorPanel error={gaps.error} />
         ) : (

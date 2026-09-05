@@ -47,6 +47,7 @@ import {
 import { disbursementSchema, flagContext, isOpenAnomaly, isOpenGrievance } from '../lib/schemas';
 import { stepUp } from '../lib/auth-actions';
 import type { PrincipalSummary } from '../lib/session';
+import { CalculationTrace } from './calculation-trace';
 import { ErrorPanel } from './degraded';
 
 const TOTP_LENGTH = 6;
@@ -248,11 +249,17 @@ export function DisbursementGate({ entitlementId, principal }: DisbursementGateP
         </section>
       ) : null}
 
-      <CalculationTrace
-        trace={record.calculation_trace}
-        scheduleVersion={record.cost_schedule_version}
-        amountCents={record.calculated_lkr_cents}
-      />
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-medium">{t('calculation')}</h2>
+        {/* The same component `/approvals/[id]` renders. One renderer, so the approver who
+            signs and the releaser who pays are looking at an identical derivation - two
+            renderers would eventually omit different steps. */}
+        <CalculationTrace
+          trace={record.calculation_trace}
+          scheduleVersion={record.cost_schedule_version}
+          amountCents={record.calculated_lkr_cents}
+        />
+      </section>
 
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-medium">{t('approvals')}</h2>
@@ -369,69 +376,4 @@ function Blocker({
       {children}
     </section>
   );
-}
-
-/**
- * The calculation, rendered as a readable derivation.
- *
- * `calculation_trace` is whatever `ledger-svc` recorded, so this walks it structurally
- * rather than assuming a shape. A trace with an unexpected key is rendered rather than
- * dropped: the one thing this panel must never do is silently omit a step, because the
- * step it omits is the one the approver needed.
- */
-function CalculationTrace({
-  trace,
-  scheduleVersion,
-  amountCents,
-}: {
-  readonly trace: Record<string, unknown>;
-  readonly scheduleVersion: string;
-  readonly amountCents: number;
-}) {
-  const t = useTranslations('disbursement');
-  const entries = Object.entries(trace);
-
-  return (
-    <section className="flex flex-col gap-2">
-      <h2 className="text-sm font-medium">{t('calculation')}</h2>
-      <div className="rounded-[var(--radius-default)] border border-[var(--divider)] bg-[var(--surface-card)] p-4">
-        <dl className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-baseline gap-2">
-            <dt className="text-2xs uppercase tracking-wide text-[var(--text-muted)]">
-              {t('scheduleVersion')}
-            </dt>
-            <dd data-sarana-datum="" className="font-mono text-sm">
-              {scheduleVersion}
-            </dd>
-          </div>
-
-          {entries.map(([key, value]) => (
-            <div key={key} className="flex flex-wrap items-baseline gap-2">
-              <dt className="text-2xs uppercase tracking-wide text-[var(--text-muted)]">
-                {key}
-              </dt>
-              <dd data-sarana-datum="" className="font-mono text-xs">
-                {renderTraceValue(value)}
-              </dd>
-            </div>
-          ))}
-
-          <div className="mt-2 flex flex-wrap items-baseline gap-2 border-t border-[var(--divider)] pt-2">
-            <dt className="text-2xs uppercase tracking-wide text-[var(--text-muted)]">
-              {t('finalAmount')}
-            </dt>
-            <dd>
-              <LKRAmount cents={amountCents} className="text-base font-semibold" />
-            </dd>
-          </div>
-        </dl>
-      </div>
-    </section>
-  );
-}
-
-function renderTraceValue(value: unknown): string {
-  if (value === null || value === undefined) return '—';
-  if (typeof value === 'object') return JSON.stringify(value);
-  return String(value);
 }

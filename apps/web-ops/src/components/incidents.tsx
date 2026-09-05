@@ -24,9 +24,11 @@ import {
 import type { ConfidenceBand, SeverityLevel } from '@sarana/ui';
 import { useTranslations } from 'next-intl';
 
-import { useIncident, useIncidents } from '../lib/queries';
+import { useAuditTrail, useIncident, useIncidents } from '../lib/queries';
 import type { Incident } from '../lib/schemas';
+import { AuditTrail } from '@sarana/ui';
 import { ErrorPanel } from './degraded';
+import { DedupLinks, LinkedReports } from './linked-reports';
 
 /**
  * Below this, a location is not trusted for dispatch.
@@ -126,6 +128,7 @@ export function IncidentDetail({ incidentId }: IncidentDetailProps) {
   const t = useTranslations('incidents');
   const cop = useTranslations('cop');
   const incident = useIncident(incidentId);
+  const audit = useAuditTrail('incident', incidentId);
 
   if (incident.isPending) {
     return (
@@ -191,6 +194,40 @@ export function IncidentDetail({ incidentId }: IncidentDetailProps) {
           />
         </section>
       )}
+
+      {/* What was reported, before what the platform did about it. The order is the
+          argument: an operator forming a view of this incident should read the words
+          somebody used before reading the actions taken on their behalf. */}
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-medium">{cop('reports')}</h2>
+        <LinkedReports reports={record.reports} failed={false} />
+      </section>
+
+      <DedupLinks links={record.dedup_links} />
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-medium">{cop('auditTrail')}</h2>
+        {audit.isError ? (
+          // A failed audit read is not an empty audit trail. Nothing on screen would say
+          // this incident has no history, which is a claim about the incident.
+          <p className="text-xs text-[var(--sev-2-fg)]">{cop('auditUnavailable')}</p>
+        ) : (audit.data ?? []).length === 0 ? (
+          <p className="text-xs text-[var(--text-muted)]">{cop('auditEmpty')}</p>
+        ) : (
+          <AuditTrail
+            label={cop('auditTrail')}
+            entries={(audit.data ?? []).map((entry) => ({
+              id: entry.id,
+              at: <RelativeTime value={entry.occurred_at} />,
+              // An agent is named; a person is a type. No personal name appears because
+              // the query never selects one.
+              actor: entry.agent_name ?? entry.actor_type,
+              action: entry.action,
+              correlationId: entry.correlation_id,
+            }))}
+          />
+        )}
+      </section>
     </div>
   );
 }

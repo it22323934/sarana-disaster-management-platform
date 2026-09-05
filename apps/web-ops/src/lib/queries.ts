@@ -607,6 +607,45 @@ export function useGNDivisions(query: string): UseQueryResult<GNDivisionRow[]> {
   });
 }
 
+/**
+ * Centroids for a named set of GN divisions.
+ *
+ * `core-api` has no bulk-by-code read and serves geometry one division at a time out of
+ * roughly fourteen thousand, so this searches by code - the code is an exact, indexed
+ * match on `q` - one request per division, and only for the divisions actually on screen.
+ * Bounded by the size of the event rather than by the size of the country, which is the
+ * same rule the boundary layer will follow when it is built.
+ *
+ * Capped. A national fan-out can produce hundreds of gap rows and a request per row would
+ * be worse than no map; past the cap the map draws what it has and the panel says how many
+ * it could not place, which is the same honesty rule as an incident with no coordinate.
+ */
+export const MAX_DIVISION_LOOKUPS = 60;
+
+export function useGNDivisionsByCode(
+  codes: readonly string[],
+): UseQueryResult<GNDivisionRow[]> {
+  const wanted = [...new Set(codes)].slice(0, MAX_DIVISION_LOOKUPS).sort();
+  return useQuery({
+    queryKey: ['admin', 'gn-divisions', 'by-code', wanted] as const,
+    enabled: wanted.length > 0,
+    // Boundaries change by gazette, not by event. Nothing is gained by refetching these
+    // while an operator reads the panel they are drawn on.
+    staleTime: REFERENCE_INTERVAL_MS,
+    queryFn: async () => {
+      const pages = await Promise.all(
+        wanted.map((code) =>
+          gatewayFetch('admin/gn-divisions', {
+            query: { q: code, limit: 1 },
+            schema: gnDivisionListSchema,
+          }),
+        ),
+      );
+      return pages.flat();
+    },
+  });
+}
+
 /** One alert, for the draft detail screen that runs the dry run. */
 export function useAlert(alertId: string): UseQueryResult<Alert> {
   return useQuery({

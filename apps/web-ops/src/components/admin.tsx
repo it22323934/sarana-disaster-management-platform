@@ -49,6 +49,7 @@ import { gatewayFetch } from '../lib/gateway-client';
 import { useCostSchedules, useTemplates } from '../lib/queries';
 import type { AlertTemplate, ScheduleLine } from '../lib/schemas';
 import { ErrorPanel } from './degraded';
+import { RoleCatalogue, UserDirectory } from './directory';
 
 export function Admin() {
   const t = useTranslations('admin');
@@ -60,13 +61,25 @@ export function Admin() {
       <Tabs defaultValue="templates">
         <TabsList>
           <TabsTrigger value="templates">{t('templates')}</TabsTrigger>
+          <TabsTrigger value="users">{t('users')}</TabsTrigger>
+          <TabsTrigger value="roles">{t('roles')}</TabsTrigger>
           <TabsTrigger value="schedules">{t('schedules')}</TabsTrigger>
+          <TabsTrigger value="scenario">{t('scenario')}</TabsTrigger>
         </TabsList>
         <TabsContent value="templates">
           <TemplateReview />
         </TabsContent>
+        <TabsContent value="users">
+          <UserDirectory />
+        </TabsContent>
+        <TabsContent value="roles">
+          <RoleCatalogue />
+        </TabsContent>
         <TabsContent value="schedules">
           <CostSchedules />
+        </TabsContent>
+        <TabsContent value="scenario">
+          <ScenarioControls />
         </TabsContent>
       </Tabs>
     </div>
@@ -347,6 +360,44 @@ function CostSchedules() {
           },
         ]}
       />
+    </div>
+  );
+}
+
+/**
+ * The gov-mock scenario controls, and why this console does not drive them.
+ *
+ * The brief lists them on `/admin`. They live on gov-mock at port 8006 - load a scenario,
+ * advance the clock, inject chaos - and gov-mock is deliberately **not in the gateway's
+ * service map**, which is the only reason this screen cannot reach them.
+ *
+ * That absence is the point rather than an omission. gov-mock impersonates the Department
+ * of Meteorology, NBRO, the NDRSC and three payment rails; a console able to advance its
+ * clock is a console able to make the platform believe a cyclone made landfall. Adding it
+ * to the map would mean the operations console and the simulator share one origin and one
+ * token, and the difference between "the met feed says this" and "somebody typed this"
+ * would come down to which button was pressed.
+ *
+ * So the controls are named, with the commands that drive them, and an operator running a
+ * demo runs them deliberately from a terminal. The screen says so rather than leaving the
+ * tab empty, because an empty tab reads as a broken screen.
+ */
+function ScenarioControls() {
+  const t = useTranslations('admin');
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm">{t('scenarioNotHere')}</p>
+      <p className="text-xs text-[var(--text-muted)]">{t('scenarioWhy')}</p>
+      <pre
+        data-sarana-datum=""
+        className="overflow-x-auto rounded-[var(--radius-default)] border border-[var(--divider)] bg-[var(--surface-card)] p-3 font-mono text-2xs"
+      >
+{`curl -X POST localhost:8006/mock/v1/scenario/load  -d '{"scenario_id":"ditwah_kandy"}'
+curl -X POST localhost:8006/mock/v1/scenario/advance -d '{"to":"T+6h"}'
+curl -X POST localhost:8006/mock/v1/chaos -d '{"timeout_pct":100}'
+curl -s localhost:8006/mock/v1/state | jq .clock`}
+      </pre>
+      <p className="text-2xs text-[var(--text-muted)]">{t('scenarioMock')}</p>
     </div>
   );
 }
