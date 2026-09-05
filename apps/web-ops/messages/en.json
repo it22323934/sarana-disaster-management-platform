@@ -87,7 +87,10 @@
     "layerDivisions": "Division boundaries",
     "layerIncidents": "Incidents",
     "layerDensity": "Report density",
-    "layerDeliveryGaps": "Delivery gaps"
+    "layerDeliveryGaps": "Delivery gaps",
+    "noCoordinate": "no coordinate",
+    "unplaceable": "{count, plural, one {# incident has no coordinate and is not on the map} other {# incidents have no coordinate and are not on the map}}",
+    "layersNotBuilt": "Division boundaries, report density and delivery gaps are specified but not built. They are absent rather than shown as empty layers."
   },
   "dispatch": {
     "title": "Dispatch approval",
@@ -335,5 +338,23 @@
     "emptyHint": "Assessments arrive from the Field Companion, or by sync when a handset regains signal.",
     "costEstimate": "Officer’s estimate",
     "assessedAt": "Assessed"
+  },
+  "admin": {
+    "title": "Administration",
+    "templates": "Alert templates",
+    "templatesHint": "A template needs a native signature in Sinhala and in Tamil before it can be published, and no alert can be dispatched from an unpublished one. This is the gate; it is not a formality.",
+    "noTemplates": "No templates exist",
+    "noTemplatesHint": "Templates are created by seeding or through POST /templates.",
+    "sign": "Sign {language}",
+    "signed": "{language} signed",
+    "unsigned": "{language} unsigned",
+    "publish": "Publish",
+    "needsBothSignatures": "Publication needs both signatures. The server refuses without them, and so does a database predicate.",
+    "schedules": "Cost schedules",
+    "schedulesHint": "Read-only. A schedule is what every entitlement is calculated from; changing one from a console during an incident would silently re-price work already done. Versions are added by migration.",
+    "noSchedules": "No cost schedule is published",
+    "noSchedulesHint": "Schedules arrive with the seed data or by migration.",
+    "rate": "Rate",
+    "cap": "Cap"
   }
 }

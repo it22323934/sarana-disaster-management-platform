@@ -93,6 +93,15 @@ export const incidentSchema = z.object({
   status: z.string(),
   first_reported_at: z.string(),
   location_confidence: z.coerce.number().nullable().default(null),
+  /**
+   * WGS84, from the incident's POINT. Null when the report never carried a location.
+   *
+   * Nullable and stays nullable: an incident with no coordinate is real - a phone call
+   * naming a village and nothing more - and dropping it from the map is different from
+   * placing it at (0, 0) in the Gulf of Guinea.
+   */
+  lon: z.coerce.number().nullable().default(null),
+  lat: z.coerce.number().nullable().default(null),
 });
 
 export type Incident = z.infer<typeof incidentSchema>;
@@ -441,3 +450,37 @@ export const assessmentSchema = z.object({
 export type Assessment = z.infer<typeof assessmentSchema>;
 
 export const assessmentListSchema = z.array(assessmentSchema);
+
+/**
+ * One line of a cost schedule, with the formula that produced its rate.
+ *
+ * `formula` is published, not internal. A household told what it is entitled to can read
+ * the same formula the system used, which is the difference between a figure that is
+ * contestable and one that is merely announced.
+ */
+export const scheduleLineSchema = z.object({
+  id: z.string(),
+  category: z.string(),
+  subcategory: z.string().nullable().default(null),
+  description: z.record(z.string(), z.string()).default({}),
+  unit: z.string(),
+  rate_lkr_cents: z.number().int(),
+  cap_lkr_cents: z.number().int().nullable().default(null),
+  formula: z.record(z.string(), z.unknown()).default({}),
+});
+
+export type ScheduleLine = z.infer<typeof scheduleLineSchema>;
+
+export const costScheduleSchema = z.object({
+  id: z.string(),
+  version: z.string(),
+  published_at: z.string(),
+  source_ref: z.string().nullable().default(null),
+  effective_from: z.string(),
+  effective_to: z.string().nullable().default(null),
+  lines: z.array(scheduleLineSchema).default([]),
+});
+
+export type CostSchedule = z.infer<typeof costScheduleSchema>;
+
+export const costScheduleListSchema = z.array(costScheduleSchema);

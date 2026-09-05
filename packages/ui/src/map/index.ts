@@ -8,11 +8,14 @@
 export {
   MapLegend,
   MapShell,
+  isGeoJsonSource,
   gnDivisionLayer,
   heatLayer,
   incidentLayer,
   severityColourExpression,
+  type GeoJsonSourceLike,
   type LayerSpec,
   type MapLegendProps,
+  type MapLike,
   type MapShellProps,
 } from './map-shell.js';

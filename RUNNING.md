@@ -194,7 +194,12 @@ and the delivery-gaps panel, because it is the one that changes what happens nex
 /en/audit/anomalies                 flags, their innocent explanations, disposition
 /en/ops/alerts/new                  compose an alert, with live per-language SMS cost
 /en/audit/chain                     recompute the hash chain, and the daily anchors
+/en/admin                           sign and publish alert templates; cost schedules
 ```
+
+`/admin` is where the twelve seeded templates get their Sinhala and Tamil signatures. Until
+a template has both and is published, no alert can be dispatched from it - which is why the
+composer reports "no template is published yet" on a fresh seed. That is the gate working.
 
 `/ops/alerts/new` is worth opening even with nothing seeded. It previews the message in
 all three languages side by side with the segment cost under each, and the numbers show
@@ -224,10 +229,10 @@ Both are backend gaps, both are in the handoff, and neither is a bug in the cons
 ### Tests
 
 ```bash
-pnpm --filter @sarana/web-ops verify-i18n   # 293 keys in si, ta and en
-pnpm --filter @sarana/web-ops test          # 12 unit tests over the gates
-pnpm --filter @sarana/web-ops test:a11y     # axe: 17 screens x 3 locales
-pnpm --filter @sarana/web-ops test:e2e      # 25 Playwright tests in real Chromium
+pnpm --filter @sarana/web-ops verify-i18n   # 312 keys in si, ta and en
+pnpm --filter @sarana/web-ops test          # 19 unit tests: the gates and the map transform
+pnpm --filter @sarana/web-ops test:a11y     # axe: 19 screens x 3 locales
+pnpm --filter @sarana/web-ops test:e2e      # 30 Playwright tests in real Chromium
 ```
 
 The e2e suite starts its own dev server on port 3100 and intercepts the gateway in the
@@ -367,9 +372,9 @@ them exists. What does not exist is the screens. Working backwards from the buil
   four CI gates. `apps/web-ops` has the shell, the gateway, sign-in and step-up, the common
   operating picture, **both human gate screens**, the delivery-gaps panel, the incident and
   alert lists, the audit ledger with its anomaly disposition workflow, and the review and
-  grievance queues, the alert composer, chain verification and the assessment list - 15
-  working routes, with 25 Playwright tests. Three routes say "not built" rather than
-  404ing: forecast, approvals and admin.
+  grievance queues, the alert composer, chain verification, the assessment list and the
+  template review gate - 16 working routes, with 30 Playwright tests. Two routes say "not
+  built" rather than 404ing: forecast and approvals.
 
 - **All six agents exist, and none is wired to the live stack.** The forecast agent turns rainfall into per-division
   impact predictions with lead time, confidence and the drivers that produced them, and

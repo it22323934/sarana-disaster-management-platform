@@ -1,10 +1,10 @@
 /**
- * `/admin` - users, roles, templates, schedules. Not built.
+ * `/admin` - the template review gate and the cost schedules.
  */
 
 import { setRequestLocale } from 'next-intl/server';
 
-import { NotBuilt } from '../../../src/components/queues';
+import { Admin } from '../../../src/components/admin';
 
 export default async function AdminPage({
   params,
@@ -13,5 +13,5 @@ export default async function AdminPage({
 }) {
   const { locale } = await params;
   setRequestLocale(locale);
-  return <NotBuilt />;
+  return <Admin />;
 }

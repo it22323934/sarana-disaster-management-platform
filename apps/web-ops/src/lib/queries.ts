@@ -28,6 +28,7 @@ import {
   anchorResponseSchema,
   anomalyListSchema,
   assessmentListSchema,
+  costScheduleListSchema,
   dispatchPlanListSchema,
   dispatchPlanSchema,
   disbursementListSchema,
@@ -46,6 +47,7 @@ import {
   type AlertTemplate,
   type Anomaly,
   type Assessment,
+  type CostSchedule,
   type Delivery,
   type DispatchPlan,
   type Entitlement,
@@ -82,6 +84,7 @@ export const queryKeys = {
   reviewQueue: ['review-queue'] as const,
   templates: ['templates'] as const,
   anchors: ['ledger', 'anchors'] as const,
+  costSchedules: ['cost-schedules'] as const,
   assessments: (division?: string) => ['assessments', division ?? 'all'] as const,
   grievanceList: (status?: string) => ['grievances', 'list', status ?? 'all'] as const,
 };
@@ -311,6 +314,21 @@ export function useGrievanceList(status?: string): UseQueryResult<Grievance[]> {
     refetchInterval: LIVE_INTERVAL_MS,
     queryFn: () =>
       gatewayFetch('grievances', { query: { status, limit: 200 }, schema: grievanceListSchema }),
+  });
+}
+
+/**
+ * Every cost schedule version, with every line and its published formula.
+ *
+ * Reference data in the strongest sense: a schedule is what every entitlement in the
+ * system is calculated from, and versions are added by migration rather than from a
+ * console. Polled at the reference interval because it effectively never changes.
+ */
+export function useCostSchedules(): UseQueryResult<CostSchedule[]> {
+  return useQuery({
+    queryKey: queryKeys.costSchedules,
+    refetchInterval: REFERENCE_INTERVAL_MS,
+    queryFn: () => gatewayFetch('cost-schedules', { schema: costScheduleListSchema }),
   });
 }
 

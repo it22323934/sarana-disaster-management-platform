@@ -17,8 +17,6 @@
 
 import {
   EmptyState,
-  MapLegend,
-  MapShell,
   ReferenceCode,
   RelativeTime,
   SeverityPill,
@@ -32,6 +30,7 @@ import { useEffect, useState } from 'react';
 import { useTriageQueue } from '../lib/queries';
 import type { QueueRow } from '../lib/schemas';
 import { DegradedBanner, ErrorPanel } from './degraded';
+import { SituationMap } from './situation-map';
 
 const LAYOUT_KEY = 'sarana.ops.layout';
 
@@ -84,8 +83,6 @@ export function CommonOperatingPicture() {
   // state today — the triage agent has no adapters — and the operator has to be told.
   const assistedRanking = rows.some((row) => row.triage_score !== null);
 
-  const styleUrl = process.env.NEXT_PUBLIC_SARANA_MAP_STYLE_URL ?? '';
-
   return (
     <div className="flex h-[calc(100vh-9rem)] flex-col gap-3 p-4">
       {!assistedRanking && rows.length > 0 ? <DegradedBanner kind="agent" /> : null}
@@ -129,42 +126,25 @@ export function CommonOperatingPicture() {
             persist({ ...layout, queue: clamp(layout.queue + delta, 20, 50) })
           }
           label={t('queue')}
+          value={layout.queue}
+          min={20}
+          max={50}
         />
 
         <section
           aria-label={t('map')}
           style={{ width: `${layout.map}%` }}
-          className="min-w-[16rem] overflow-hidden rounded-[var(--radius-default)] border border-[var(--divider)]"
+          className="min-w-[16rem] overflow-hidden rounded-[var(--radius-default)] border border-[var(--divider)] p-2"
         >
-          <MapShell
-            styleUrl={styleUrl}
-            label={t('map')}
-            className="h-full w-full"
-            fallback={
-              <div className="flex flex-col gap-2">
-                <h3 className="text-sm font-medium">{t('mapFallback')}</h3>
-                {/* The same facts as the map, as a list. Not a summary of it — this is
-                    what a screen reader user, a printed situation report and a browser
-                    that failed to load tiles all get. */}
-                <ul className="flex flex-col gap-1">
-                  {rows.map((row) => (
-                    <li key={row.id} className="flex items-center gap-2 text-xs">
-                      <SeverityPill level={row.severity as SeverityLevel} locale="en" />
-                      <span data-sarana-datum="" className="font-mono">
-                        {row.gn_division_code}
-                      </span>
-                      <span>{row.public_ref}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            }
-          />
+          <SituationMap rows={rows} className="flex h-full flex-col" />
         </section>
 
         <Divider
           onDrag={(delta) => persist({ ...layout, map: clamp(layout.map + delta, 20, 60) })}
           label={t('map')}
+          value={layout.map}
+          min={20}
+          max={60}
         />
 
         <section
@@ -180,12 +160,6 @@ export function CommonOperatingPicture() {
         </section>
       </div>
 
-      <MapLegend
-        title={t('layers')}
-        levels={[2, 3, 4]}
-        labels={{ 0: '0', 1: '1', 2: '2', 3: '3', 4: '4' }}
-        className="max-w-xs"
-      />
     </div>
   );
 }
@@ -200,19 +174,34 @@ function clamp(value: number, min: number, max: number): number {
  * `separator` with arrow-key handling rather than a drag-only handle: the console must be
  * fully operable from the keyboard, and a divider that can only be dragged makes the
  * layout unreachable for a dispatcher working without a pointer.
+ *
+ * A **focusable** separator is a window splitter in ARIA terms, and a splitter must carry
+ * its position: `aria-valuenow` with its bounds. Without them a screen reader announces
+ * "separator" and nothing else, so a user can move the divider and never learn whether it
+ * moved. The axe sweep caught this as a critical violation, which is what that sweep is
+ * for.
  */
 function Divider({
   onDrag,
   label,
+  value,
+  min,
+  max,
 }: {
   readonly onDrag: (deltaPercent: number) => void;
   readonly label: string;
+  readonly value: number;
+  readonly min: number;
+  readonly max: number;
 }) {
   return (
     <div
       role="separator"
       aria-orientation="vertical"
       aria-label={label}
+      aria-valuenow={Math.round(value)}
+      aria-valuemin={min}
+      aria-valuemax={max}
       tabIndex={0}
       onKeyDown={(event) => {
         if (event.key === 'ArrowLeft') {

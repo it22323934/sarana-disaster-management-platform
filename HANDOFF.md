@@ -10,9 +10,10 @@ Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 
 The repository is organised around 30 numbered build files in `.claude/`. Progress is
 strictly sequential. Files 03-19 are complete, and **file 20 is mostly built**: the
-console's foundation, both human gates, the alert composer, chain verification and 15 of
-its 26 routes exist and are tested end to end in a browser. Three routes render an honest
-"not built" screen rather than a 404. The next work is finishing 20, then 21.
+console's foundation, both human gates, the alert composer, chain verification, the
+template review gate and 16 of its 26 routes exist and are tested end to end in a browser.
+Two routes render an honest "not built" screen rather than a 404. The next work is
+finishing 20, then 21.
 
 | File | Area | State |
 |---|---|---|
@@ -33,15 +34,15 @@ its 26 routes exist and are tested end to end in a browser. Three routes render 
 | 17 | Aid ledger & anomaly agent | Done — exposure-normalised detectors. No adapters. |
 | 18 | Supervisor & HITL | Done — routing table, both gates, conflicts. No adapters. |
 | 19 | Design system | Done — tokens, 3-script type, 34 components, 4 CI gates |
-| **20** | **Ops console** | **Mostly built — 15 of 26 routes, both gates, 25 e2e tests** |
+| **20** | **Ops console** | **Mostly built — 16 of 26 routes, three gates, 30 e2e tests** |
 | **21** | **Public dashboard** | **Scaffold only** |
 | 22–24 | Mobile (foundation, citizen, field companion) | Scaffold only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-On the TypeScript side, **226 tests pass**: 64 unit and 33 axe-over-every-story in
-`packages/ui`, 54 in `packages/ts-shared`, and in `apps/web-ops` 12 unit, 51 axe across
-**17 screens x three locales**, and **25 Playwright tests in a real Chromium**. `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of
+On the TypeScript side, **244 tests pass**: 64 unit and 33 axe-over-every-story in
+`packages/ui`, 54 in `packages/ts-shared`, and in `apps/web-ops` 19 unit, 57 axe across
+**19 screens x three locales**, and **30 Playwright tests in a real Chromium**. `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of
 Done commands are clean.
 
 On the Python side, untouched by file 19:
@@ -2237,11 +2238,15 @@ before they reach the button.
 
 ### Still placeholder, and honest about it
 
-- **Three routes render `NotBuilt` rather than working.** `/ops/forecast`, `/approvals`
-  and `/admin`. `/approvals` is blocked on the missing `GET /entitlements` list; the other
-  two are unstarted work. `/ops/forecast` additionally has no data to show - nothing
-  triggers the forecast agent in a running stack and it has never run against the live
-  services.
+- **Two routes render `NotBuilt` rather than working.** `/ops/forecast` and `/approvals`.
+  `/approvals` is blocked on the missing `GET /entitlements` list. `/ops/forecast` has no
+  data to show - nothing triggers the forecast agent in a running stack and it has never
+  run against the live services - so building the screen would mean building an empty one.
+- **`/admin` has templates and schedules, not users or roles.** The brief also names user
+  and role administration and the gov-mock scenario controls. Users and roles need
+  endpoints core-api does not expose; the scenario controls live on gov-mock at port 8006,
+  which is deliberately not in the gateway's service map because it is a mock and the
+  console should not be able to drive one by accident.
 - **Area selection is a text field, not a map.** The composer takes comma-separated GN
   division codes. The brief asks for selection on the map by division, DS division,
   district or a drawn polygon snapping to boundaries, and the map has no layers yet.
@@ -2252,10 +2257,9 @@ before they reach the button.
   incident and what its location confidence means for dispatch. The linked reports with
   original-language text and playback, the transcription confidence per report, and the
   similarity links are all specified and unbuilt.
-- **The map has a shell and no layers.** `MapShell` mounts and renders its accessible
-  fallback list; the GN division, incident, heat and delivery-gap layers are built as pure
-  functions in `packages/ui` and nothing calls them yet. `NEXT_PUBLIC_SARANA_MAP_STYLE_URL`
-  points at MapLibre's demo tiles.
+- **The map draws incidents and nothing else.** Division boundaries, report density and
+  delivery-gap shading have builders in `packages/ui` and no data path; they are named on
+  screen as not built. `NEXT_PUBLIC_SARANA_MAP_STYLE_URL` points at MapLibre's demo tiles.
 - **The time spine is not on the console.** `TimeSpine` exists and is storied; the shell
   does not mount it, because nothing yet supplies a landfall instant or the milestone list.
 - **The gate banner counts dispatches only.** Disbursements are not counted, because there
@@ -2381,6 +2385,87 @@ offline queue and a capability token issued before going into the field - all of
 the mobile app's job and none of which a browser at a desk can honestly provide. A form
 here that accepted an assessment without evidence would be a way of entering damage figures
 nobody stood in front of.
+
+---
+
+## The map draws one layer, and says so
+
+`SituationMap` plots incidents on MapLibre using `incidentLayer` from the design system.
+The brief specifies five layers; four have pure builders waiting in `packages/ui` and only
+the incident one is drawn, because only incidents currently reach the console with
+coordinates. `incident-svc` returns `lon`/`lat` on every incident; nothing yet supplies
+shelter positions, responder positions or delivery-gap shading in a form the map can take.
+
+The three unbuilt layers are **named on screen as not built** rather than offered as
+toggles. A toggle that does nothing is worse than an absent one: an operator who switches
+on "delivery gaps" and sees an unchanged map concludes there are none.
+
+**An incident with no coordinate is not placed, and the count is shown.** A report naming
+a village and nothing more is real, and it stays in the queue and in the accessible list.
+Placing it at the division centroid would invent a precision the report does not have;
+placing it at (0, 0) would drop it in the Gulf of Guinea. Seven unit tests cover the
+transform, including the one that matters most — coordinates go out longitude-first,
+because latitude-first puts every Sri Lankan incident in the Indian Ocean off Somalia,
+which looks plausible enough on a zoomed-out map that nobody catches it until someone is
+sent there.
+
+**Boundaries would be per-division, not bulk.** `core-api` serves geometry one division at
+a time and there are ~14,000 of them, so the boundary layer — when built — fetches only the
+divisions that have an incident in the current queue. Bounded by the size of the event
+rather than the size of the country.
+
+### The axe sweep caught a critical bug in the pane splitter
+
+The three-pane divider is `role="separator"` and focusable, which in ARIA terms makes it a
+window splitter — and a splitter must carry `aria-valuenow` with its bounds. Without them a
+screen reader announces "separator" and nothing else, so a keyboard user can move the
+divider and never learn whether it moved. It now reports its position. This is the second
+real defect the a11y sweep has found rather than confirmed, and it is why the sweep runs
+over whole screens in three locales rather than over components in one.
+
+---
+
+## The third gate: `/admin` and the trilingual template review
+
+There are two *mandatory* human gates in SARANA and this is not one of them - but it is the
+gate that stands between twelve machine-translated life-safety messages and a district, and
+until now nothing in the console could open it. All twelve seeded templates are `DRAFT`
+with no reviewer signatures, so the alert composer had nothing to offer and said so.
+
+`/admin` now signs and publishes them. Three rules, all with Playwright tests:
+
+**Publish is unreachable until both signatures exist.** `ledger-svc`'s database predicate
+refuses it and the endpoint checks before that; this is the third layer, and it is here so
+a reviewer never presses a button that was always going to fail.
+
+**The language is chosen explicitly, never inferred from the reviewer.** Two buttons, each
+naming its language in that language. Someone who reads both still has to say which one
+they are signing for.
+
+**The reviewer's identity is never in the request body.** `POST /templates/{id}/review`
+takes only a language and reads the signer from the token. A test asserts the body carries
+no reviewer field, because a review somebody else can attribute to you is not a review.
+
+One test is named after the failure the whole platform exists to correct: *one signature is
+still not enough*. Sinhala signed and Tamil not is exactly the state the 28 Nov 2025 DMC
+press conference went out in.
+
+The cost schedules are read-only on the same screen. A schedule is what every entitlement
+is calculated from, and changing one from a console during an incident would silently
+re-price work already done - versions are added by migration, deliberately. The published
+formula is rendered per line, because a household told what it is entitled to can read the
+same formula the system used.
+
+### The map now updates in place
+
+`MapLike` in `packages/ui/src/map/map-shell.tsx` gained `getSource` returning a typed
+`GeoJsonSourceLike`, so the console pushes new features with `setData` on each poll rather
+than adding the source once and never again. Re-adding a source that exists throws, and it
+drops the layer's paint state even when it does not.
+
+The GeoJSON is memoised on `rows`, which TanStack Query keeps referentially stable between
+polls through structural sharing. Without that the object is new on every render and the
+`setData` effect fires on renders that changed nothing.
 
 ---
 

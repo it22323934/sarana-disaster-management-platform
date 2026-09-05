@@ -19,6 +19,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { Locale } from '@sarana/ts-shared/i18n';
 
+import { Admin } from './admin';
 import { AlertComposer } from './alert-composer';
 import { AlertList, DeliveryPanel } from './alerts';
 import { AssessmentList } from './assessments';
@@ -28,6 +29,7 @@ import { DisbursementGate } from './disbursement-gate';
 import { DispatchGate } from './dispatch-gate';
 import { DispatchQueue } from './dispatch-queue';
 import { IncidentDetail, IncidentList } from './incidents';
+import { CommonOperatingPicture } from './common-operating-picture';
 import { GrievanceQueue, NotBuilt, ReviewQueue } from './queues';
 import { ReleaseQueue } from './release-queue';
 import { SignInForm } from './sign-in-form';
@@ -139,6 +141,7 @@ const SCREENS: readonly Screen[] = [
       <DisbursementGate entitlementId="018f3c2a-0003-7e90-9c2d-000000000003" principal={null} />
     ),
   },
+  { name: 'common operating picture', render: () => <CommonOperatingPicture /> },
   { name: 'incident list', render: () => <IncidentList /> },
   {
     name: 'incident detail',
@@ -155,6 +158,7 @@ const SCREENS: readonly Screen[] = [
   { name: 'grievance queue', render: () => <GrievanceQueue /> },
   { name: 'alert composer', render: () => <AlertComposer /> },
   { name: 'chain verification', render: () => <ChainVerification /> },
+  { name: 'admin', render: () => <Admin /> },
   { name: 'assessments', render: () => <AssessmentList /> },
   { name: 'not built', render: () => <NotBuilt /> },
 ];

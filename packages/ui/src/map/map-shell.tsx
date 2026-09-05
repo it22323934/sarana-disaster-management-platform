@@ -29,14 +29,36 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { cn } from '../lib/cn.js';
 import { SEVERITY, type SeverityLevel } from '../tokens/severity.js';
 
+/**
+ * A GeoJSON source, once it is on the map.
+ *
+ * `setData` is the only way to update a layer's features without removing and re-adding
+ * the source, which throws if the id already exists and drops the layer's paint state
+ * even when it does not. A console polling every fifteen seconds needs this rather than a
+ * teardown.
+ */
+export interface GeoJsonSourceLike {
+  setData(data: unknown): void;
+}
+
 /** The slice of the MapLibre map API this shell uses. */
-interface MapLike {
+export interface MapLike {
   on(event: string, handler: () => void): void;
   remove(): void;
   addSource(id: string, source: Record<string, unknown>): void;
   addLayer(layer: Record<string, unknown>): void;
-  getSource(id: string): unknown;
+  /** Undefined before the source is added. Narrow it before calling `setData`. */
+  getSource(id: string): GeoJsonSourceLike | undefined;
   isStyleLoaded(): boolean;
+}
+
+/** Whether a source handle can take new features. Guards the `unknown` MapLibre returns. */
+export function isGeoJsonSource(source: unknown): source is GeoJsonSourceLike {
+  return (
+    typeof source === 'object' &&
+    source !== null &&
+    typeof (source as GeoJsonSourceLike).setData === 'function'
+  );
 }
 
 interface MapLibreModule {
