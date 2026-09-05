@@ -30,6 +30,17 @@ const PUBLISHED_TEMPLATE = {
   status: 'PUBLISHED',
 };
 
+const HAZARD_EVENT = {
+  id: '018f3c2a-0030-7e90-9c2d-000000000030',
+  type: 'CYCLONE',
+  name: { si: 'දිත්වා', ta: 'திட்வா', en: 'Ditwah' },
+  source: 'DEPT_METEOROLOGY',
+  source_ref: 'DM-2025-11-27',
+  declared_at: '2025-11-25T00:00:00Z',
+  landfall_at: '2025-11-28T00:00:00Z',
+  status: 'ACTIVE',
+};
+
 const DRAFT_ONLY_TEMPLATE = {
   ...PUBLISHED_TEMPLATE,
   id: '018f3c2a-000e-7e90-9c2d-00000000000e',
@@ -47,6 +58,7 @@ test.describe('the alert composer', () => {
     await signInAs(page);
     await scriptGateway(page, [
       { match: 'templates', body: [DRAFT_ONLY_TEMPLATE] },
+      { match: 'hazard-events', body: [HAZARD_EVENT] },
       { match: 'dispatch-plans', body: [] },
     ]);
 
@@ -65,6 +77,7 @@ test.describe('the alert composer', () => {
     await signInAs(page);
     await scriptGateway(page, [
       { match: 'templates', body: [PUBLISHED_TEMPLATE] },
+      { match: 'hazard-events', body: [HAZARD_EVENT] },
       { match: 'dispatch-plans', body: [] },
     ]);
 
@@ -91,6 +104,7 @@ test.describe('the alert composer', () => {
     await signInAs(page);
     await scriptGateway(page, [
       { match: 'templates', body: [PUBLISHED_TEMPLATE] },
+      { match: 'hazard-events', body: [HAZARD_EVENT] },
       { match: 'dispatch-plans', body: [] },
     ]);
 
@@ -100,6 +114,8 @@ test.describe('the alert composer', () => {
 
     await page.getByLabel('gn_division_name').fill('Pallekele');
     await page.getByLabel(/GN division codes/i).fill('LK-11-03-045');
+    await page.getByRole('combobox').nth(1).click();
+    await page.getByRole('option', { name: /Ditwah/ }).click();
 
     const draft = page.getByRole('button', { name: /create draft/i });
     await expect(draft).toBeEnabled();
@@ -122,6 +138,7 @@ test.describe('the alert composer', () => {
     await signInAs(page);
     await scriptGateway(page, [
       { match: 'templates', body: [PUBLISHED_TEMPLATE] },
+      { match: 'hazard-events', body: [HAZARD_EVENT] },
       { match: 'dispatch-plans', body: [] },
     ]);
 
@@ -137,6 +154,7 @@ test.describe('the alert composer', () => {
     await signInAs(page);
     await scriptGateway(page, [
       { match: 'templates', body: [PUBLISHED_TEMPLATE] },
+      { match: 'hazard-events', body: [HAZARD_EVENT] },
       { match: 'dispatch-plans', body: [] },
     ]);
 
@@ -146,4 +164,65 @@ test.describe('the alert composer', () => {
 
     await expect(page.getByText(/dry run is required before sending/i)).toBeVisible();
   });
+});
+
+test('will not draft without naming the hazard event it is about', async ({ page }) => {
+  await signInAs(page);
+  await scriptGateway(page, [
+    { match: 'templates', body: [PUBLISHED_TEMPLATE] },
+    { match: 'hazard-events', body: [HAZARD_EVENT] },
+    { match: 'dispatch-plans', body: [] },
+  ]);
+
+  await page.goto('/en/ops/alerts/new');
+  await page.getByRole('combobox').first().click();
+  await page.getByRole('option', { name: /FLOOD_WARNING/ }).click();
+
+  await page.getByLabel('gn_division_name').fill('Pallekele');
+  await page.getByLabel(/GN division codes/i).fill('LK-11-03-045');
+
+  // Everything else filled, no event chosen. `POST /alerts` requires it, and a draft that
+  // names no event is one nobody can tie to a warning later.
+  await expect(page.getByRole('button', { name: /create draft/i })).toBeDisabled();
+});
+
+test('creates a draft and says it still needs sign-off and a dry run', async ({ page }) => {
+  await signInAs(page);
+  await scriptGateway(page, [
+    { match: 'templates', body: [PUBLISHED_TEMPLATE] },
+    { match: 'hazard-events', body: [HAZARD_EVENT] },
+    {
+      match: 'alerts',
+      body: {
+        id: '018f3c2a-0031-7e90-9c2d-000000000031',
+        cap_identifier: 'urn:oid:2.49.0.1.144.0.2025.11.28.0001',
+        status: 'DRAFT',
+        requires_human_signoff: false,
+      },
+    },
+    { match: 'dispatch-plans', body: [] },
+  ]);
+
+  await page.goto('/en/ops/alerts/new');
+  await page.getByRole('combobox').first().click();
+  await page.getByRole('option', { name: /FLOOD_WARNING/ }).click();
+
+  await page.getByLabel('gn_division_name').fill('Pallekele');
+  await page.getByLabel(/GN division codes/i).fill('LK-11-03-045');
+  await page.getByRole('combobox').nth(1).click();
+  await page.getByRole('option', { name: /Ditwah/ }).click();
+
+  const posted = page.waitForRequest(
+    (request) => request.url().includes('/gateway/alerts') && request.method() === 'POST',
+  );
+  await page.getByRole('button', { name: /create draft/i }).click();
+  const request = await posted;
+
+  const body = JSON.parse(request.postData() ?? '{}');
+  expect(body.hazard_event_id).toBe(HAZARD_EVENT.id);
+  expect(body.gn_division_codes).toEqual(['LK-11-03-045']);
+
+  // Drafting is not sending. One button that did both is how a national fan-out happens
+  // by accident.
+  await expect(page.getByText(/still needs sign-off and a dry run/i)).toBeVisible();
 });

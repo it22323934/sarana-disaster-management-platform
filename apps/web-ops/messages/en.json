@@ -44,7 +44,9 @@
     "forecastIssued": "Forecast issued",
     "alertsDispatched": "Alerts dispatched",
     "firstIncident": "First incident",
-    "firstDisbursement": "First disbursement"
+    "firstDisbursement": "First disbursement",
+    "declared": "Event declared",
+    "anticipatory": "Anticipatory"
   },
   "gate": {
     "dispatchTitle": "{count, plural, one {# dispatch awaiting approval} other {# dispatches awaiting approval}}",
@@ -303,8 +305,11 @@
     "dryRunRequired": "A dry run is required before sending",
     "dryRunExplanation": "The confirm step shows the exact target count, the per-channel breakdown and the per-language split. Sending a life-safety message to an unknown number of people is not something this console will let you do.",
     "draft": "Create draft",
-    "draftNotWired": "The draft cannot be created from this console. POST /alerts requires a hazard_event_id, and no service exposes an endpoint that lists hazard events. Everything above is composed and checked; the last call has nothing to name the event with.",
-    "overLimitBlocks": "One of the three renderings needs more than two segments. Shorten it before drafting: the language that runs long is the one whose community gets the warning last and incomplete."
+    "overLimitBlocks": "One of the three renderings needs more than two segments. Shorten it before drafting: the language that runs long is the one whose community gets the warning last and incomplete.",
+    "hazardEvent": "Hazard event",
+    "hazardEventHint": "Which event this alert is about.",
+    "noHazardEvents": "No open hazard event. An alert has to name the event it is about, and one is declared by the forecast agent or by DMC — not from this console.",
+    "drafted": "Draft created: {reference}. It still needs sign-off and a dry run before it can be sent."
   },
   "chain": {
     "title": "Chain verification",

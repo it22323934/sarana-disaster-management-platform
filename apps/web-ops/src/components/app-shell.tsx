@@ -16,6 +16,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 
 import { Link, usePathname, useRouter } from '../i18n/routing';
 import type { PrincipalSummary } from '../lib/session';
+import { DisasterSpine } from './disaster-spine';
 import { PendingGates } from './pending-gates';
 
 /** A navigation entry and the scope that makes it useful. */
@@ -146,6 +147,11 @@ export function AppShell({
           </ul>
         </nav>
       </header>
+
+      {/* The spine sits above the gate banner: the banner is about what is waiting now,
+          the spine about where "now" sits in the event. It renders nothing between
+          events, which is most of the time. */}
+      <DisasterSpine locale={locale} compact />
 
       <PendingGates suppress={suppressGateBanner} />
 

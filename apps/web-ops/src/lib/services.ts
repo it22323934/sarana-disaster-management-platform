@@ -77,6 +77,8 @@ const OWNERS: Readonly<Record<string, ServiceName>> = {
   'cost-schedules': 'ledger-svc',
   // agent-svc
   agents: 'agent-svc',
+  // Hazard events live in agent-svc's schema because the forecast agent declares them.
+  'hazard-events': 'agent-svc',
 };
 
 export class UnroutablePathError extends Error {

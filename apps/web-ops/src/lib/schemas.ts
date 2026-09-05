@@ -581,3 +581,39 @@ export function outstandingLevels(row: EntitlementSummary): readonly ApprovalLev
     (level) => !row.approved_levels.includes(level),
   );
 }
+
+/**
+ * A hazard event. The thing every disaster timeline is measured from.
+ *
+ * `landfall_at` is T+0 and it is nullable: an event under monitoring has no landfall yet,
+ * and the console must show that rather than substituting the declaration time, which
+ * would put a fabricated T+0 on every figure derived from it.
+ *
+ * `name` stays trilingual. The console picks the locale; a server that chose one would be
+ * guessing from a header that is only a hint.
+ */
+export const hazardEventSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  name: z.object({ si: z.string(), ta: z.string(), en: z.string() }),
+  source: z.string(),
+  source_ref: z.string(),
+  declared_at: z.string().nullable().default(null),
+  landfall_at: z.string().nullable().default(null),
+  status: z.string(),
+});
+
+export type HazardEvent = z.infer<typeof hazardEventSchema>;
+
+export const hazardEventListSchema = z.array(hazardEventSchema);
+
+/**
+ * The event a console should anchor its timeline to.
+ *
+ * The most recent one that has a landfall. An event still under monitoring has no T+0, so
+ * a spine drawn from it would have no anchor - and picking the newest regardless would
+ * anchor the console to a depression nobody is working yet.
+ */
+export function anchorEvent(events: readonly HazardEvent[]): HazardEvent | null {
+  return events.find((event) => event.landfall_at !== null) ?? null;
+}

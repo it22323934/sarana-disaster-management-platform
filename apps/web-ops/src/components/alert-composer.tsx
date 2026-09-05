@@ -22,10 +22,11 @@
  * the templates do not cover. But it forces `PENDING_SIGNOFF` server-side, and the screen
  * says so inline with the reason, so nobody discovers it at the dispatch step.
  *
- * **The dry run is mandatory.** The send button does not exist until a dry run has been
- * done and its result read. `POST /alerts/{id}/dispatch` with `dry_run` returns exact
- * target counts and the per-channel breakdown; sending without seeing that is sending a
- * life-safety message to an unknown number of people.
+ * **The dry run is mandatory, and drafting is not sending.** This screen creates a draft
+ * and stops. `POST /alerts/{id}/dispatch` with `dry_run` returns exact target counts and
+ * the per-channel breakdown, and sending without seeing that is sending a life-safety
+ * message to an unknown number of people — so the two are separate calls behind separate
+ * screens. One button that drafted and sent is how a national fan-out happens by accident.
  */
 
 import {
@@ -43,8 +44,10 @@ import { countSegments, MAX_SEGMENTS } from '@sarana/ts-shared/format';
 import { useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
 
-import { useTemplates } from '../lib/queries';
-import type { AlertTemplate } from '../lib/schemas';
+import { gatewayFetch } from '../lib/gateway-client';
+import { useHazardEvents, useTemplates } from '../lib/queries';
+import { localised } from '@sarana/ts-shared/i18n';
+import { alertSchema, type AlertTemplate } from '../lib/schemas';
 import { ErrorPanel } from './degraded';
 
 /** BCP-47 tags, so each preview renders in the right face and voice. */
@@ -87,7 +90,11 @@ export function AlertComposer() {
   const common = useTranslations('common');
 
   const templates = useTemplates();
+  const events = useHazardEvents();
   const [templateCode, setTemplateCode] = useState<string>('');
+  const [hazardEventId, setHazardEventId] = useState<string>('');
+  const [drafted, setDrafted] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
   const [freeText, setFreeText] = useState<Partial<Record<Locale, string>>>({});
   const [divisions, setDivisions] = useState('');
@@ -110,6 +117,50 @@ export function AlertComposer() {
   }, [selected, values, freeText]);
 
   const usesFreeText = LOCALES.some((locale) => (freeText[locale] ?? '').trim().length > 0);
+
+  /**
+   * Create the draft.
+   *
+   * Deliberately does **not** dispatch. `POST /alerts` produces a draft; sending it is a
+   * separate call behind a mandatory dry run, and putting both behind one button is how a
+   * national fan-out happens by accident.
+   */
+  async function draft(): Promise<void> {
+    if (!selected) return;
+    setBusy(true);
+    setFailure(null);
+    try {
+      const codes = divisions
+        .split(',')
+        .map((code) => code.trim())
+        .filter((code) => code.length > 0);
+
+      const created = await gatewayFetch('alerts', {
+        method: 'POST',
+        body: {
+          template_code: selected.code,
+          hazard_event_id: hazardEventId,
+          parameters: values,
+          // The service resolves codes to ids. Sending both would be two sources of truth
+          // for the same area and a chance for them to disagree.
+          gn_division_ids: [],
+          gn_division_codes: codes,
+          effective_at: new Date().toISOString(),
+          // Twelve hours. Long enough to cover a response shift, short enough that a
+          // stale warning expires rather than sitting on a public feed indefinitely.
+          expires_at: new Date(Date.now() + 12 * 3_600_000).toISOString(),
+          free_text: usesFreeText ? freeText : null,
+        },
+        idempotencyKey: `draft-${selected.code}-${hazardEventId}-${codes.join(',')}`,
+        schema: alertSchema.pick({ id: true, cap_identifier: true, status: true }),
+      });
+      setDrafted(created.cap_identifier);
+    } catch (error) {
+      setFailure(error);
+    } finally {
+      setBusy(false);
+    }
+  }
   const overLimit =
     previews !== null &&
     LOCALES.some((locale) => !countSegments(previews[locale]).withinLimit);
@@ -230,6 +281,23 @@ export function AlertComposer() {
                 </div>
               </section>
 
+              {/* Which event this alert is about. `POST /alerts` requires it, and until
+                  `GET /hazard-events` existed nothing could supply one — an operator could
+                  compose and check a message and then had no way to name the event. */}
+              <Select
+                label={t('hazardEvent')}
+                placeholder={t('hazardEventHint')}
+                value={hazardEventId}
+                onValueChange={setHazardEventId}
+                options={(events.data ?? []).map((hazard) => ({
+                  value: hazard.id,
+                  label: `${localised(hazard.name, 'en')} · ${hazard.status}`,
+                }))}
+              />
+              {(events.data ?? []).length === 0 ? (
+                <p className="text-xs text-[var(--sev-2-fg)]">{t('noHazardEvents')}</p>
+              ) : null}
+
               <Input
                 label={t('divisions')}
                 description={t('divisionsHint')}
@@ -239,6 +307,12 @@ export function AlertComposer() {
               />
 
               {failure ? <ErrorPanel error={failure} /> : null}
+
+              {drafted ? (
+                <p role="status" className="text-sm text-[var(--verified)]">
+                  {t('drafted', { reference: drafted })}
+                </p>
+              ) : null}
 
               {/* The send path is not on this screen. Drafting produces an alert that then
                   goes through sign-off and a mandatory dry run — see the note below. */}
@@ -253,8 +327,15 @@ export function AlertComposer() {
                 // Over the segment limit in any language stops the draft here. The check
                 // is a release gate on templates and it is the same gate on an instance:
                 // a three-segment Tamil message is the community that gets it last.
-                disabled={overLimit || divisions.trim().length === 0}
-                onClick={() => setFailure(new Error(t('draftNotWired')))}
+                disabled={
+                  overLimit ||
+                  divisions.trim().length === 0 ||
+                  hazardEventId === '' ||
+                  busy
+                }
+                busy={busy}
+                busyLabel={t('draft')}
+                onClick={draft}
                 className="self-start"
               >
                 {t('draft')}

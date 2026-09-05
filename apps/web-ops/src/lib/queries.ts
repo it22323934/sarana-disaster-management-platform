@@ -36,6 +36,7 @@ import {
   entitlementSchema,
   entitlementSummaryListSchema,
   grievanceListSchema,
+  hazardEventListSchema,
   deliverySchema,
   gapListSchema,
   incidentListSchema,
@@ -57,6 +58,7 @@ import {
   type EntitlementSummary,
   type Gap,
   type Grievance,
+  type HazardEvent,
   type Incident,
   type LedgerEntry,
   type Queue,
@@ -87,6 +89,7 @@ export const queryKeys = {
   ledger: (fromSeq: number) => ['ledger', fromSeq] as const,
   reviewQueue: ['review-queue'] as const,
   templates: ['templates'] as const,
+  hazardEvents: ['hazard-events'] as const,
   anchors: ['ledger', 'anchors'] as const,
   costSchedules: ['cost-schedules'] as const,
   entitlementQueue: (awaitingRelease: boolean) =>
@@ -312,6 +315,22 @@ export function useDeliveryGaps(alertId: string): UseQueryResult<Gap[]> {
  * with the reason they are unavailable: an operator who cannot find the flood template
  * needs to know it is awaiting a Tamil signature, not that it does not exist.
  */
+/**
+ * Open hazard events, most recent landfall first.
+ *
+ * Reference data during an event and empty outside one. Both the alert composer and the
+ * time spine read it: the composer needs an id to name what an alert is about, the spine
+ * needs `landfall_at` for T+0.
+ */
+export function useHazardEvents(): UseQueryResult<HazardEvent[]> {
+  return useQuery({
+    queryKey: queryKeys.hazardEvents,
+    refetchInterval: REFERENCE_INTERVAL_MS,
+    queryFn: () =>
+      gatewayFetch('hazard-events', { query: { limit: 50 }, schema: hazardEventListSchema }),
+  });
+}
+
 export function useTemplates(): UseQueryResult<AlertTemplate[]> {
   return useQuery({
     queryKey: queryKeys.templates,
