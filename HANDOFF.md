@@ -9,11 +9,10 @@ Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 ## Where the build has got to
 
 The repository is organised around 30 numbered build files in `.claude/`. Progress is
-strictly sequential. Files 03-19 are complete, and **file 20 is mostly built**: the
-console's foundation, both human gates, the alert composer, chain verification, the
-template review gate, the approval queue and 17 of its 26 routes exist and are tested end
-to end in a browser. One route renders an honest "not built" screen rather than a 404. The
-next work is finishing 20, then 21.
+strictly sequential. **Files 03-20 are complete.** Every route the brief names is built
+and tested end to end in a browser; no route renders a "not built" screen. Closing file 20
+needed five read endpoints the platform had data for and no way to return, and it turned up
+two finished screens that no user could reach. The next work is 21.
 
 | File | Area | State |
 |---|---|---|
@@ -34,16 +33,17 @@ next work is finishing 20, then 21.
 | 17 | Aid ledger & anomaly agent | Done — exposure-normalised detectors. No adapters. |
 | 18 | Supervisor & HITL | Done — routing table, both gates, conflicts. No adapters. |
 | 19 | Design system | Done — tokens, 3-script type, 34 components, 4 CI gates |
-| **20** | **Ops console** | **Mostly built — 17 of 26 routes, three gates, 43 e2e tests** |
+| **20** | **Ops console** | **Done — 25 routes, 60 static pages, 68 e2e tests** |
 | **21** | **Public dashboard** | **Scaffold only** |
 | 22–24 | Mobile (foundation, citizen, field companion) | Scaffold only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-On the TypeScript side, **270 tests pass**: 64 unit and 33 axe-over-every-story in
-`packages/ui`, 54 in `packages/ts-shared`, and in `apps/web-ops` 27 unit, 60 axe across
-**20 screens x three locales**, and **45 Playwright tests in a real Chromium**. `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of
-Done commands are clean.
+On the TypeScript side, **329 tests pass**: 64 unit and 33 axe-over-every-story in
+`packages/ui`, 54 in `packages/ts-shared`, and in `apps/web-ops` 59 unit, 75 axe across
+**25 screens x three locales**, and **68 Playwright tests in a real Chromium**. `pnpm lint`,
+`pnpm typecheck`, all seven of file 19's Definition of Done commands and file 20's four are
+clean — including the JS half of the performance budget, which every route passes.
 
 On the Python side, untouched by file 19:
 **1,663 tests passing, 2 skipped** (1,665 collected across `tests/` and
@@ -52,7 +52,11 @@ source files) all clean. File 14 added 122 (76 under `tests/agents/warning`, 46 
 SMS segment gate); file 15 added 79 under `tests/agents/intake`; file 16 added 79 under
 `tests/agents/triage`; file 17 added 74 under `tests/agents/ledger_anomaly`; file 18
 added 51 under `tests/agents/supervisor` and 7 under `tests/e2e`; plus 15 for the
-dispatch-gate resumer under `tests/incident`.
+dispatch-gate resumer under `tests/incident`. File 20 added 7 under
+`tests/incident/test_plan_reasoning.py`, 26 under `tests/auth/test_console_scopes.py` and 3
+under `tests/ledger/test_console_vocabularies.py` — the last two are cross-language
+vocabulary gates, checking the console's scope names and enumerations against the Python
+ones it cannot import.
 
 ```
 core-api        33 endpoints,  7,171 lines
@@ -2071,210 +2075,283 @@ The a11y addon is installed so a reviewer sees violations while looking at a com
 
 ---
 
-## File 20 is partial — the console's spine and both gates, and what is not there
+## File 20 is done — every route the brief names, and the five gaps it closed to get there
 
-What exists: the app shell, the gateway, sign-in and step-up, the common operating
-picture, **both human gate screens**, the delivery-gaps panel, the incident and alert
-lists, the audit ledger and anomaly disposition workflow, the review and grievance queues,
-and the degraded states. 54 static pages build (18 route entries x 3 locales).
+What exists: the app shell, the gateway, sign-in, step-up on its own screen, the common
+operating picture, **both human gate screens with the agent's reasoning attached**, the
+impact forecast board, the alert composer with map-based area selection, the mandatory dry
+run and the send behind it, the delivery-gaps panel with its map, the incident and alert
+lists with linked reports, the audit ledger with CSV export and the published anchors, the
+anomaly disposition workflow, the review and grievance queues with assignment and
+resolution, the entitlement approval detail, the user directory and role catalogue, the
+web fallback for filing an assessment, and the degraded states. **60 static pages build
+(20 route entries x 3 locales), and no route renders `NotBuilt`.**
 
 ```
-app/[locale]/           login, /, /ops, /ops/incidents(+[id]), /ops/dispatch(+[planId]),
-                        /ops/alerts(+[id]/delivery), /ops/alerts/new, /ops/review,
-                        /disbursements(+[id]), /field/assessments, /grievances,
-                        /audit, /audit/anomalies, /audit/chain
-                        + 3 rendering NotBuilt: /ops/forecast, /approvals, /admin
+app/[locale]/           login, totp, /, /ops, /ops/incidents(+[id]),
+                        /ops/dispatch(+[planId]), /ops/alerts(+[id], +[id]/delivery),
+                        /ops/alerts/new, /ops/forecast, /ops/review,
+                        /field/assessments(+/new), /approvals(+[id]),
+                        /disbursements(+[id]), /grievances,
+                        /audit, /audit/anomalies, /audit/chain, /admin
 app/gateway/[...path]   the BFF proxy - one origin, five services
-src/lib/                gateway client, queries, schemas, session, auth actions
-src/components/         shell, gate banner, both gates, alerts, composer, incidents,
-                        audit, chain, assessments, queues
-messages/               293 keys x si/ta/en, gated by verify-i18n
-e2e/                    25 Playwright tests: both gates, the gaps panel, the composer's
-                        segment ceiling, chain verification, three scripts
+src/lib/                gateway client, queries, schemas, session, step-up, auth actions
+src/components/         shell, gate banner, both gates, route map, forecast board, alerts,
+                        composer, area selector, quiet hours, dry run, incidents, linked
+                        reports, audit, chain, directory, assessments, queues
+messages/               579 keys x si/ta/en, gated by verify-i18n
+e2e/                    68 Playwright tests
 ```
 
-### A route that is not built says so, rather than 404ing
+### Five backend gaps closed, and why each was blocking a screen rather than a nicety
 
-Six routes the brief names render a `NotBuilt` screen that says the page does not exist
-yet and that nothing is hidden behind it. A 404 from a link the console's own navigation
-renders tells an operator the console is broken; during a demo it invites the conclusion
-that something failed. Saying "not built" is both true and less alarming.
+Every one of these was a case of data the platform already held and no endpoint returning
+it. None needed a migration.
 
-### The browser never holds a token
+**`GET /dispatch-plans/{id}` now returns the reasoning.** The factor breakdown and the
+`unservable` list have been in `incident.dispatch_plan.route` since file 16 —
+`Plan.as_route_column()` writes exactly that shape, and `_GET_PLAN` was already selecting
+the column. `PlanSummary` did not expose it, so the gate screen rendered a degraded banner
+in every case and the brief's "expanded by default" requirement could not be met at all.
+`PlanDetail` is separate from `PlanSummary` rather than a widening of it: the list endpoint
+is polled every five seconds for the banner count, and sending every factor breakdown on
+every poll would make the cheapest query in the console the most expensive one.
 
-Every call goes through `/gateway`, a Next route handler that attaches the access token
-from an **httpOnly cookie** and refreshes once on a 401, server-side. Three reasons, and
-the third is the one that matters: five services would mean five CORS configurations; the
-browser would have to know the port map, making deployment topology a frontend concern;
-and a token in `localStorage` is exfiltrable by any XSS on any page. This console releases
-money and dispatches responders. That is not a risk worth a client-side fetch.
+**`GET /incidents/{id}` now joins its reports.** Its docstring promised "its linked reports
+and triage factors" from the day it was written and the SQL joined none. It now returns the
+reports with their transcriptions — original-language text, detected language, confidence,
+audio key — and the incidents in the same dedup cluster. Three reads rather than one join,
+because reports and siblings are both one-to-many and a single statement would multiply the
+incident row by their product.
 
-A third cookie, `sarana_principal`, **is** readable — it holds the claims the navigation
-renders from. It is a cache, never an authority: nothing is authorised from it, and a user
-who edits it to add a scope gets a 403 from the service rather than a wider console.
+**`GET /impact-forecasts` and `GET /anticipatory-triggers` on agent-svc.**
+`hazard.impact_forecast` has existed since file 04 and nothing exposed it, so the forecast
+agent was writing to a surface no human could read and `/ops/forecast` rendered "not built".
+`DISTINCT ON` gives the latest run per division; `/history` serves the rest, because "did
+we see this coming" cannot be answered from the current row alone.
 
-### There is no SSE anywhere, so everything polls
+**`GET /admin/users`, `GET /admin/roles`, and grant/revoke on core-api.** The `/admin`
+screen named user and role administration and had nothing to build on. Reading is
+`admin:read`; granting and revoking are `system:admin` **plus a fresh second factor**,
+because a role grant is how somebody acquires `disbursement:release` — it is the quietest
+privilege escalation on this platform. The grant is checked against the granter's own area
+with the same segment-aware containment RLS uses, refuses a role code the platform does not
+define, and requires a stated reason. `scopes` on both endpoints is derived from
+`ROLE_SCOPES`, the table `require()` authorises against, so a reviewer reading that screen
+is reading what is enforced rather than a description of it.
 
-The brief specifies SSE from core-api. **No service in the platform emits
-`text/event-stream`** — verified across all six. So `src/lib/queries.ts` polls, and
-`LIVE_INTERVAL_MS` is the single place that changes when a stream exists. Intervals are
-chosen against what the number costs if it is wrong, not against what feels responsive:
-gates 5s, queue 15s, reference data 5min. The gate poll runs in background tabs too — an
-operator with the console on a second monitor is the normal case, and a banner that froze
-on blur would be worse than no banner.
+**`GET /responders` gained a response model.** It was untyped, and the console had guessed
+a `callsign` field this service has never had. The guess failed at the zod boundary and
+quietly emptied the responder list on the dispatch gate — the plan looked like it had no
+responders, on the one screen where that matters.
 
-### Two API gaps the console had to be honest about
+### Two finished screens were invisible, and a test now stops it recurring
 
-**The dispatch gate cannot show the reasoning.** The brief requires the per-incident factor
-breakdown and the `unservable` list, "expanded by default". `GET /dispatch-plans/{id}`
-returns `PlanSummary`, which carries neither — and the table has a `route` JSONB column and
-a `langgraph_thread_id` that the response model does not expose either. Rather than render
-an empty "why these are ranked here" section, which reads as *the agent considered nothing*,
-the screen shows a named degraded banner saying the reasoning is not attached and what to
-do instead. That is the true state today: the triage agent has no adapters, so no plan
-carries a reasoning thread.
+`/approvals` was gated on `entitlement:approve` and `/admin` on `admin:write`. **Neither is
+a scope this platform has ever defined** — the real ones are `entitlement:approve_ds`,
+`entitlement:approve_district` and `system:admin`. Both screens were built, tested and
+working at their URLs, and no user could reach either from the navigation.
 
-**The release queue cannot be listed.** `ledger-svc` has `GET /entitlements/{id}` and **no
-list endpoint**, so nothing can ask "which entitlements are approved and waiting". An empty
-list would be the most dangerous screen in the console — it would tell a district approver
-no money is waiting when there might be a hundred households. `/disbursements` says so,
-offers direct entry by entitlement reference, and lists what has recently been released
-from the endpoint that does exist.
+The failure is silent by construction: `principal.scopes.includes('admin:write')` is simply
+false for everybody, so the link never renders, nothing errors and nothing logs.
+`tests/auth/test_console_scopes.py` now parses the `NAV` table out of `app-shell.tsx` and
+asserts every scope in it is a real `Scope` **and** that some human role holds it — a real
+scope only machines hold is the same failure with a subtler cause. TypeScript cannot import
+the Python enum, so the check runs from the side that owns the vocabulary. `scopes` is now
+a list and any-of: an approver holds the DS scope or the District one and rarely both.
 
-Closing either is backend work, and both are named in the gaps below.
+### `verify-i18n` now checks the code against the catalogue, not only the catalogues against each other
 
-### The delivery-gaps panel, and the denominator rule
+Completeness compares si, ta and en to one another, so **a key missing from all three
+passes**. `t('totpHint')` where the catalogue says `totpPrompt` renders the literal string
+`auth.totpHint` to every user in every language — a worse failure than a missing
+translation, because it is wrong in the language the author speaks and so is the one they
+are least likely to notice.
 
-The brief singles this screen out: it is what turns "we sent the warning" into "these 14
-divisions probably did not get it, send a vehicle". Two properties are held by e2e tests
-because losing either makes the screen actively misleading.
+It was found by the accessibility sweep rather than by the i18n gate, which is the wrong
+place to find it. The script now also resolves every statically readable `t('key')` against
+the catalogue: 704 uses, 7 dynamic and reported as unchecked rather than guessed at. It
+caught a second broken key immediately.
 
-**No count appears without its denominator.** Every tile renders `n / m`, the server's own
-`summary` sentence is rendered verbatim rather than recomputed, and a test asserts that
-**no bare percentage appears anywhere on the page**. A "72%" over an unstated base is how
-a district gets reported as covered when the base was four synthetic people - which is
-exactly what file 09's targeting bug produced before it was fixed.
+Bindings are resolved **positionally**. One file routinely holds several components each
+with its own `const t = useTranslations(...)` on a different namespace, and matching by name
+alone resolves every call against whichever declaration happened to be last — which reports
+dozens of real keys as missing and buries any genuine finding.
 
-**The order is not re-sorted.** `GET /alerts/{id}/delivery/gaps` returns worst-first and
-the console renders that order untouched, because the order is the instruction: it says
-which division the vehicle goes to first. The e2e fixture deliberately supplies rows in a
-non-obvious order and asserts they come out unchanged.
+### The dispatch gate screen, now that it has something to show
 
-### The anomaly disposition workflow enforces ADR-009 twice
+- **The factor breakdown is inline and expanded**, not behind a popover as it is on the
+  queue. The queue's job is comparison across many rows at a glance; this screen's job is
+  one decision made properly, and the whole argument has to be readable without a click.
+- **`unservable` sits above the decision**, in the warning band, with a Playwright test
+  asserting its bounding box is above the approve button's. It is the incident nobody is
+  going to, and a dispatcher who reaches the button before that list has been shown it too
+  late.
+- **Null reasoning and empty reasoning are different claims**, and the schema keeps them
+  apart. Null means nothing recorded a reason — the honest state for a plan proposed
+  outside the triage agent — and the degraded banner stays for it. An empty factor list
+  under a "why these are ranked here" heading would instead say the agent weighed nothing.
+- **The route is drawn and blocked segments are not.** There is no road network anywhere in
+  this platform, so a blocked-segment overlay would be a drawing rather than a fact. The
+  line joins the stops in the solver's sequence and the screen says that is what it is.
 
-A flag renders its `innocent_explanations` - the ordinary reasons the pattern occurs -
-*above* anything that could read as suspicion, with `what_would_resolve_it` beside them.
-A flag shown alone is an accusation, and this platform does not accuse people. The
-reviewer-facing text lives inside `rationale` rather than at the top level, because the
-agent writes a whole `FlagContext` and `ledger-svc` stores it as it arrives.
+### The dry run is mandatory, and the console is the only thing that can enforce it
 
-The disposition button is unreachable without a note, for **every** outcome including
-`FALSE_POSITIVE`. `ledger-svc` refuses a note-less disposition; the console makes the
-refusal impossible to trigger. A false positive is a first-class outcome, not a failure to
-hide - the published false-positive rate is only meaningful if somebody can read why each
-one was called.
+`alerting-svc` will accept a dispatch without a dry run — the dry run takes no transport at
+all, so nothing server-side knows whether anybody looked. That makes `/ops/alerts/[id]` the
+only place the rule can live, and it is why the result is **cleared before** each new call
+rather than after: a count from ten minutes ago is worse than no count, because it looks
+like diligence.
 
-The auditor is also told, on the page, that their own reads are recorded. Discovering that
-later from one's own tooling is a bad way to learn it.
+The cap comparison is the server's `exceeds_cap`, not one recomputed in the browser: a
+second copy of a threshold that exists to stop twenty million messages would eventually
+disagree with the first, in the direction that lets the send through. Over the cap, a typed
+reason is required and goes to the server with the dispatch.
 
-### The gate screens hold four properties, and each has a test
+### Quiet hours are mirrored into TypeScript, and the mirror had a half-hour bug
 
-- **Approve is unreachable by Enter.** The TOTP field is focused on load so an easy
-  decision is fast, and the form swallows submit. A dispatcher resting a hand on the
-  keyboard must not be able to send people towards a hazard. Tested in jsdom and in
-  Chromium.
-- **Rejecting is exactly as fast as approving.** Same size, same column, one click to open,
-  neither pre-selected. If rejecting is slower people approve to save time and the gate
-  becomes theatre. The e2e test asserts the button sizes match.
-- **The money gate blocks before the button, not after.** An open grievance or a
-  segregation conflict disables release and says why. `ledger-svc` would refuse with a 409
-  anyway; letting the click through to collect one teaches approvers that refusals are
-  noise.
-- **A household name is never rendered, even if the server sends one.** The fixture in
-  both the unit and the e2e suite includes `household_name`, and both assert it does not
-  appear. The real guarantee is that the query never selects one; this is the second line.
+The composer has to say *while the message is being written* that a watch-level alert at 2am
+will be held until 06:00. There is no alert yet to ask the server about, so the rule from
+`agent_svc.agents.warning.channels` is mirrored — the same trade as the SMS segment count,
+and worth it only if the two agree.
 
-### The calculation is a derivation, not a total
+`quiet-hours.test.ts` walks a full day in Colombo local time and caught a real bug on its
+first run: computing the 06:00 release by zeroing the UTC minutes lands on **06:30** in
+Colombo, because the offset is +5:30. The hour was right and the minute was wrong, which an
+hour-only assertion would have passed. It is now a minute offset from the current Colombo
+wall clock, and the test asserts the minute.
 
-`EntitlementOut.calculation_trace` is walked structurally and rendered key by key, with the
-schedule version above it and the amount below. A trace key the console has never seen is
-rendered rather than dropped: the one thing this panel must never do is silently omit a
-step, because the step it omits is the one the approver needed. An approver shown only a
-number is being asked to rubber-stamp; one who can follow the arithmetic catches the
-schedule version being wrong, which is the error that actually happens.
+### The forecast board says which rows a model produced
 
-### Not every component is a client component, and the console keeps that
+`method` is `RULE_THRESHOLD` or `MODEL` on every row, and a banner above the table when
+nothing on it came from a model. This is the same failure the triage queue's `assisted` flag
+exists to prevent, one loop further upstream: a threshold crossing presented as a prediction
+is trusted more than it has earned.
 
-`'use client'` is on the modules that hold a hook, a browser API or a function prop.
-`severity-pill` and `trust` from the design system stay server-renderable, so the severity
-chips and the mock-data badge render on the server. It matters more for file 21 than here.
+Impact class **does** use the severity ramp, unlike delivery confirmation or queue age. It
+is a hazard grade — 4 is the evacuate line — and it is the one derived number on the console
+that legitimately borrows those five colours.
 
-### Three things that were broken and are now fixed
+Every driver is rendered including one the screen has never seen. The table's CHECK requires
+`drivers` non-empty for exactly this reason, and dropping an unrecognised key would silently
+omit the term the model just started using.
 
-- **`next build` produced a server that served nothing.** next-intl's plugin was not wired
-  into `next.config.ts`, so the build passed, 18 pages generated, and every request failed
-  at run time with "Couldn't find next-intl config file". A build that passes and a server
-  that serves nothing is the worst combination to find late; the e2e suite found it.
-- **A hook was called after an early return** in the dispatch gate, which is a rules-of-
-  hooks violation that renders fine until the loading branch is taken.
-- **A Tailwind class was being built by concatenation** in the design system's
-  `SeverityPill` (found while wiring the console). Tailwind extracts utilities by scanning
-  for literal strings, so the class was never generated — a silent failure, in the build,
-  on the one component whose colour is load-bearing.
+### The map draws four layers now, and still names what it cannot
+
+Incidents, responder positions, and division boundaries shaded by impact class; delivery-gap
+shading lives on the delivery panel where an alert scopes it. Boundaries are fetched **one
+division at a time and only for divisions with an incident in the current queue** — bounded
+by the size of the event rather than the size of the country — and the layer is off by
+default because each visible division costs a request.
+
+Shelters with occupancy are still named as absent: nothing in this platform holds shelter
+positions or capacity. A hidden layer is fed an empty collection rather than removed,
+because removing and re-adding a layer loses its paint state and its place in the draw
+order.
+
+The delivery-gap layer uses a **single-hue sequential ramp, never the severity ramp**. Low
+confirmed delivery is a coverage figure; painting a division dark red because its receipts
+have not arrived would say the hazard there is worse than next door. A division with nothing
+targeted is not on the map at all — a fraction over a zero denominator is not a low number,
+it is no number.
+
+### The gate banner counts both gates, and the sound is real
+
+It counted dispatches only, because nothing could list entitlements awaiting release. It now
+polls both and renders them as **two banners rather than one summed count**: "3 waiting"
+spanning a dispatch and two releases tells a dispatcher nothing about whether any of it is
+theirs, and the two go to different people.
+
+The sound is a Web Audio tone — no asset and no network, because an operations room on a
+degraded connection is exactly when it must work. Arming is a click, which browsers require
+before audio may play at all; a banner that armed itself would be silent and would *look*
+armed. `pending-gates.test.tsx` pins both thresholds by the minute, including that the
+banner escalates on its own timer with nothing touching the screen.
+
+### Role administration is behind the same second factor as the money gate
+
+Granting a role is how somebody acquires `disbursement:release`. The console collects a
+TOTP and a written reason, the server refuses without either, and the dialogue shows the
+scopes a role actually confers before it is granted — a role code is a name; the scopes are
+the thing. A role carrying a human gate is marked wherever it appears.
+
+The role catalogue is read-only and has to be: a role is a bundle of scopes defined in
+`sarana_shared.auth.scopes` and enforced from there, and a console that could edit one would
+be editing the authorisation model at run time.
+
+**The gov-mock scenario controls are still not driven from here**, and the tab says so with
+the commands that do drive them. gov-mock impersonates the Department of Meteorology, NBRO,
+the NDRSC and three payment rails; it is deliberately absent from the gateway's service map,
+and a console able to advance its clock is a console able to make the platform believe a
+cyclone made landfall.
+
+### `/field/assessments/new` is built, and built to be visibly worse than the app
+
+The brief names the route and a dead handset is a real situation. It files with
+`evidence_photo_uris` and `latitude`/`longitude` null, and says so **above the form** rather
+than at the button: an officer should decide whether to use this screen knowing what it
+cannot do.
+
+No position is recorded rather than the desk's. Those fields mean *where the officer stood*
+and exist so an assessment filed from thirty kilometres away can be flagged — sending the
+desk position would satisfy the field and defeat the check. The screen says the check cannot
+run on this record, which is better than quietly passing it. The idempotency key is
+generated once per form rather than per click, so a double-tap replays instead of filing two
+assessments for one household.
+
+### The performance budget is half measured and half honest about it
+
+`pnpm --filter @sarana/web-ops lighthouse` is wired. The **JS budget is a real gate**: it
+reads `app-build-manifest.json`, gzips every chunk each route actually loads, and asserts
+per route. Every route passes at 250 KB — the heaviest is `/ops` at 214.3 KB, the lightest
+`/login` at 182.7 KB.
+
+LCP is **not** measured unless `SARANA_LIGHTHOUSE_URL` names a served production build. There
+is no honest way to assert a Largest Contentful Paint from a manifest, and a script printing
+a number it had not measured would be worse than one that says it cannot.
 
 ### What the e2e suite proves, and what it does not
 
-13 Playwright tests run against `next dev` with the **gateway routes intercepted in the
-browser**, not against a booted platform. That is a trade, not a shortcut: the flows these
+68 Playwright tests run against `next dev` with the gateway routes intercepted in the
+browser, not against a booted platform. That is a trade, not a shortcut: the flows these
 protect are properties of the console, and making them depend on six Docker services, a
 seeded Postgres and a working TOTP secret would produce a suite that fails for reasons
 unrelated to the console and that nobody runs.
 
-So they do **not** prove that `incident-svc` refuses an approval without a step-up stamp,
-or that `ledger-svc` refuses a release with an open grievance. Those are server properties,
+So they do **not** prove that `incident-svc` refuses an approval without a step-up stamp, or
+that `ledger-svc` refuses a release with an open grievance. Those are server properties,
 tested in the Python suite against a real database. They prove the console asks for the
-second factor, will not approve on Enter, and shows the approver a blocking grievance
-before they reach the button.
+second factor, will not approve on Enter, shows the approver a blocking grievance before the
+button, will not send an alert nobody has dry-run, warns on a rule-ordered queue that says
+`assisted: false`, and puts the unservable list above the approve control.
 
 ### Still placeholder, and honest about it
 
-- **One route renders `NotBuilt`.** `/ops/forecast` has no data to show: nothing triggers
-  the forecast agent in a running stack and it has never run against the live services, so
-  building the screen would mean building an empty one.
-- **`/admin` has templates and schedules, not users or roles.** The brief also names user
-  and role administration and the gov-mock scenario controls. Users and roles need
-  endpoints core-api does not expose; the scenario controls live on gov-mock at port 8006,
-  which is deliberately not in the gateway's service map because it is a mock and the
-  console should not be able to drive one by accident.
-- **Area selection is a text field, not a map.** The composer takes comma-separated GN
-  division codes. The brief asks for selection on the map by division, DS division,
-  district or a drawn polygon snapping to boundaries, and the map has no layers yet.
-- **The composer's dry run is a notice, not a call.** It says a dry run is required and
-  why. Drafting now works, so the next step is a draft detail screen that runs
-  `POST /alerts/{id}/dispatch` with `dry_run`, shows the counts, and only then offers the
-  send behind sign-off.
-- **No screen shows linked reports, audio or dedup links.** Both `/ops/incidents/[id]` and
-  the `/ops` context pane are blocked on the same thing: `GET /incidents/{id}`'s docstring
-  promises linked reports and its SQL joins none. The context pane does now show the real
-  audit trail from `GET /audit`; the reports half needs incident-svc work first.
-- **The map draws incidents and nothing else.** Division boundaries, report density and
-  delivery-gap shading have builders in `packages/ui` and no data path; they are named on
-  screen as not built. `NEXT_PUBLIC_SARANA_MAP_STYLE_URL` points at MapLibre's demo tiles.
-- **The spine plots two milestones, not six.** Declaration and landfall are readable;
-  forecast issued, alert dispatched, first incident, peak queue depth and first
-  disbursement each need a query that does not exist.
-- **The gate banner counts dispatches only.** Disbursements are not counted, because there
-  is no endpoint to count them - see the release-queue gap above. The banner therefore
-  under-reports, which is recorded here rather than hidden.
-- **No alert sound.** `PendingGateBanner` offers the control only when a handler is passed,
-  and none is: offering a control that does nothing is worse than not offering it, because
-  an operator who enables it then believes they will be told. The string is translated.
-- **No lighthouse budget check.** The brief's fourth DoD command
-  (`--assert-lcp 2000 --assert-js 250`) is not wired. It needs the app served from a
-  production build, and `next build` cannot finish on Windows without Developer Mode.
-- **`next build` still cannot finish on Windows.** Compilation and all 54 static pages
+- **A drawn polygon that snaps to boundaries is not built.** Area selection works by GN
+  division, DS division and district. A lasso needs every candidate boundary in the
+  viewport and geometry is served one division at a time out of ~14,000; one that snapped
+  to nothing would be worse than none, because the operator would believe they had selected
+  divisions when they had drawn a shape.
+- **Audio is not playable.** `raw_audio_uri` is an object key and media signing is not wired
+  (file 08). The screen says a recording exists and cannot be played here, rather than
+  rendering an `<audio>` that fails silently — an operator who presses play and hears
+  nothing concludes the recording is empty. When the store is wired and the key becomes an
+  http(s) URL, the player appears with no change to this code.
+- **Shelter positions and occupancy do not exist.** No table holds them. Named on the map as
+  absent rather than offered as a toggle that does nothing.
+- **The spine still plots two milestones, not six.** Declaration and landfall are readable;
+  forecast issued, alert dispatched, first incident, peak queue depth and first disbursement
+  each need a query that does not exist.
+- **No visual regression suite.** Required by the brief and it needs a real browser.
+  `test:i18n-overflow` is a width *model* standing in for the one regression that matters
+  most; it is not a pixel comparison and does not claim to be.
+- **Still no SSE anywhere.** The console polls. `LIVE_INTERVAL_MS` in
+  `apps/web-ops/src/lib/queries.ts` is the one place that changes when a stream exists.
+- **`next build` still cannot finish on Windows.** Compilation and all 60 static pages
   succeed; the pre-existing `output: 'standalone'` trace-copy step then fails with `EPERM`
-  creating symlinks. Environmental, and unrelated to the console.
+  creating symlinks unless Developer Mode is on. Environmental, and unrelated to the
+  console — the chunks the performance budget reads are written before that step, so the JS
+  gate is checkable on a build that failed there.
 
 ---
 
@@ -2314,10 +2391,10 @@ shows all three side by side rather than behind a tab.
 with per-language segment costs, free text that visibly forces sign-off, and the mandatory
 dry-run notice. Five Playwright tests cover it.
 
-**It cannot create the draft.** `POST /alerts` requires a `hazard_event_id`, and **no
-service exposes an endpoint that lists hazard events** - checked across all six. So the
-last call has nothing to name the event with. The button is present, disabled behaves
-correctly, and pressing it reports exactly that rather than failing obscurely.
+**It drafts, and drafting is deliberately not sending.** `GET /hazard-events` closed the
+gap that once stopped it creating a draft at all. The screen now creates one and stops:
+dispatch is a separate call behind a mandatory dry run on `/ops/alerts/[id]`, and one
+button that drafted and sent is how a national fan-out happens by accident.
 
 Three decisions inside the screen:
 
@@ -2375,31 +2452,43 @@ a stale green cannot sit on screen while a different range is being checked.
 
 ---
 
-## `/field/assessments` is read-only, deliberately
+## `/field/assessments/new` exists, and is built to be visibly worse than the app
 
 The Field Companion is the real tool: a GN officer assesses damage standing in front of a
 house, usually with no signal. This screen exists for the case where the handset is dead,
 lost or never issued, and for a DS officer reviewing what their division has submitted.
 
-It does not offer a create form. Creating an assessment needs photographs with EXIF GPS, an
-offline queue and a capability token issued before going into the field - all of which are
-the mobile app's job and none of which a browser at a desk can honestly provide. A form
-here that accepted an assessment without evidence would be a way of entering damage figures
-nobody stood in front of.
+The brief names `/field/assessments/new` and a dead handset is a real situation, so it is
+built - and built so that it cannot feel equivalent to the app. It files with
+`evidence_photo_uris` and `latitude`/`longitude` null and says so **above the form** rather
+than at the button, because an officer should choose this screen knowing what it cannot do.
+
+No position is recorded rather than the desk's. Those fields mean *where the officer stood*
+and exist so an assessment filed from thirty kilometres away can be flagged; sending the
+desk position would satisfy the field and defeat the check. Saying the check cannot run on
+this record is better than quietly passing it.
+
+The idempotency key is generated once per form rather than per click, so a double-tap
+replays the stored record instead of filing two assessments for one household - which is
+two entitlements and eventually two payments.
 
 ---
 
-## The map draws one layer, and says so
+## The map draws four layers, and still names the one it cannot
 
-`SituationMap` plots incidents on MapLibre using `incidentLayer` from the design system.
-The brief specifies five layers; four have pure builders waiting in `packages/ui` and only
-the incident one is drawn, because only incidents currently reach the console with
-coordinates. `incident-svc` returns `lon`/`lat` on every incident; nothing yet supplies
-shelter positions, responder positions or delivery-gap shading in a form the map can take.
+`SituationMap` plots incidents, responder positions and division boundaries shaded by
+forecast impact class; delivery-gap shading is on the alert delivery panel, where an alert
+scopes it. `GET /responders` was already returning `lon`/`lat` and nothing read them;
+boundaries came with `GET /impact-forecasts` giving the class to shade by.
 
-The three unbuilt layers are **named on screen as not built** rather than offered as
-toggles. A toggle that does nothing is worse than an absent one: an operator who switches
-on "delivery gaps" and sees an unchanged map concludes there are none.
+**Shelters with occupancy are still named on screen as not built** rather than offered as a
+toggle. Nothing in this platform holds shelter positions or capacity, and a toggle that does
+nothing is worse than an absent one: an operator who switches one on and sees an unchanged
+map concludes there is nothing there.
+
+A hidden layer is fed an empty collection rather than removed. Removing a layer and
+re-adding it loses its paint state and its position in the draw order, so a toggle would
+silently change how the map looks the second time it is switched on.
 
 **An incident with no coordinate is not placed, and the count is shown.** A report naming
 a village and nothing more is real, and it stays in the queue and in the accessible list.
@@ -2543,13 +2632,23 @@ stronger guarantee than redacting one here would be.
 read rather than rendering nothing, because nothing reads as "this incident has no
 history".
 
-### A note on `GET /incidents/{id}`
+### `GET /incidents/{id}` now returns what its docstring always promised
 
-Its docstring says it returns "its linked reports and triage factors". The SQL behind it
-(`_GET_INCIDENT` in `incident-svc/repo/queries.py`) selects the incident row only and joins
-no reports. The console therefore cannot show the linked reports, the original-language
-text or the audio the brief asks for in the context pane. Widening that query is
-incident-svc work, and it is what unblocks that half of the pane.
+It said it returned "its linked reports and triage factors" from the day it was written,
+and the SQL behind it selected the incident row and joined nothing. `IncidentDetail` now
+carries the linked reports with their transcriptions — original-language text, detected
+language, confidence, and the audio key — plus the incidents in the same dedup cluster.
+
+Three reads rather than one join. Reports and cluster siblings are both one-to-many, so a
+single statement would multiply the incident row by their product and every consumer would
+have to un-fan it; two extra round trips on a detail view is the cheaper answer than a
+query nobody can read.
+
+**No column in that query identifies a person.** `sender_msisdn_hash` and
+`sender_household_id` are deliberately not selected — a query that never selects a name
+cannot leak one, which is stronger than redacting downstream. The LATERAL takes the most
+recent transcription per report rather than all of them, because a report re-transcribed
+after a human correction has two rows and the older one is the machine's rejected guess.
 
 ---
 
@@ -2890,11 +2989,11 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
 - **The pending-work API does not exist (file 18).** `GET /agents/pending` and the
   scoped inbox are specified and unbuilt. `waiting_since` is already stamped on every
   gate payload, so the SLA data is there and the endpoints are not.
-- **`GET /dispatch-plans/{id}` does not expose the reasoning (files 08/16/20).** The
-  table has `route` and `langgraph_thread_id`; `PlanSummary` returns neither, and the
-  factor breakdown and `unservable` list exist only in the triage agent's interrupt
-  payload. The dispatch gate screen cannot show what the brief requires until this is
-  widened, and it says so on screen rather than rendering an empty section.
+- **~~`GET /dispatch-plans/{id}` does not expose the reasoning~~ — closed in file 20.**
+  `PlanDetail` now returns `route`, `langgraph_thread_id` and a typed `reasoning` block
+  read from the column the triage agent already writes. The gate screen renders the factor
+  breakdown and the `unservable` list, and keeps the degraded banner for the case that is
+  still real: a plan nothing recorded a reason for.
 - **No SSE anywhere (files 07/20).** The console polls. `LIVE_INTERVAL_MS` in
   `apps/web-ops/src/lib/queries.ts` is the one place that changes when a stream exists.
 - **No visual regression suite (file 19).** Required by the brief, and it needs a real
@@ -2987,10 +3086,16 @@ pnpm --filter @sarana/ui storybook            # localhost:6006, three scripts si
 
 # ops console (file 20)
 pnpm --filter @sarana/web-ops dev              # http://localhost:3000
-pnpm --filter @sarana/web-ops verify-i18n      # 163 keys x si/ta/en
-pnpm --filter @sarana/web-ops test             # 12 unit
-pnpm --filter @sarana/web-ops test:a11y        # axe, 5 screens x 3 locales
-pnpm --filter @sarana/web-ops test:e2e         # 13 Playwright, real Chromium
+pnpm --filter @sarana/web-ops verify-i18n      # 579 keys x si/ta/en, + every key the code uses
+pnpm --filter @sarana/web-ops test             # 59 unit
+pnpm --filter @sarana/web-ops test:a11y        # axe, 25 screens x 3 locales
+pnpm --filter @sarana/web-ops test:e2e         # 68 Playwright, real Chromium
+pnpm --filter @sarana/web-ops build            # 60 static pages; see the Windows EPERM note
+pnpm --filter @sarana/web-ops lighthouse -- --assert-js 250   # JS budget, per route, gzipped
+SARANA_LIGHTHOUSE_URL=http://localhost:3000/en/ops \
+  pnpm --filter @sarana/web-ops lighthouse     # adds the LCP measurement
+uv run pytest tests/auth/test_console_scopes.py       # console scopes vs the Scope enum
+uv run pytest tests/ledger/test_console_vocabularies.py  # console enums vs the Python ones
 
 # supervisor (file 18)
 make eval AGENT=supervisor

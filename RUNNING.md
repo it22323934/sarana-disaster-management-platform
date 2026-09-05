@@ -187,16 +187,26 @@ The screens worth opening first are the gates, because they are what the console
 and the delivery-gaps panel, because it is the one that changes what happens next:
 
 ```
+/en/ops                             the common operating picture: queue, map, context
 /en/ops/dispatch                    plans awaiting a dispatch decision
-/en/ops/dispatch/<id>               the dispatch gate
+/en/ops/dispatch/<id>               the dispatch gate, with the agent's reasoning
 /en/disbursements/<id>              the money gate, by entitlement id
-/en/ops/alerts/<id>/delivery        delivery counts and the divisions probably unreached
-/en/audit/anomalies                 flags, their innocent explanations, disposition
+/en/ops/forecast                    impact by division, the drivers, the triggers
 /en/ops/alerts/new                  compose an alert, with live per-language SMS cost
-/en/audit/chain                     recompute the hash chain, and the daily anchors
-/en/admin                           sign and publish alert templates; cost schedules
+/en/ops/alerts/<id>                 the draft, its mandatory dry run, and the send
+/en/ops/alerts/<id>/delivery        delivery counts and the divisions probably unreached
+/en/audit                           the ledger, filterable and exportable, with the anchors
+/en/audit/anomalies                 flags, their innocent explanations, disposition
+/en/audit/chain                     recompute the hash chain over a range
+/en/admin                           templates, users, roles, cost schedules
 /en/approvals                       entitlements waiting for a DS or District signature
+/en/approvals/<id>                  one entitlement, and the derivation behind its amount
+/en/grievances                      the queue, with assignment and trilingual resolution
+/en/field/assessments/new           filing from a desk, and what that costs
+/en/totp                            step up before opening a queue of decisions
 ```
+
+Every route the brief names is built. Nothing renders a "not built" screen.
 
 `/admin` is where the twelve seeded templates get their Sinhala and Tamil signatures. Until
 a template has both and is published, no alert can be dispatched from it - which is why the
@@ -212,24 +222,35 @@ most of the country reads.
 Swap `en` for `si` or `ta` in any URL. The locale is in the path, not only a cookie, so a
 link to a plan opens in the language the sender was reading it in.
 
-### One screen tells you something is missing, on purpose
+### Several screens tell you something is missing, on purpose
 
-The dispatch gate shows a banner saying the agent reasoning is not attached. That is true:
-`GET /dispatch-plans/{id}` does not return the factor breakdown or the unservable list, and
-the triage agent has no adapters, so no plan carries a reasoning thread. The screen says so
-rather than rendering an empty "why these are ranked here" section, which would read as
-*the agent considered nothing*.
+On a fresh seed the dispatch gate shows a banner saying **nothing recorded a reason** for
+the plan. That is true and it is not the same claim as an empty factor list:
+`GET /dispatch-plans/{id}` now returns the factor breakdown and the unservable list from
+the plan's own `route` column, and it renders both whenever a plan carries them. A plan
+proposed by something other than the triage agent has no reasoning at all, and the banner
+is the honest answer for it - where an empty "why these are ranked here" section would read
+as *the agent considered nothing*.
 
-That is a backend gap, it is in the handoff, and it is not a bug in the console.
+Elsewhere: the map names shelters as a layer nothing feeds; the composer names the drawn
+polygon as not built; the audio on a linked report says it cannot be played because media
+signing is not wired; and the chain screen counts the days whose Merkle root was never
+written to an external object store. Each of those is a real gap, each is in the handoff,
+and none is a bug in the console.
 
 ### Tests
 
 ```bash
-pnpm --filter @sarana/web-ops verify-i18n   # 335 keys in si, ta and en
-pnpm --filter @sarana/web-ops test          # 27 unit: gates, map transform, disaster phase
-pnpm --filter @sarana/web-ops test:a11y     # axe: 20 screens x 3 locales
-pnpm --filter @sarana/web-ops test:e2e      # 45 Playwright tests in real Chromium
+pnpm --filter @sarana/web-ops verify-i18n   # 579 keys x si/ta/en, and every key the code uses
+pnpm --filter @sarana/web-ops test          # 59 unit: gates, quiet hours, CSV, map transform
+pnpm --filter @sarana/web-ops test:a11y     # axe: 25 screens x 3 locales
+pnpm --filter @sarana/web-ops test:e2e      # 68 Playwright tests in real Chromium
+pnpm --filter @sarana/web-ops lighthouse -- --assert-js 250   # per-route JS budget, gzipped
 ```
+
+`verify-i18n` checks two different things. The first is that every key exists in all three
+locales. The second is that every key the *code* asks for exists at all - a key missing from
+all three passes the first check and then renders its own path, in English, to everybody.
 
 The e2e suite starts its own dev server on port 3100 and intercepts the gateway in the
 browser, so it needs neither Docker nor a seeded database. It does not prove the services
@@ -363,14 +384,16 @@ goes anywhere.
 All six backend services are complete and the stack boots, and the design system above
 them exists. What does not exist is the screens. Working backwards from the build files:
 
-- **The design system is built. The ops console is half-built. The public dashboard is
+- **The design system and the ops console are built. The public dashboard is
   not started.** `packages/ui` has tokens, a three-script type scale, 34 components and
-  four CI gates. `apps/web-ops` has the shell, the gateway, sign-in and step-up, the common
-  operating picture, **both human gate screens**, the delivery-gaps panel, the incident and
-  alert lists, the audit ledger with its anomaly disposition workflow, and the review and
-  grievance queues, the alert composer, chain verification, the assessment list, the
-  template review gate and the approval queue - 17 working routes, with 43 Playwright
-  tests. One route says "not built" rather than 404ing: forecast.
+  four CI gates. `apps/web-ops` has every route the brief names - the shell, the gateway,
+  sign-in and step-up, the common operating picture, **both human gate screens with the
+  agent's reasoning**, the impact forecast board, the alert composer and the mandatory dry
+  run behind it, the delivery-gaps panel, the incident and alert lists with linked reports,
+  the audit ledger with CSV export and the published anchors, the anomaly disposition
+  workflow, the review and grievance queues, the entitlement approval detail, the user
+  directory and role catalogue, and the desk fallback for filing an assessment. 25 routes,
+  60 static pages, 68 Playwright tests. **No route says "not built".**
 
 - **All six agents exist, and none is wired to the live stack.** The forecast agent turns rainfall into per-division
   impact predictions with lead time, confidence and the drivers that produced them, and

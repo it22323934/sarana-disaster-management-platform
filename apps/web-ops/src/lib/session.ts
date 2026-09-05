@@ -21,6 +21,8 @@ import 'server-only';
 
 import { cookies } from 'next/headers';
 
+import { STEP_UP_WINDOW_SECONDS } from './step-up';
+
 export const ACCESS_COOKIE = 'sarana_at';
 export const REFRESH_COOKIE = 'sarana_rt';
 export const PRINCIPAL_COOKIE = 'sarana_principal';
@@ -39,15 +41,10 @@ export interface PrincipalSummary {
   readonly steppedUpAt?: string;
 }
 
-/**
- * How long a step-up is good for.
- *
- * Five minutes, matching what `ledger-svc` and `incident-svc` enforce. The console shows
- * this so an approver knows whether the next gate will ask again; it never *decides*
- * anything from it. The services re-check on every gated call, which is the check that
- * counts.
- */
-export const STEP_UP_WINDOW_SECONDS = 300;
+// Re-exported so existing server-side callers keep one import. The constant itself lives
+// in `step-up.ts`, which carries no `server-only`, because `/totp` is a client component
+// and has to quote the same window back to the user.
+export { STEP_UP_WINDOW_SECONDS } from './step-up';
 
 export async function readAccessToken(): Promise<string | undefined> {
   return (await cookies()).get(ACCESS_COOKIE)?.value;

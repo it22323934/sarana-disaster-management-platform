@@ -41,17 +41,41 @@ import {
 } from '@sarana/ui';
 import { LOCALES, LOCALE_NAMES, type Locale } from '@sarana/ts-shared/i18n';
 import { countSegments, MAX_SEGMENTS } from '@sarana/ts-shared/format';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
 
 import { gatewayFetch } from '../lib/gateway-client';
 import { useHazardEvents, useTemplates } from '../lib/queries';
 import { localised } from '@sarana/ts-shared/i18n';
+import { Link } from '../i18n/routing';
 import { alertSchema, type AlertTemplate } from '../lib/schemas';
+import { AreaSelector } from './area-selector';
 import { ErrorPanel } from './degraded';
+import { QuietHoursNotice, quietHoursState } from './quiet-hours';
 
 /** BCP-47 tags, so each preview renders in the right face and voice. */
 const LANG_TAGS: Record<Locale, string> = { si: 'si-LK', ta: 'ta-LK', en: 'en-LK' };
+
+/**
+ * CAP severity words to the impact class the quiet-hours rule tests.
+ *
+ * Needed because the composer has no alert yet - there is nothing to ask the server
+ * about - and the operator has to know *while writing* that a watch-level message at 2am
+ * will be held until 06:00. Unknown maps to 0, which does not bypass: assuming the highest
+ * class for a template whose severity nobody recognised would wake a district on the
+ * strength of an unmatched string.
+ */
+const SEVERITY_CLASS: Record<string, number> = {
+  EXTREME: 4,
+  SEVERE: 3,
+  MODERATE: 2,
+  MINOR: 1,
+  UNKNOWN: 0,
+};
+
+export function impactClassOf(template: AlertTemplate | null): number {
+  return SEVERITY_CLASS[(template?.severity ?? '').toUpperCase()] ?? 0;
+}
 
 /**
  * Parameter names a template body refers to.
@@ -88,16 +112,17 @@ export function AlertComposer() {
   const t = useTranslations('compose');
   const alerts = useTranslations('alerts');
   const common = useTranslations('common');
+  const locale = useLocale() as Locale;
 
   const templates = useTemplates();
   const events = useHazardEvents();
   const [templateCode, setTemplateCode] = useState<string>('');
   const [hazardEventId, setHazardEventId] = useState<string>('');
-  const [drafted, setDrafted] = useState<string | null>(null);
+  const [drafted, setDrafted] = useState<{ id: string; cap_identifier: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
   const [freeText, setFreeText] = useState<Partial<Record<Locale, string>>>({});
-  const [divisions, setDivisions] = useState('');
+  const [divisions, setDivisions] = useState<string[]>([]);
   const [failure, setFailure] = useState<unknown>(null);
 
   const published = (templates.data ?? []).filter((template) => template.status === 'PUBLISHED');
@@ -130,10 +155,7 @@ export function AlertComposer() {
     setBusy(true);
     setFailure(null);
     try {
-      const codes = divisions
-        .split(',')
-        .map((code) => code.trim())
-        .filter((code) => code.length > 0);
+      const codes = divisions;
 
       const created = await gatewayFetch('alerts', {
         method: 'POST',
@@ -154,7 +176,7 @@ export function AlertComposer() {
         idempotencyKey: `draft-${selected.code}-${hazardEventId}-${codes.join(',')}`,
         schema: alertSchema.pick({ id: true, cap_identifier: true, status: true }),
       });
-      setDrafted(created.cap_identifier);
+      setDrafted(created);
     } catch (error) {
       setFailure(error);
     } finally {
@@ -298,20 +320,34 @@ export function AlertComposer() {
                 <p className="text-xs text-[var(--sev-2-fg)]">{t('noHazardEvents')}</p>
               ) : null}
 
-              <Input
-                label={t('divisions')}
-                description={t('divisionsHint')}
-                datum
-                value={divisions}
-                onChange={(event) => setDivisions(event.target.value)}
+              {/* Selection by division, DS division or district, with the codes still
+                  editable as text. One list, edited from either side: two representations
+                  of an area are two chances for them to disagree, and the one that
+                  disagrees is the one that gets sent. */}
+              <AreaSelector codes={divisions} onChange={setDivisions} />
+
+              {/* Whether this message will wake people tonight, shown while it is still
+                  being written. Discovering it from the delivery panel the next morning is
+                  discovering it too late to reword or re-time. */}
+              <QuietHoursNotice
+                state={quietHoursState(new Date(), impactClassOf(selected))}
+                locale={locale}
               />
 
               {failure ? <ErrorPanel error={failure} /> : null}
 
               {drafted ? (
-                <p role="status" className="text-sm text-[var(--verified)]">
-                  {t('drafted', { reference: drafted })}
-                </p>
+                // The draft exists and is not sent. The next step is a separate screen
+                // behind a mandatory dry run, which is the whole reason drafting and
+                // sending are two calls.
+                <div role="status" className="flex flex-wrap items-center gap-3">
+                  <p className="text-sm text-[var(--verified)]">
+                    {t('drafted', { reference: drafted.cap_identifier })}
+                  </p>
+                  <Button asChild variant="primary" size="sm">
+                    <Link href={`/ops/alerts/${drafted.id}`}>{t('openDraft')}</Link>
+                  </Button>
+                </div>
               ) : null}
 
               {/* The send path is not on this screen. Drafting produces an alert that then
@@ -328,10 +364,7 @@ export function AlertComposer() {
                 // is a release gate on templates and it is the same gate on an instance:
                 // a three-segment Tamil message is the community that gets it last.
                 disabled={
-                  overLimit ||
-                  divisions.trim().length === 0 ||
-                  hazardEventId === '' ||
-                  busy
+                  overLimit || divisions.length === 0 || hazardEventId === '' || busy
                 }
                 busy={busy}
                 busyLabel={t('draft')}

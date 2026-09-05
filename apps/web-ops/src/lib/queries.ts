@@ -38,7 +38,9 @@ import {
   disbursementListSchema,
   entitlementSchema,
   entitlementSummaryListSchema,
+  divisionGeometrySchema,
   gnDivisionListSchema,
+  householdListSchema,
   grievanceListSchema,
   hazardEventListSchema,
   deliverySchema,
@@ -67,9 +69,11 @@ import {
   type Entitlement,
   type EntitlementSummary,
   type Gap,
+  type DivisionGeometry,
   type GNDivisionRow,
   type Grievance,
   type HazardEvent,
+  type Household,
   type ImpactForecast,
   type Incident,
   type IncidentDetail,
@@ -643,6 +647,70 @@ export function useGNDivisionsByCode(
       );
       return pages.flat();
     },
+  });
+}
+
+/**
+ * Boundaries for the divisions currently on screen.
+ *
+ * `core-api` serves geometry **one division at a time** and there are roughly fourteen
+ * thousand of them, so this is bounded by the size of the event rather than the size of
+ * the country: the caller passes the divisions that have an incident in the current queue,
+ * and nothing else is fetched.
+ *
+ * Simplified at the default tolerance. The console draws these at national and district
+ * zoom, where an exact boundary is thousands of vertices rendering as a line - the exact
+ * geometry is what `tolerance=0` is for, and no screen here needs it.
+ *
+ * A division whose geometry read fails is dropped rather than failing the whole layer: one
+ * missing boundary is a gap in a map, and a rejected `Promise.all` is no map at all.
+ */
+export function useDivisionGeometries(
+  divisions: ReadonlyArray<{ id: string; code: string }>,
+  enabled: boolean,
+): UseQueryResult<DivisionGeometry[]> {
+  const wanted = divisions.slice(0, MAX_DIVISION_LOOKUPS);
+  const key = wanted.map((division) => division.id).sort();
+  return useQuery({
+    queryKey: ['admin', 'gn-divisions', 'geometry', key] as const,
+    enabled: enabled && wanted.length > 0,
+    // Boundaries change by gazette. The endpoint sets an ETag and a long max-age; this
+    // matches it so a pan does not re-request what the browser already holds.
+    staleTime: REFERENCE_INTERVAL_MS,
+    queryFn: async () => {
+      const settled = await Promise.allSettled(
+        wanted.map((division) =>
+          gatewayFetch(`admin/gn-divisions/${division.id}/geometry`, {
+            schema: divisionGeometrySchema,
+          }),
+        ),
+      );
+      return settled
+        .filter(
+          (result): result is PromiseFulfilledResult<DivisionGeometry> =>
+            result.status === 'fulfilled',
+        )
+        .map((result) => result.value);
+    },
+  });
+}
+
+/**
+ * Households in one division.
+ *
+ * Not cached across divisions and not polled: this is the one hierarchy read whose rows
+ * are about people, and the service refuses to cache it for the same reason - a shared
+ * cache keyed by URL would serve one officer scoped result to another.
+ */
+export function useHouseholds(divisionId: string): UseQueryResult<Household[]> {
+  return useQuery({
+    queryKey: ['admin', 'households', divisionId] as const,
+    enabled: divisionId.length > 0,
+    queryFn: () =>
+      gatewayFetch('admin/households', {
+        query: { gn_division_id: divisionId, limit: 500 },
+        schema: householdListSchema,
+      }),
   });
 }
 

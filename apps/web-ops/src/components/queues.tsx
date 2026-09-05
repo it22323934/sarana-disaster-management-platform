@@ -16,6 +16,7 @@ import { useTranslations } from 'next-intl';
 import { useGrievanceList, useReviewQueue } from '../lib/queries';
 import type { Grievance, ReviewItem } from '../lib/schemas';
 import { ErrorPanel } from './degraded';
+import { GrievanceWorkflow } from './grievance-workflow';
 
 /** Below this a transcription is held for a person rather than acted on. */
 const REVIEW_THRESHOLD = 0.7;
@@ -146,8 +147,38 @@ export function GrievanceQueue() {
           {
             key: 'raised',
             header: t('raised'),
+            width: '12rem',
             cell: (grievance) =>
               grievance.raised_at ? <RelativeTime value={grievance.raised_at} /> : '—',
+          },
+          {
+            key: 'sla',
+            header: t('sla'),
+            width: '11rem',
+            // A breach is a fact about how long a household has waited, not a severity, so
+            // it is `--pending` rather than a hazard colour. The clock started when they
+            // complained and no assignment restarts it.
+            cell: (grievance) =>
+              grievance.sla_breached ? (
+                <Badge tone="pending">{t('slaBreached')}</Badge>
+              ) : grievance.sla_due_at ? (
+                <span className="text-2xs text-[var(--text-muted)]">
+                  <RelativeTime value={grievance.sla_due_at} />
+                </span>
+              ) : (
+                '—'
+              ),
+          },
+          {
+            key: 'actions',
+            header: t('actions'),
+            width: '14rem',
+            cell: (grievance) => (
+              <GrievanceWorkflow
+                grievance={grievance}
+                onChanged={() => void grievances.refetch()}
+              />
+            ),
           },
         ]}
       />

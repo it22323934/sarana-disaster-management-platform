@@ -66,16 +66,31 @@ export interface QuietHoursState {
   readonly releaseAt: Date;
 }
 
-/** The Colombo-local hour for an instant, from the IANA database rather than arithmetic. */
-export function colomboHour(moment: Date): number {
-  const formatted = new Intl.DateTimeFormat('en-GB', {
+/**
+ * The Colombo-local hour and minute for an instant.
+ *
+ * From the IANA database via `Intl` rather than by adding an offset. Sri Lanka is UTC+5:30
+ * and the half hour is exactly what arithmetic gets wrong: zeroing the UTC minutes to
+ * reach "the top of the hour" lands on :30 in Colombo, which is how a release computed for
+ * 06:00 quietly becomes 06:30.
+ */
+export function colomboParts(moment: Date): { hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: COLOMBO_TIMEZONE,
     hour: '2-digit',
+    minute: '2-digit',
     hour12: false,
-  }).format(moment);
+  }).formatToParts(moment);
+  const value = (type: string) =>
+    Number(parts.find((part) => part.type === type)?.value ?? '0');
   // `en-GB` renders midnight as "24" in some ICU versions. Normalising here rather than
   // choosing a different locale, because the locale is not what this depends on.
-  return Number(formatted) % 24;
+  return { hour: value('hour') % 24, minute: value('minute') };
+}
+
+/** The Colombo-local hour for an instant. */
+export function colomboHour(moment: Date): number {
+  return colomboParts(moment).hour;
 }
 
 export function inQuietHours(moment: Date): boolean {
@@ -83,21 +98,30 @@ export function inQuietHours(moment: Date): boolean {
   return hour >= QUIET_START_HOUR || hour < QUIET_END_HOUR;
 }
 
+/** Minutes in a day, for the wrap when 06:00 Colombo has already passed. */
+const MINUTES_PER_DAY = 24 * 60;
+
 /**
  * When a message deferred at `moment` would go out.
  *
- * 06:00 Colombo, today if it is still to come and tomorrow if it is not. Computed by
- * stepping hours rather than by constructing a local date, because a `Date` built from
- * Colombo wall-clock parts in a browser running on any other timezone is a different
- * instant.
+ * 06:00 Colombo, today if it is still to come and tomorrow if it is not.
+ *
+ * Computed as a **minute offset from now** rather than by constructing a local date or by
+ * snapping to the top of a UTC hour. A `Date` built from Colombo wall-clock parts in a
+ * browser on any other timezone is a different instant; and snapping UTC minutes to zero
+ * lands on :30 in Colombo, because the offset is +5:30. That second one is not
+ * hypothetical - it is the bug this function had, and it turned an 06:00 release into an
+ * 06:30 one, which is exactly the half hour the rule exists to protect.
  */
 export function releaseAt(moment: Date): Date {
-  const candidate = new Date(moment);
-  for (let step = 0; step < 48; step += 1) {
-    if (colomboHour(candidate) === QUIET_RELEASE_HOUR && candidate > moment) return candidate;
-    candidate.setUTCHours(candidate.getUTCHours() + 1, 0, 0, 0);
-  }
-  return candidate;
+  const { hour, minute } = colomboParts(moment);
+  const nowMinutes = hour * 60 + minute;
+  const targetMinutes = QUIET_RELEASE_HOUR * 60;
+  const delta =
+    targetMinutes > nowMinutes
+      ? targetMinutes - nowMinutes
+      : targetMinutes - nowMinutes + MINUTES_PER_DAY;
+  return new Date(moment.getTime() + delta * 60_000);
 }
 
 /**

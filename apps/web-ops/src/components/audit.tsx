@@ -25,18 +25,21 @@ import {
   DataTable,
   EmptyState,
   HashDisplay,
+  Input,
   LKRAmount,
   RadioGroup,
   ReferenceCode,
   RelativeTime,
+  Select,
   Textarea,
   cn,
 } from '@sarana/ui';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import { gatewayFetch } from '../lib/gateway-client';
-import { useAnomalies, useLedger } from '../lib/queries';
+import { useAnchors, useAnomalies, useLedger } from '../lib/queries';
+import { ledgerFilename, ledgerToCsv } from './ledger-export';
 import {
   ANOMALY_DISPOSITIONS,
   flagContext,
@@ -50,7 +53,29 @@ import { ErrorPanel } from './degraded';
 export function AuditLedger() {
   const t = useTranslations('audit');
   const common = useTranslations('common');
-  const ledger = useLedger();
+  const [fromSeq, setFromSeq] = useState(0);
+  const [typeFilter, setTypeFilter] = useState('');
+  const ledger = useLedger(fromSeq);
+
+  /**
+   * Filtered in the browser, on purpose, and only by entry type.
+   *
+   * `GET /ledger` pages from a sequence number and the console asks for 200 rows at a
+   * time, so this narrows what is already on screen rather than pretending to search the
+   * whole chain. The distinction is on the page: an auditor who believes a client-side
+   * filter searched four million entries has drawn a conclusion from a page.
+   */
+  const rows = useMemo(() => {
+    const all = ledger.data ?? [];
+    return typeFilter ? all.filter((entry) => entry.entry_type === typeFilter) : all;
+  }, [ledger.data, typeFilter]);
+
+  const entryTypes = useMemo(
+    () => [...new Set((ledger.data ?? []).map((entry) => entry.entry_type ?? ''))]
+      .filter((value) => value.length > 0)
+      .sort(),
+    [ledger.data],
+  );
 
   if (ledger.isError) {
     return (
@@ -68,10 +93,37 @@ export function AuditLedger() {
         <p className="text-2xs text-[var(--text-muted)]">{t('readsAreAudited')}</p>
       </header>
 
+      <Anchors />
+
       <h2 className="text-sm font-medium">{t('ledger')}</h2>
+
+      <div className="flex flex-wrap items-end gap-4">
+        <Input
+          label={t('fromSeq')}
+          description={t('fromSeqHint')}
+          datum
+          inputMode="numeric"
+          value={String(fromSeq)}
+          onChange={(event) => setFromSeq(Number(event.target.value.replace(/\D/g, '')) || 0)}
+        />
+        <Select
+          label={t('entryType')}
+          placeholder={t('allTypes')}
+          value={typeFilter}
+          onValueChange={setTypeFilter}
+          options={entryTypes.map((value) => ({ value, label: value }))}
+        />
+        <ExportButton rows={rows} />
+      </div>
+
+      {/* What this page is and is not. A count with no statement of its window invites
+          the conclusion that it is the whole ledger. */}
+      <p className="text-2xs text-[var(--text-muted)]">
+        {t('pageWindow', { shown: rows.length, from: fromSeq })}
+      </p>
       <DataTable<LedgerEntry>
         caption={t('ledger')}
-        rows={ledger.data ?? []}
+        rows={rows}
         rowKey={(entry) => entry.id}
         height="calc(100vh - 20rem)"
         empty={<EmptyState title={t('ledgerEmpty')} description={t('ledgerEmptyHint')} />}
@@ -287,5 +339,155 @@ function FlagCard({
         </Button>
       </div>
     </article>
+  );
+}
+
+/**
+ * Download the rows on screen as CSV.
+ *
+ * A blob and an object URL rather than a server round trip: the rows are already here, and
+ * a second fetch would produce a file that can differ from what the auditor was looking at
+ * when they pressed the button.
+ *
+ * The filename carries the seq range, and the button says how many rows it will write.
+ * "Export" alone invites the belief that the file is the whole ledger; it is one page of
+ * it, and an auditor who reconciles against a page and reports a total is the failure this
+ * label exists to stop.
+ */
+function ExportButton({ rows }: { readonly rows: readonly LedgerEntry[] }) {
+  const t = useTranslations('audit');
+
+  function download(): void {
+    const blob = new Blob([ledgerToCsv(rows)], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = ledgerFilename(rows);
+    anchor.click();
+    // Revoked immediately. The click has already started the download, and an object URL
+    // left alive holds the whole blob in memory for the life of the document.
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <Button variant="secondary" disabled={rows.length === 0} onClick={download}>
+      {t('exportCsv', { count: rows.length })}
+    </Button>
+  );
+}
+
+/**
+ * The published daily anchors, and the half of the guarantee that is missing.
+ *
+ * Each day the ledger is Merkle-rooted, chained to the previous day and published. The
+ * root is computed and the chain is real; `s3_object_lock_uri` is null until an object
+ * store is wired, **and that URI is the entire external half of the guarantee**. Without
+ * it the chain is verifiable only against a database the operator controls, which is a
+ * much weaker claim than a green tick suggests.
+ *
+ * So the unanchored days are counted and stated above the table rather than left as a
+ * column of dashes somebody has to notice.
+ */
+function Anchors() {
+  const t = useTranslations('audit');
+  const common = useTranslations('common');
+  const anchors = useAnchors();
+
+  if (anchors.isError) return <ErrorPanel error={anchors.error} />;
+
+  const rows = anchors.data?.anchors ?? [];
+  const unanchored = rows.filter((anchor) => anchor.s3_object_lock_uri === null).length;
+
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="text-sm font-medium">{t('anchorsTitle')}</h2>
+
+      {unanchored > 0 ? (
+        <p
+          role="status"
+          className="rounded-[var(--radius-default)] border border-[var(--sev-2-border)] bg-[var(--sev-2-bg)] px-3 py-2 text-xs text-[var(--sev-2-fg)]"
+        >
+          {t('unanchoredDays', { count: unanchored })}
+        </p>
+      ) : null}
+
+      {/* The verifier CLI, named on the page. An auditor who has to ask how to check this
+          independently is an auditor who checks it through us. */}
+      <p className="text-2xs text-[var(--text-muted)]">{t('verifyCliHint')}</p>
+      <pre
+        data-sarana-datum=""
+        className="overflow-x-auto rounded-[var(--radius-default)] border border-[var(--divider)] bg-[var(--surface-card)] p-2 font-mono text-2xs"
+      >
+        sarana-verify --from-seq 1 --to-seq {rows.at(-1)?.last_seq ?? 0}
+      </pre>
+
+      <DataTable<(typeof rows)[number]>
+        caption={t('anchorsTitle')}
+        rows={rows}
+        rowKey={(anchor) => anchor.date}
+        height="16rem"
+        empty={<EmptyState title={t('anchorsEmpty')} description={t('anchorsEmptyHint')} />}
+        columns={[
+          {
+            key: 'date',
+            header: t('anchorDate'),
+            width: '10rem',
+            cell: (anchor) => (
+              <span data-sarana-datum="" className="font-mono text-xs">
+                {anchor.date}
+              </span>
+            ),
+          },
+          {
+            key: 'range',
+            header: t('seq'),
+            width: '12rem',
+            numeric: true,
+            cell: (anchor) => (
+              <span data-sarana-datum="" className="font-mono text-xs">
+                {anchor.first_seq}–{anchor.last_seq}
+              </span>
+            ),
+          },
+          {
+            key: 'entries',
+            header: t('entryCount'),
+            width: '8rem',
+            numeric: true,
+            cell: (anchor) => (
+              <span data-sarana-datum="" className="font-mono">
+                {anchor.entry_count}
+              </span>
+            ),
+          },
+          {
+            key: 'root',
+            header: t('merkleRoot'),
+            cell: (anchor) => (
+              <HashDisplay
+                hash={anchor.merkle_root}
+                truncateTo={12}
+                copyLabel={common('copy')}
+                copiedLabel={common('copied')}
+              />
+            ),
+          },
+          {
+            key: 'external',
+            header: t('externalAnchor'),
+            width: '16rem',
+            // The absence is the finding, so it is a badge rather than a dash.
+            cell: (anchor) =>
+              anchor.s3_object_lock_uri ? (
+                <span data-sarana-datum="" className="font-mono text-2xs">
+                  {anchor.s3_object_lock_uri}
+                </span>
+              ) : (
+                <Badge tone="pending">{t('noExternalAnchor')}</Badge>
+              ),
+          },
+        ]}
+      />
+    </section>
   );
 }

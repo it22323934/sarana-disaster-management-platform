@@ -387,6 +387,18 @@ export const grievanceSchema = z.object({
   status: z.string(),
   category: z.string().optional(),
   raised_at: z.string().optional(),
+  assigned_ds_division_code: z.string().nullable().default(null),
+  /**
+   * When this grievance was due, and whether it is late.
+   *
+   * The clock starts when the household complains and an assignment does not restart it -
+   * `ledger-svc` is explicit about that, because a restarting clock would let a grievance
+   * be kept indefinitely fresh by passing it between offices. Both are on the queue row so
+   * the oldest breach is visible without opening anything.
+   */
+  sla_due_at: z.string().nullable().default(null),
+  sla_breached: z.boolean().default(false),
+  resolved_at: z.string().nullable().default(null),
 });
 
 export type Grievance = z.infer<typeof grievanceSchema>;
@@ -855,7 +867,15 @@ export const anticipatoryTriggerListSchema = z.array(anticipatoryTriggerSchema);
 export const roleGrantSchema = z.object({
   grant_id: z.string(),
   role_code: z.string(),
-  role_name: z.record(z.string(), z.string()).default({}),
+  /**
+   * Trilingual, and typed as such rather than as a loose record.
+   *
+   * `admin.role.name` carries the platform's `localised("name")` CHECK, so all three are
+   * guaranteed by the database. Accepting a partial mapping here would let a two-language
+   * name through and render `undefined` to readers of the third - which is the exact
+   * failure the trilingual rule exists to prevent, in the screen that administers it.
+   */
+  role_name: z.object({ si: z.string(), ta: z.string(), en: z.string() }),
   scope_type: z.string(),
   scope_code: z.string(),
 });
@@ -889,7 +909,7 @@ export const directoryUserListSchema = z.array(directoryUserSchema);
 export const roleDefinitionSchema = z.object({
   id: z.string(),
   code: z.string(),
-  name: z.record(z.string(), z.string()).default({}),
+  name: z.object({ si: z.string(), ta: z.string(), en: z.string() }),
   scopes: z.array(z.string()).default([]),
   grants_human_gate: z.boolean().default(false),
 });
@@ -958,3 +978,78 @@ export const gnDivisionSchema = z.object({
 export type GNDivisionRow = z.infer<typeof gnDivisionSchema>;
 
 export const gnDivisionListSchema = z.array(gnDivisionSchema);
+
+/**
+ * One division boundary, as GeoJSON.
+ *
+ * `geometry` is nullable and stays nullable: seed boundaries below district level are
+ * generated rectangles, and a division whose geometry was never loaded has none. Drawing
+ * nothing for it is right; inventing a shape would put a boundary on a map that no survey
+ * produced.
+ */
+export const divisionGeometrySchema = z.object({
+  id: z.string(),
+  code: z.string(),
+  tolerance: z.coerce.number(),
+  geometry: z.unknown().nullable().default(null),
+});
+
+export type DivisionGeometry = z.infer<typeof divisionGeometrySchema>;
+
+/**
+ * A household, with no personal data in it.
+ *
+ * `GET /admin/households` selects no name and no number, so there is nothing here to
+ * redact - which is a stronger guarantee than redacting. The composition flags are the
+ * vulnerability signals the triage and entitlement rules read, and they are what an
+ * officer identifies a house by on this platform.
+ */
+export const householdSchema = z.object({
+  id: z.string(),
+  reference_code: z.string(),
+  gn_division_id: z.string(),
+  member_count: z.number().int(),
+  has_over_70: z.boolean(),
+  has_under_5: z.boolean(),
+  has_mobility_impairment: z.boolean(),
+  preferred_language: z.string(),
+});
+
+export type Household = z.infer<typeof householdSchema>;
+
+export const householdListSchema = z.array(householdSchema);
+
+/**
+ * The damage categories `ledger-svc` accepts.
+ *
+ * Mirrors `sarana_shared.domain.taxonomy.DAMAGE_CATEGORIES`. A category this list has and
+ * the service does not is a 400 on a filed assessment, so `tests/ledger` pins the two
+ * together - the same cross-language vocabulary rule the incident types follow.
+ */
+export const DAMAGE_CATEGORIES = [
+  'HOUSE_FULL',
+  'HOUSE_PARTIAL',
+  'HOUSEHOLD_GOODS',
+  'LIVELIHOOD_TOOLS',
+  'CROP',
+  'LIVESTOCK',
+  'FISHING_GEAR',
+  'DEATH',
+  'INJURY',
+] as const;
+
+export type DamageCategory = (typeof DAMAGE_CATEGORIES)[number];
+
+/**
+ * What `POST /assessments` returns.
+ *
+ * `duplicate` is not an error: a repeated `client_operation_id` returns the stored record,
+ * because the device that retried did the right thing and should not have to interpret a
+ * 409 to find that out.
+ */
+export const createdAssessmentSchema = z.object({
+  id: z.string(),
+  public_ref: z.string(),
+  status: z.string(),
+  duplicate: z.boolean().default(false),
+});

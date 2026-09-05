@@ -148,7 +148,8 @@ export function ApprovalDetail({ entitlementId }: ApprovalDetailProps) {
           role="alert"
           className="flex flex-col gap-1 rounded-[var(--radius-default)] border-2 border-[var(--sev-3-border)] bg-[var(--sev-3-bg)] px-4 py-3 text-[var(--sev-3-fg)]"
         >
-          <h2 className="text-sm font-semibold">{d('grievanceBlocks')}</h2>
+          <h2 className="text-sm font-semibold">{d('grievanceOpen')}</h2>
+          <p className="text-xs opacity-90">{d('grievanceExplanation')}</p>
           <ul className="flex flex-col gap-1 text-xs">
             {open.map((grievance) => (
               <li key={grievance.id} className="flex flex-wrap items-center gap-2">

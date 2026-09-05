@@ -15,9 +15,18 @@
  * nobody stood in front of.
  */
 
-import { Badge, DataTable, EmptyState, LKRAmount, ReferenceCode, RelativeTime } from '@sarana/ui';
+import {
+  Badge,
+  Button,
+  DataTable,
+  EmptyState,
+  LKRAmount,
+  ReferenceCode,
+  RelativeTime,
+} from '@sarana/ui';
 import { useTranslations } from 'next-intl';
 
+import { Link } from '../i18n/routing';
 import { useAssessments } from '../lib/queries';
 import type { Assessment } from '../lib/schemas';
 import { ErrorPanel } from './degraded';
@@ -38,9 +47,17 @@ export function AssessmentList() {
 
   return (
     <div className="flex flex-col gap-4 p-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold">{t('title')}</h1>
-        <p className="text-xs text-[var(--text-muted)]">{t('readOnly')}</p>
+      <header className="flex flex-wrap items-start gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-xl font-semibold">{t('title')}</h1>
+          <p className="text-xs text-[var(--text-muted)]">{t('readOnly')}</p>
+        </div>
+        {/* Secondary, not primary. The mobile app is the way to file an assessment and
+            this button leads to the weaker path; making it the loudest control on the
+            screen would invite the desk to become the default. */}
+        <Button asChild variant="secondary" size="sm" className="ml-auto">
+          <Link href="/field/assessments/new">{t('newTitle')}</Link>
+        </Button>
       </header>
 
       <DataTable<Assessment>

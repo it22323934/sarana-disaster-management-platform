@@ -13,6 +13,14 @@
  * stated on screen. Rendering a rule-based rank as if it were the model's is the single
  * most misleading thing this console could do, because it invites an operator to trust an
  * ordering that nothing intelligent produced.
+ *
+ * **On the backend being unreachable.** A stale map beats a blank one during a cyclone, so
+ * the last successful picture stays on screen with its age stated prominently — not as a
+ * quiet caption. TanStack Query keeps the previous data through a failed refetch, so the
+ * rows are already here; what this component adds is the age, and the age is the point. A
+ * console that silently kept rendering a fifteen-minute-old queue during an outage would
+ * be worse than one that went blank, because an operator would work it believing it was
+ * current.
  */
 
 import {
@@ -102,6 +110,19 @@ export function CommonOperatingPicture() {
   const rows = queue.data?.entries ?? [];
 
   /**
+   * How old the picture on screen is, in seconds, once the platform stops answering.
+   *
+   * `dataUpdatedAt` is when the last *successful* fetch landed, so this measures the age
+   * of what is being rendered rather than the time since the last attempt. Null while the
+   * queue is healthy: an age shown on a live screen trains an operator to ignore it, and
+   * it has to be unmissable on the one occasion it appears.
+   */
+  const staleSeconds =
+    queue.isError && queue.dataUpdatedAt > 0
+      ? Math.max(0, Math.round((now.getTime() - queue.dataUpdatedAt) / 1000))
+      : null;
+
+  /**
    * Whether an agent produced this ordering.
    *
    * Read from the response, never inferred. `incident-svc` computes a score for every row
@@ -116,6 +137,20 @@ export function CommonOperatingPicture() {
       {/* The console's own trilingual banner rather than the server's `banner` string,
           which is English only. The ordering rule is shown beside it, because "manual
           ordering" is less useful to a dispatcher than the name of the rule doing it. */}
+      {/* The platform stopped answering and these rows are what it last said. Above the
+          assisted-ranking banner: an operator has to know the whole picture is old before
+          they weigh how it was ordered. */}
+      {staleSeconds !== null ? (
+        <DegradedBanner
+          kind="backend"
+          age={
+            staleSeconds < 60
+              ? t('staleSeconds', { seconds: staleSeconds })
+              : t('staleMinutes', { minutes: Math.round(staleSeconds / 60) })
+          }
+        />
+      ) : null}
+
       {!assistedRanking && rows.length > 0 ? (
         <div className="flex flex-col gap-1">
           <DegradedBanner kind="agent" />
@@ -145,7 +180,9 @@ export function CommonOperatingPicture() {
               <Skeleton line />
               <Skeleton line />
             </div>
-          ) : queue.isError ? (
+          ) : queue.isError && rows.length === 0 ? (
+            // Nothing cached to fall back to. An error panel is the honest answer: there
+            // is no stale picture to prefer over a blank one.
             <ErrorPanel error={queue.error} className="m-3" />
           ) : rows.length === 0 ? (
             <EmptyState title={t('queueEmpty')} description={t('queueEmptyHint')} />

@@ -20,20 +20,25 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Locale } from '@sarana/ts-shared/i18n';
 
 import { Admin } from './admin';
+import { ApprovalDetail } from './approval-detail';
 import { ApprovalQueue } from './approvals';
 import { AlertComposer } from './alert-composer';
+import { AlertDispatch } from './alert-dispatch';
 import { AlertList, DeliveryPanel } from './alerts';
+import { AssessmentForm } from './assessment-form';
 import { AssessmentList } from './assessments';
 import { AnomalyReview, AuditLedger } from './audit';
 import { ChainVerification } from './chain';
 import { DisbursementGate } from './disbursement-gate';
 import { DispatchGate } from './dispatch-gate';
 import { DispatchQueue } from './dispatch-queue';
+import { ForecastBoard } from './forecast';
 import { IncidentDetail, IncidentList } from './incidents';
 import { CommonOperatingPicture } from './common-operating-picture';
 import { GrievanceQueue, NotBuilt, ReviewQueue } from './queues';
 import { ReleaseQueue } from './release-queue';
 import { SignInForm } from './sign-in-form';
+import { StepUpForm } from './step-up-form';
 import {
   entitlementFixture,
   incidentFixture,
@@ -75,11 +80,88 @@ const ROUTES = [
     },
   },
   { match: 'responders', body: [] },
+  {
+    match: 'impact-forecasts',
+    body: [
+      {
+        id: '018f3c2a-0010-7e90-9c2d-000000000010',
+        hazard_event_id: '018f3c2a-0011-7e90-9c2d-000000000011',
+        gn_division_id: '018f3c2a-0012-7e90-9c2d-000000000012',
+        gn_division_code: 'LK-11-03-045',
+        generated_at: '2025-11-28T02:00:00Z',
+        valid_from: '2025-11-28T02:00:00Z',
+        valid_to: '2025-11-29T02:00:00Z',
+        impact_class: 4,
+        confidence: 0.78,
+        lead_time_hours: 26,
+        method: 'RULE_THRESHOLD',
+        model_version: null,
+        drivers: { rainfall_mm_24h: 214, catchment_saturation: 0.91 },
+        expected_households_affected: 480,
+        expected_road_access_loss: true,
+        correlation_id: 'corr-forecast-1',
+      },
+    ],
+  },
+  { match: 'anticipatory-triggers', body: [] },
+  { match: 'hazard-events', body: [] },
+  {
+    match: 'admin/users',
+    body: [
+      {
+        id: '018f3c2a-0013-7e90-9c2d-000000000013',
+        email: 'ds.kandy@example.lk',
+        full_name: 'DS Approver',
+        status: 'ACTIVE',
+        last_login_at: '2025-11-27T22:00:00Z',
+        created_at: '2025-01-05T00:00:00Z',
+        mfa_enrolled: false,
+        grants: [
+          {
+            grant_id: '018f3c2a-0014-7e90-9c2d-000000000014',
+            role_code: 'DS_APPROVER',
+            role_name: { si: 'DS', ta: 'DS', en: 'DS approver' },
+            scope_type: 'DS',
+            scope_code: 'LK-11-03',
+          },
+        ],
+        scopes: ['entitlement:approve_ds', 'ledger:read'],
+      },
+    ],
+  },
+  {
+    match: 'admin/roles',
+    body: [
+      {
+        id: '018f3c2a-0015-7e90-9c2d-000000000015',
+        code: 'DS_APPROVER',
+        name: { si: 'DS', ta: 'DS', en: 'DS approver' },
+        scopes: ['entitlement:approve_ds', 'ledger:read'],
+        grants_human_gate: false,
+      },
+    ],
+  },
+  { match: 'admin/households', body: [] },
+  { match: 'admin/gn-divisions', body: [] },
+  { match: 'cost-schedules', body: [] },
+  { match: 'assessments', body: [] },
   { match: 'entitlements/018f3c2a-0003', body: entitlementFixture() },
   { match: 'grievances', body: [] },
   { match: 'anomalies', body: [] },
   { match: 'disbursements', body: [] },
   { match: 'alerts/018f3c2a-0008/delivery/gaps', body: [] },
+  {
+    match: 'alerts/018f3c2a-0008/dispatch',
+    body: {
+      dry_run: true,
+      targeted: 1203,
+      by_channel: { SMS: 1203, PUSH: 402 },
+      by_language: { si: 700, ta: 300, en: 203 },
+      estimated_cost_lkr: 2105.25,
+      exceeds_cap: false,
+      cap: 50000,
+    },
+  },
   {
     match: 'alerts/018f3c2a-0008/delivery',
     body: {
@@ -91,6 +173,20 @@ const ROUTES = [
       by_channel: { SMS: { CONFIRMED: 800, FAILED: 20 } },
       by_language: { si: 700, ta: 300, en: 203 },
       summary: '865 of 1,203 targeted households confirmed delivery.',
+    },
+  },
+  {
+    match: 'alerts/018f3c2a-0008',
+    body: {
+      id: '018f3c2a-0008-7e90-9c2d-000000000008',
+      cap_identifier: 'sarana.lk.018f3c2a-0008',
+      status: 'DRAFT',
+      requires_human_signoff: false,
+      headline: null,
+      severity: 3,
+      effective_at: '2025-11-28T04:00:00Z',
+      expires_at: '2025-11-28T16:00:00Z',
+      created_at: '2025-11-28T03:55:00Z',
     },
   },
   { match: 'alerts', body: [] },
@@ -171,6 +267,17 @@ const SCREENS: readonly Screen[] = [
   { name: 'approvals', render: () => <ApprovalQueue /> },
   { name: 'assessments', render: () => <AssessmentList /> },
   { name: 'not built', render: () => <NotBuilt /> },
+  { name: 'forecast board', render: () => <ForecastBoard /> },
+  {
+    name: 'alert dispatch',
+    render: () => <AlertDispatch alertId="018f3c2a-0008-7e90-9c2d-000000000008" />,
+  },
+  {
+    name: 'approval detail',
+    render: () => <ApprovalDetail entitlementId="018f3c2a-0003-7e90-9c2d-000000000003" />,
+  },
+  { name: 'new assessment', render: () => <AssessmentForm /> },
+  { name: 'step up', render: () => <StepUpForm /> },
 ];
 
 const LOCALES: readonly Locale[] = ['en', 'si', 'ta'];
