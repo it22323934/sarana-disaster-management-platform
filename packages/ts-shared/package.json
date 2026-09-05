@@ -2,6 +2,7 @@
   "name": "@sarana/ts-shared",
   "version": "0.1.0",
   "private": true,
+  "sideEffects": false,
   "type": "module",
   "description": "Shared TypeScript for SARANA: API client, zod schemas, i18n catalogue, formatters",
   "exports": {

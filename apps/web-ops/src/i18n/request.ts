@@ -1,10 +1,15 @@
 /**
  * Per-request i18n configuration.
  *
- * Messages are loaded whole rather than split per route. The catalogue is 158 keys and a
- * few kilobytes; splitting it would save nothing measurable and would introduce the one
- * failure mode this product cannot have — a route that renders with the wrong locale's
- * chunk, or with none.
+ * **The catalogue is loaded whole, and that is separate from what reaches the browser.**
+ * A server component may format any message, so the server needs all of it; splitting the
+ * *locale* load is the one thing this product must not get wrong, because the failure mode
+ * is a route rendering in the wrong language or in none.
+ *
+ * What crosses to the client is narrowed, by route group, in `src/i18n/namespaces.ts`. That
+ * split was worth making once the catalogue passed 579 keys: serialised into every page it
+ * was roughly 22 KB of characters and **half the HTML of the sign-in page**, which can
+ * reach two namespaces of the twenty-five.
  */
 
 import { getRequestConfig } from 'next-intl/server';

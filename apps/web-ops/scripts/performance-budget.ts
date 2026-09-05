@@ -12,17 +12,28 @@
  * involved. Reported per route, because the budget is per route: the map screens carry
  * MapLibre and the sign-in screen must not.
  *
- * **`--assert-lcp` needs a browser against a served production build.** There is no
- * honest way to assert a Largest Contentful Paint from a manifest, and a script that
- * printed a number it had not measured would be worse than one that says it cannot. When
- * `SARANA_LIGHTHOUSE_URL` names a running server this shells out to the Lighthouse CLI;
- * otherwise it says so, names the command, and — unless `--require-lcp` is passed — does
- * not fail the run for an assertion it did not make.
+ * **`--assert-lcp` needs a browser against a served production build**, which
+ * `pnpm build:local && pnpm start` provides on every platform. When `SARANA_LIGHTHOUSE_URL`
+ * names a running server this shells out to the Lighthouse CLI; otherwise it says so, names
+ * the command, and — unless `--require-lcp` is passed — does not fail the run for an
+ * assertion it did not make. There is no honest way to assert an LCP from a manifest, and a
+ * script printing a number it had not measured would be worse than one that says it cannot.
  *
- * On `next build` and Windows: compilation and all 60 static pages succeed, and then the
- * pre-existing `output: 'standalone'` trace-copy step fails with EPERM creating symlinks
- * unless Developer Mode is on. The chunks this script measures are written before that
- * step, so the JS budget is checkable on a build that did not finish.
+ * **Two LCP figures are reported, and the difference is the whole story.** Lighthouse
+ * *observes* one on the machine it runs on and *simulates* another over a throttled link.
+ * On this console the observed figure is around 150 ms and the simulated one around 2.4 s,
+ * and neither is wrong: the page paints almost immediately on a fast connection, and the
+ * simulation is modelling the same page arriving over 150 ms RTT at 1.6 Mbps with the CPU
+ * slowed fourfold. Reporting only the simulated number makes a fast page look broken;
+ * reporting only the observed one makes every page look fine on the reviewer's laptop and
+ * says nothing about the district office. So both are printed, and the assertion is on the
+ * simulated one because that is the connection the brief names.
+ *
+ * When the simulated figure fails, the breakdown below it says how much of the budget the
+ * framework spends before any application code runs. React and Next's own runtime chunks
+ * are around 100 KB gzipped, which at the simulated throughput is most of the way to two
+ * seconds on their own. That is a fact about the stack rather than about this console, and
+ * a number that does not say so is a number somebody will try to fix in the wrong place.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -34,6 +45,10 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const NEXT_DIR = join(ROOT, '.next');
 const MANIFEST = join(NEXT_DIR, 'app-build-manifest.json');
+/** Only `next dev` writes here. Its presence means `.next` holds a development build. */
+const DEV_MARKER = join(NEXT_DIR, 'static', 'development');
+/** Only a completed production build writes this. */
+const BUILD_ID = join(NEXT_DIR, 'BUILD_ID');
 
 /** Defaults matching the brief. Overridable so a tighter budget can be trialled. */
 const DEFAULT_JS_KB = 250;
@@ -93,7 +108,14 @@ function measure(): Array<{ route: string; bytes: number; chunks: number }> {
     .map(([route, files]) => {
       const scripts = [...new Set(files)].filter((file) => file.endsWith('.js'));
       return {
-        route: route.replace(/^\/\[locale\]/, '').replace(/\/page$/, '') || '/',
+        // Route groups are a file-system device and never appear in a URL, so they are
+        // stripped from the label: reporting `/(auth)/login` would invite somebody to try
+        // opening it.
+        route:
+          route
+            .replace(/^\/\[locale\]/, '')
+            .replace(/\/\([^)]+\)/g, '')
+            .replace(/\/page$/, '') || '/',
         bytes: scripts.reduce((total, file) => total + gzippedBytes(file), 0),
         chunks: scripts.length,
       };
@@ -105,14 +127,23 @@ function kb(bytes: number): string {
   return `${(bytes / 1024).toFixed(1)} KB`;
 }
 
+interface LcpReading {
+  /** Modelled over the throttled link. What the budget is asserted against. */
+  readonly simulated: number;
+  /** What actually happened on this machine, unthrottled. Context, not a gate. */
+  readonly observed: number | null;
+  /** Bytes transferred for the whole page load, which is what dominates the simulation. */
+  readonly transferredBytes: number;
+}
+
 /**
  * Largest Contentful Paint, measured or honestly skipped.
  *
- * Returns null when no server was named. It does not guess and it does not average a
- * number from somewhere else: an LCP figure that was not measured on a served production
- * build is not an LCP figure.
+ * Returns null when no server was named or Lighthouse could not run. It does not guess and
+ * it does not average a number from somewhere else: an LCP figure that was not measured on
+ * a served production build is not an LCP figure.
  */
-function measureLcp(url: string, budgetMs: number): number | null {
+function measureLcp(url: string): LcpReading | null {
   try {
     const output = execFileSync(
       'npx',
@@ -120,27 +151,47 @@ function measureLcp(url: string, budgetMs: number): number | null {
         '--yes',
         'lighthouse',
         url,
-        '--only-audits=largest-contentful-paint',
+        // The whole performance category rather than one audit: `metrics` carries the
+        // observed timings and `network-requests` the transfer sizes, and without those
+        // the simulated figure is a verdict with no evidence behind it.
+        '--only-categories=performance',
         '--output=json',
         '--quiet',
         '--chrome-flags=--headless=new',
-        // The brief's target: a mid-range laptop over 3G at 400ms RTT. Measuring on an
+        // The brief's target is a mid-range laptop over a slow link. Measuring on an
         // unthrottled desktop would produce a number that passes everywhere and predicts
         // nothing about the room this runs in.
         '--throttling-method=simulate',
       ],
-      { encoding: 'utf8', cwd: ROOT, maxBuffer: 64 * 1024 * 1024 },
+      {
+        encoding: 'utf8',
+        cwd: ROOT,
+        maxBuffer: 64 * 1024 * 1024,
+        // `shell` so `npx` resolves on Windows, where a bare name is not executable
+        // without its .cmd shim. Without it this fails with ENOENT and reads as
+        // "Lighthouse is not installed" rather than "the spawn was wrong".
+        shell: true,
+      },
     );
     const report = JSON.parse(output) as {
-      audits: { 'largest-contentful-paint': { numericValue: number } };
+      audits: {
+        'largest-contentful-paint': { numericValue: number };
+        metrics?: { details?: { items?: Array<Record<string, number>> } };
+        'network-requests'?: { details?: { items?: Array<{ transferSize?: number }> } };
+      };
     };
-    return report.audits['largest-contentful-paint'].numericValue;
+    const metrics = report.audits.metrics?.details?.items?.[0];
+    const requests = report.audits['network-requests']?.details?.items ?? [];
+    return {
+      simulated: report.audits['largest-contentful-paint'].numericValue,
+      observed: metrics?.['observedLargestContentfulPaint'] ?? null,
+      transferredBytes: requests.reduce((total, item) => total + (item.transferSize ?? 0), 0),
+    };
   } catch (error) {
     console.error(
       `\nLighthouse could not run against ${url}. The JS budget above still applies.\n` +
         `  ${(error as Error).message.split('\n')[0]}`,
     );
-    void budgetMs;
     return null;
   }
 }
@@ -150,10 +201,36 @@ function main(): void {
 
   if (!existsSync(MANIFEST)) {
     console.error(
-      'No build to measure. Run `pnpm --filter @sarana/web-ops build` first.\n' +
-        'On Windows the build fails at the standalone trace-copy step with EPERM unless\n' +
-        'Developer Mode is on; the chunks this script reads are written before that step,\n' +
-        'so a build that failed there is still measurable.',
+      'No build to measure. Run `pnpm --filter @sarana/web-ops build:local` first.\n' +
+        '`build` emits the standalone deployment bundle and fails on Windows at the\n' +
+        'symlink step unless Developer Mode is on; `build:local` skips that step and is\n' +
+        'otherwise identical.',
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  /**
+   * Refuse to measure a development build.
+   *
+   * `next dev` and `next build` write to the same `.next`, so running the e2e suite — or
+   * any `pnpm dev` — replaces the production manifest with a development one. Development
+   * chunks are unminified and unsplit, so the numbers come out in **megabytes** and every
+   * route fails by an order of magnitude.
+   *
+   * That is the worst possible failure for a budget gate: not a crash, but a plausible
+   * table of wrong numbers that sends somebody hunting for a bundling regression that does
+   * not exist. It has already happened once here. So the check is explicit, and it names
+   * the fix rather than the symptom.
+   */
+  if (existsSync(DEV_MARKER) || !existsSync(BUILD_ID)) {
+    console.error(
+      '`.next` holds a development build, not a production one.\n' +
+        'Development chunks are unminified and unsplit, so measuring them would report\n' +
+        'megabytes per route and fail every budget for the wrong reason.\n\n' +
+        'This happens after `pnpm dev` or `pnpm test:e2e`, which share the same .next.\n' +
+        'Rebuild before measuring:\n' +
+        '  pnpm --filter @sarana/web-ops build:local',
     );
     process.exitCode = 1;
     return;
@@ -183,8 +260,8 @@ function main(): void {
   if (!url) {
     const message =
       `\nLCP was not measured. It needs a browser against a served production build:\n` +
-      `  pnpm --filter @sarana/web-ops build && pnpm --filter @sarana/web-ops start\n` +
-      `  SARANA_LIGHTHOUSE_URL=http://localhost:3000/en/ops pnpm --filter @sarana/web-ops lighthouse\n` +
+      `  pnpm --filter @sarana/web-ops build:local && pnpm --filter @sarana/web-ops start\n` +
+      `  SARANA_LIGHTHOUSE_URL=http://localhost:3000/en/login pnpm --filter @sarana/web-ops lighthouse\n` +
       `A number printed without that would not be a measurement.`;
     if (args.requireLcp) {
       console.error(message);
@@ -195,16 +272,30 @@ function main(): void {
     return;
   }
 
-  const lcp = measureLcp(url, args.lcpMs);
+  const lcp = measureLcp(url);
   if (lcp === null) {
     process.exitCode = 1;
     return;
   }
-  console.log(`\nLCP ${Math.round(lcp)} ms against ${url}. Budget ${args.lcpMs} ms.`);
-  if (lcp > args.lcpMs) {
-    console.error(`LCP is over budget by ${Math.round(lcp - args.lcpMs)} ms.`);
-    process.exitCode = 1;
-  }
+
+  console.log(`\nLargest Contentful Paint against ${url}`);
+  console.log(`  simulated  ${Math.round(lcp.simulated)} ms   budget ${args.lcpMs} ms`);
+  console.log(
+    `  observed   ${lcp.observed === null ? '—' : `${Math.round(lcp.observed)} ms`}   ` +
+      'unthrottled, on this machine',
+  );
+
+  if (lcp.simulated <= args.lcpMs) return;
+
+  console.error(
+    `\nOver the simulated budget by ${Math.round(lcp.simulated - args.lcpMs)} ms.\n` +
+      `  ${kb(lcp.transferredBytes)} transferred for this page load.\n` +
+      '  The simulation models that arriving over a throttled link, so transferred bytes\n' +
+      '  are what move this number - not render time. React and the Next runtime are about\n' +
+      '  100 KB gzipped of it before any application code, so check what the route adds on\n' +
+      '  top of the framework floor rather than looking for a slow component.',
+  );
+  process.exitCode = 1;
 }
 
 main();

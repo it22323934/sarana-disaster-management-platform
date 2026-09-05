@@ -245,8 +245,36 @@ pnpm --filter @sarana/web-ops verify-i18n   # 579 keys x si/ta/en, and every key
 pnpm --filter @sarana/web-ops test          # 59 unit: gates, quiet hours, CSV, map transform
 pnpm --filter @sarana/web-ops test:a11y     # axe: 25 screens x 3 locales
 pnpm --filter @sarana/web-ops test:e2e      # 68 Playwright tests in real Chromium
-pnpm --filter @sarana/web-ops lighthouse -- --assert-js 250   # per-route JS budget, gzipped
+pnpm --filter @sarana/web-ops build:local   # a production build that finishes on Windows
+pnpm --filter @sarana/web-ops lighthouse    # per-route JS budget, gzipped
 ```
+
+`build` emits the standalone deployment bundle and needs to create symlinks, which Windows
+refuses without Developer Mode - after compilation and all 60 pages have already succeeded.
+`build:local` is the same build without that step. Nothing consumes the standalone bundle
+yet, so use `build:local` unless you are producing a container image.
+
+For the LCP half of the budget, `start` the build and point the script at it:
+
+```bash
+pnpm --filter @sarana/web-ops start:local
+SARANA_LIGHTHOUSE_URL=http://localhost:3000/en/login pnpm --filter @sarana/web-ops lighthouse
+```
+
+`start:local` pairs with `build:local`. `next start` re-reads the config in a fresh process,
+so starting with the standalone output against a build made without it produces a warning
+and then module-not-found errors for the pages router - beside pages that still serve fine,
+which is how it goes unnoticed.
+
+It prints two numbers and you need both. The **observed** LCP is around 160 ms - what the
+page actually does. The **simulated** one is around 2.4 s - Lighthouse modelling the same
+page over a slow link, where transferred bytes are the whole story and about 100 KB of them
+are React and the Next runtime before any of this code. The budget asserts on the simulated
+figure and currently fails by roughly 400 ms, which is a fact about the stack.
+
+The budget also refuses to run against a development build. `pnpm dev` and `pnpm test:e2e`
+share the same `.next`, and development chunks are unminified - measuring them reports
+megabytes per route. Rebuild with `build:local` before measuring.
 
 `verify-i18n` checks two different things. The first is that every key exists in all three
 locales. The second is that every key the *code* asks for exists at all - a key missing from

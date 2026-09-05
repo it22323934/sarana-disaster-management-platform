@@ -12,11 +12,21 @@ import { setRequestLocale } from 'next-intl/server';
 
 import { readPrincipal } from '../../src/lib/session';
 
-/** Scope to landing route, most gate-urgent first. */
+/**
+ * Scope to landing route, most gate-urgent first.
+ *
+ * Every string here has to be a scope the platform actually issues. `entitlement:approve`
+ * was in this table and is not a scope - the real ones are `entitlement:approve_ds` and
+ * `entitlement:approve_district` - so a DS approver signing in fell through to the next
+ * matching row and landed on the operator's map instead of on the queue holding their
+ * signature. Silent, and exactly the failure the navigation had. `tests/auth/test_console_scopes.py`
+ * now parses this table too.
+ */
 const LANDING: ReadonlyArray<readonly [string, string]> = [
   ['dispatch:commit', '/ops/dispatch'],
   ['disbursement:release', '/disbursements'],
-  ['entitlement:approve', '/approvals'],
+  ['entitlement:approve_district', '/approvals'],
+  ['entitlement:approve_ds', '/approvals'],
   ['incident:read', '/ops'],
   ['ledger:read', '/audit'],
   ['assessment:write', '/field/assessments'],

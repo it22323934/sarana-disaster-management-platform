@@ -2178,6 +2178,42 @@ with its own `const t = useTranslations(...)` on a different namespace, and matc
 alone resolves every call against whichever declaration happened to be last — which reports
 dozens of real keys as missing and buries any genuine finding.
 
+### The sign-in page rendered the whole console shell, and polled the gateway signed out
+
+`login/layout.tsx` returned only its children, on the belief that a nested layout *replaces*
+the parent. Nested layouts in the App Router **compose**. So the sign-in page rendered the
+navigation, the disaster spine and `PendingGates` — which polled `dispatch-plans` and
+`entitlements` every five seconds at a browser with no session, producing a steady stream of
+401s. That is precisely what that file's docstring said it was avoiding.
+
+Route groups are the mechanism that actually does it, and they are what the brief's own
+`/(auth)/login` notation means. The tree is now `(auth)` for sign-in and step-up and
+`(console)` for everything behind the navigation. **No URL changed** — a route group is a
+file-system device — and all 60 static pages still build.
+
+### Half of every page was translations it could not reach
+
+`NextIntlClientProvider` with no `messages` serialises the **whole** catalogue into every
+page. `request.ts` justified loading it whole on the grounds that it was "158 keys and a few
+kilobytes"; at 579 keys it was ~22 KB of characters and **half the HTML of the sign-in
+page**, which can reach two namespaces of twenty-five.
+
+The server still loads everything — a server component may format any message, and splitting
+the *locale* load is the one thing this product must not get wrong. What is narrowed is only
+what crosses to the client, and only along a boundary the route tree already draws:
+`(auth)` gets four namespaces, `(console)` gets all of them. Per-page lists were rejected as
+a second place to forget, and forgetting one renders a key path to a district office.
+
+The sign-in page went from **47.4 KB of HTML to 12.3 KB** (15.2 → 3.7 KB gzipped).
+
+### A third phantom scope, in the landing redirect
+
+The same `entitlement:approve` that hid `/approvals` from the navigation was also in the
+root page's landing table, so a DS approver signing in fell through to the next matching row
+and arrived on the operator's map rather than on the queue holding their signature. Silent,
+like the others. `tests/auth/test_console_scopes.py` now parses that table too, and asserts
+both approval levels land on `/approvals`.
+
 ### The dispatch gate screen, now that it has something to show
 
 - **The factor breakdown is inline and expanded**, not behind a popover as it is on the
@@ -2299,16 +2335,70 @@ run on this record, which is better than quietly passing it. The idempotency key
 generated once per form rather than per click, so a double-tap replays instead of filing two
 assessments for one household.
 
-### The performance budget is half measured and half honest about it
+### The production build works everywhere now, and that unblocked the rest of the budget
 
-`pnpm --filter @sarana/web-ops lighthouse` is wired. The **JS budget is a real gate**: it
-reads `app-build-manifest.json`, gzips every chunk each route actually loads, and asserts
-per route. Every route passes at 250 KB — the heaviest is `/ops` at 214.3 KB, the lightest
-`/login` at 182.7 KB.
+`output: 'standalone'` is the deployment artefact (ADR-010) and it is still what `pnpm build`
+produces. It is now behind `SARANA_BUILD_STANDALONE`, because emitting it creates symlinks
+and that fails with `EPERM` on Windows **after** compilation and all 60 static pages have
+succeeded. `pnpm build:local` skips only that step.
 
-LCP is **not** measured unless `SARANA_LIGHTHOUSE_URL` names a served production build. There
-is no honest way to assert a Largest Contentful Paint from a manifest, and a script printing
-a number it had not measured would be worse than one that says it cannot.
+The consequence of not having it was larger than a failed command: nothing could run
+`next start`, so nothing could measure against a served production build — which is what
+file 20's fourth DoD command needs. No Dockerfile consumes the standalone bundle yet (file
+25 has not started), so until then the flag cost nothing and blocked everything.
+
+### The performance budget is measured, and one half of it fails for a reason worth stating
+
+**The JS budget is a real gate and it passes.** It reads `app-build-manifest.json`, gzips
+every chunk each route loads, and asserts per route. Heaviest is `/admin` at 205.9 KB
+against a 250 KB budget; `/login` is 129.9 KB and `/ops` 205.6 KB.
+
+It **refuses to measure a development build**. `next dev` and `next build` share one
+`.next`, so running `pnpm dev` or the e2e suite replaces the production manifest with a
+development one - and development chunks are unminified and unsplit, so the table comes out
+in megabytes and every route fails by an order of magnitude. That is the worst failure a
+budget gate can have: not a crash but a plausible table of wrong numbers, sending somebody
+after a bundling regression that does not exist. It happened once here, which is why the
+check is explicit and names the fix.
+
+Those numbers are ~45 KB lower than they were, from a one-line fix: **neither `@sarana/ui`
+nor `@sarana/ts-shared` declared `sideEffects: false`**. Without it webpack must assume
+every module in a package has side effects and cannot drop the unused ones, so importing
+`Button` from the barrel pulled in every Radix primitive the design system exports. Both
+packages are pure components and tokens — no CSS import, no module-scope work — so the
+declaration is simply true, and it took 54 KB off the sign-in route and ~43 KB off every
+console route.
+
+**LCP is measured and reported twice, because one number alone misleads in both directions:**
+
+```
+  simulated  2415 ms   budget 2000 ms
+  observed    199 ms   unthrottled, on this machine
+```
+
+The page paints in 159 ms. The 2362 ms is Lighthouse modelling that same page arriving over
+150 ms RTT at 1.6 Mbps with the CPU slowed fourfold, and under that model **transferred
+bytes are the whole story** — 196 KB for the login page, of which roughly 100 KB is React
+and the Next runtime before a single line of application code. Reporting only the simulated
+figure makes a fast page look broken; reporting only the observed one makes every page look
+fine on a reviewer's laptop and says nothing about a district office.
+
+So the script prints both, asserts on the simulated one because that is the connection the
+brief names, and on failure prints the transfer total and the framework floor — because a
+number that does not say where it went is a number somebody will try to fix in the wrong
+place. **On this stack a 2.0 s simulated LCP is not reachable for any App Router page**, and
+the console is now at the low end of what it does allow.
+
+Two changes are worth keeping regardless of the gate: the tree-shaking fix above, and
+narrowing the client message catalogue (below). Neither moved the simulated figure much,
+which is itself the finding - at 196 KB transferred with a ~100 KB framework floor, this
+number is not application-shaped.
+
+`start:local` exists alongside `build:local` and the pairing matters. `next start` re-reads
+`next.config.ts` in a fresh process, so a build made without the standalone output and a
+start made with it disagree: the server warns, then throws `Cannot find module './chunks/…'`
+for the pages-router documents. The App Router keeps serving, so it presents as a stream of
+errors in the log beside pages that look fine.
 
 ### What the e2e suite proves, and what it does not
 
@@ -2347,11 +2437,16 @@ button, will not send an alert nobody has dry-run, warns on a rule-ordered queue
   most; it is not a pixel comparison and does not claim to be.
 - **Still no SSE anywhere.** The console polls. `LIVE_INTERVAL_MS` in
   `apps/web-ops/src/lib/queries.ts` is the one place that changes when a stream exists.
-- **`next build` still cannot finish on Windows.** Compilation and all 60 static pages
-  succeed; the pre-existing `output: 'standalone'` trace-copy step then fails with `EPERM`
-  creating symlinks unless Developer Mode is on. Environmental, and unrelated to the
-  console — the chunks the performance budget reads are written before that step, so the JS
-  gate is checkable on a build that failed there.
+- **The simulated LCP budget is not met, and is not reachable on this stack.** 2415 ms
+  against a 2000 ms budget, with 196 KB transferred of which ~100 KB is React and the Next
+  runtime. Observed LCP is 199 ms. Both figures are printed by the gate. Closing it would
+  mean changing framework or dropping to a non-hydrating page for sign-in, and neither is a
+  file 20 decision.
+- **`pnpm build` still cannot finish on Windows**, by design rather than by accident: it
+  emits the standalone deployment bundle and that step needs symlinks. `pnpm build:local` is
+  identical without it and completes everywhere. Nothing consumes the standalone bundle yet
+  — file 25 has not started — so when it does, that Dockerfile is the thing that must run
+  `build`, not `build:local`.
 
 ---
 

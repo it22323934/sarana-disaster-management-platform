@@ -51,8 +51,17 @@ export default tseslint.config(
   },
   {
     // Node scripts and tests print by design.
-    files: ['**/scripts/**/*.ts', '**/*.test.ts', '**/*.test.tsx'],
+    files: ['**/scripts/**/*.ts', '**/scripts/**/*.mjs', '**/*.test.ts', '**/*.test.tsx'],
     rules: { 'no-console': 'off' },
+  },
+  {
+    // Plain-JS build scripts. `.ts` files under `scripts/` are linted with the TypeScript
+    // config, which already knows about Node; a `.mjs` falls through to the base config
+    // and has no `process` or `console` in scope without this.
+    files: ['**/scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { process: 'readonly', console: 'readonly' },
+    },
   },
   {
     // k6 load scripts. They run in the k6 runtime, not in Node or a browser, and it

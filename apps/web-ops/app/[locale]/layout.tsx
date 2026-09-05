@@ -9,9 +9,21 @@
  * `data-theme="dark"` because operations rooms run dark and a mid-range Android in the
  * field saves real battery on an OLED panel. The choice is the console's; the public
  * dashboard makes the opposite one for equally specific reasons.
+ *
+ * **It renders no shell.** The navigation and the pending-gate banner live in
+ * `(console)/layout.tsx`, and the sign-in and step-up screens sit in `(auth)` beside it —
+ * which is what the brief's own `/(auth)/login` notation means.
+ *
+ * That split used to be attempted with a nested `login/layout.tsx` returning only its
+ * children, on the belief that it *replaced* the parent. Nested layouts in the App Router
+ * **compose**; they do not replace. So the sign-in page rendered the whole console shell,
+ * and `PendingGates` inside it polled `dispatch-plans` and `entitlements` every five
+ * seconds at a signed-out browser — a steady stream of 401s, which is precisely the thing
+ * that file's docstring said it was avoiding. A route group is the mechanism that actually
+ * does it.
  */
 
-import { NextIntlClientProvider, hasLocale } from 'next-intl';
+import { hasLocale } from 'next-intl';
 import { setRequestLocale } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
@@ -19,10 +31,8 @@ import type { ReactNode } from 'react';
 
 import type { Locale } from '@sarana/ts-shared/i18n';
 
-import { AppShell } from '../../src/components/app-shell';
 import { Providers } from '../../src/components/providers';
 import { routing } from '../../src/i18n/routing';
-import { readPrincipal } from '../../src/lib/session';
 
 export const metadata: Metadata = {
   title: 'SARANA Operations Console',
@@ -49,20 +59,14 @@ export default async function LocaleLayout({
 
   setRequestLocale(locale);
 
-  // Read once here rather than in each page. It is a cookie, so this is free, and it
-  // means the navigation renders with the same claims the header does.
-  const principal = await readPrincipal();
-
   return (
     <html lang={LANG_TAGS[locale]} data-theme="dark">
       <body>
-        <NextIntlClientProvider>
-          <Providers>
-            <AppShell locale={locale} principal={principal}>
-              {children}
-            </AppShell>
-          </Providers>
-        </NextIntlClientProvider>
+        {/* No message provider here. Each route group supplies its own, narrowed to what
+            that subtree can actually reach - see `src/i18n/namespaces.ts`. Providing the
+            whole catalogue at this level put all 579 keys into the sign-in page, where
+            they were half the HTML and two of them were reachable. */}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
