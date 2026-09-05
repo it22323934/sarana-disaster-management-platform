@@ -28,9 +28,11 @@ import {
 } from '@sarana/ui';
 import type { SeverityLevel } from '@sarana/ui';
 import { useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { useEffect, useRef, useState } from 'react';
 
-import { useTriageQueue } from '../lib/queries';
+import { AuditTrail } from '@sarana/ui';
+import { useAuditTrail, useTriageQueue } from '../lib/queries';
 import type { QueueRow } from '../lib/schemas';
 import { DegradedBanner, ErrorPanel } from './degraded';
 import { SituationMap } from './situation-map';
@@ -147,18 +149,12 @@ export function CommonOperatingPicture() {
           ) : rows.length === 0 ? (
             <EmptyState title={t('queueEmpty')} description={t('queueEmptyHint')} />
           ) : (
-            <ol className="flex-1 overflow-y-auto">
-              {rows.map((row, index) => (
-                <QueueRowItem
-                  key={row.id}
-                  row={row}
-                  rank={index + 1}
-                  selected={selected?.id === row.id}
-                  onSelect={() => setSelected(row)}
-                  now={now}
-                />
-              ))}
-            </ol>
+            <VirtualQueue
+              rows={rows}
+              selectedId={selected?.id ?? null}
+              onSelect={setSelected}
+              now={now}
+            />
           )}
         </section>
 
@@ -264,6 +260,75 @@ function Divider({
 }
 
 /**
+ * The queue, virtualised.
+ *
+ * A national event puts thousands of incidents in this list, and rendering them all is how
+ * the console becomes unusable on the mid-range hardware an operations room actually has.
+ * Only the rows in view plus a few either side are in the DOM.
+ *
+ * It stays an ordered list rather than becoming a grid of divs. The rank is the content -
+ * an operator works this top-down - and `<ol>` is what tells a screen reader "item 4 of
+ * 1,203" rather than "row" repeated. `aria-setsize` and `aria-posinset` carry the real
+ * numbers, because the rendered count is not the real one.
+ */
+function VirtualQueue({
+  rows,
+  selectedId,
+  onSelect,
+  now,
+}: {
+  readonly rows: readonly QueueRow[];
+  readonly selectedId: string | null;
+  readonly onSelect: (row: QueueRow) => void;
+  readonly now: Date;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    // Two lines plus padding. An estimate: rows measure themselves, and a wrong estimate
+    // only costs a scrollbar that settles rather than a wrong layout.
+    estimateSize: () => 68,
+    overscan: 6,
+  });
+
+  return (
+    <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      <ol
+        style={{ height: virtualizer.getTotalSize(), position: 'relative' }}
+        aria-label={undefined}
+      >
+        {virtualizer.getVirtualItems().map((item) => {
+          const row = rows[item.index];
+          if (!row) return null;
+          return (
+            <QueueRowItem
+              key={row.id}
+              row={row}
+              rank={item.index + 1}
+              total={rows.length}
+              selected={selectedId === row.id}
+              onSelect={() => onSelect(row)}
+              now={now}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${item.start}px)`,
+              }}
+              measureRef={virtualizer.measureElement}
+              index={item.index}
+            />
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+/**
  * How old a row has to be before it starts reading as waiting.
  *
  * Twenty minutes. Long enough that a busy queue is not a wall of pending-blue, short
@@ -280,21 +345,37 @@ function ageOf(row: QueueRow, now: Date): number {
 function QueueRowItem({
   row,
   rank,
+  total,
   selected,
   onSelect,
   now,
+  style,
+  measureRef,
+  index,
 }: {
   readonly row: QueueRow;
   readonly rank: number;
+  readonly total: number;
   readonly selected: boolean;
   readonly onSelect: () => void;
   readonly now: Date;
+  readonly style?: React.CSSProperties;
+  readonly measureRef?: (node: Element | null) => void;
+  readonly index?: number;
 }) {
   const t = useTranslations('cop');
   const ageing = ageOf(row, now) >= AGEING_AFTER_SECONDS;
 
   return (
-    <li>
+    <li
+      ref={measureRef}
+      data-index={index}
+      style={style}
+      // The real size and position, not the rendered ones. A virtualised list that
+      // reported "item 4 of 12" when there are 1,203 would be worse than no count.
+      aria-setsize={total}
+      aria-posinset={rank}
+    >
       <div
         className={cn(
           'flex items-start gap-1 border-b border-[var(--divider)]',
@@ -415,6 +496,7 @@ function SelectedIncident({
   readonly assisted: boolean;
 }) {
   const t = useTranslations('cop');
+  const audit = useAuditTrail('incident', row.id);
 
   return (
     <div className="flex flex-col gap-3">
@@ -427,7 +509,7 @@ function SelectedIncident({
         <Definition label={t('division')} value={row.gn_division_code} datum />
         <Definition label={t('peopleAtRisk')} value={String(row.people_at_risk)} datum />
         <Definition label={t('severity')} value={String(row.severity)} datum />
-        <Definition label={t('age')} value="" >
+        <Definition label={t('age')} value="">
           <RelativeTime value={row.first_reported_at} />
         </Definition>
       </dl>
@@ -450,6 +532,32 @@ function SelectedIncident({
           </ul>
         </section>
       ) : null}
+
+      <section>
+        <h3 className="mb-1 text-sm font-medium">{t('auditTrail')}</h3>
+        {audit.isPending ? (
+          <Skeleton line />
+        ) : audit.isError ? (
+          // A failed audit read is not an empty audit trail, and showing nothing would
+          // say this incident had no history.
+          <p className="text-xs text-[var(--sev-2-fg)]">{t('auditUnavailable')}</p>
+        ) : (audit.data ?? []).length === 0 ? (
+          <p className="text-xs text-[var(--text-muted)]">{t('auditEmpty')}</p>
+        ) : (
+          <AuditTrail
+            label={t('auditTrail')}
+            entries={(audit.data ?? []).map((entry) => ({
+              id: entry.id,
+              at: <RelativeTime value={entry.occurred_at} />,
+              // The agent's name when an agent acted, the actor type when a person did.
+              // No personal name appears: the query never selects one.
+              actor: entry.agent_name ?? entry.actor_type,
+              action: entry.action,
+              correlationId: entry.correlation_id,
+            }))}
+          />
+        )}
+      </section>
     </div>
   );
 }

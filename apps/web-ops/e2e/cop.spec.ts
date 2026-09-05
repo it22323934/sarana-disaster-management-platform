@@ -64,6 +64,7 @@ test('warns that the ranking is not a model even though every row has a score', 
   await signInAs(page);
   await scriptGateway(page, [
     { match: 'incidents/queue', body: queue(false) },
+    { match: 'audit', body: [] },
     { match: 'dispatch-plans', body: [] },
   ]);
 
@@ -79,6 +80,7 @@ test('does not warn when the server says the ranking is assisted', async ({ page
   await signInAs(page);
   await scriptGateway(page, [
     { match: 'incidents/queue', body: queue(true) },
+    { match: 'audit', body: [] },
     { match: 'dispatch-plans', body: [] },
   ]);
 
@@ -92,6 +94,7 @@ test('shows why a row outranks another without leaving the screen', async ({ pag
   await signInAs(page);
   await scriptGateway(page, [
     { match: 'incidents/queue', body: queue(true) },
+    { match: 'audit', body: [] },
     { match: 'dispatch-plans', body: [] },
   ]);
 
@@ -110,6 +113,7 @@ test('keeps an incident with no coordinate in the queue and off the map', async 
   await signInAs(page);
   await scriptGateway(page, [
     { match: 'incidents/queue', body: queue(true) },
+    { match: 'audit', body: [] },
     { match: 'dispatch-plans', body: [] },
   ]);
 
@@ -125,6 +129,7 @@ test('the pane splitter reports its position to assistive technology', async ({ 
   await signInAs(page);
   await scriptGateway(page, [
     { match: 'incidents/queue', body: queue(true) },
+    { match: 'audit', body: [] },
     { match: 'dispatch-plans', body: [] },
   ]);
 
@@ -140,4 +145,79 @@ test('the pane splitter reports its position to assistive technology', async ({ 
   await splitter.focus();
   await page.keyboard.press('ArrowRight');
   await expect(splitter).not.toHaveAttribute('aria-valuenow', before ?? '');
+});
+
+test('reports the real queue size to assistive technology, not the rendered one', async ({
+  page,
+}) => {
+  await signInAs(page);
+  await scriptGateway(page, [
+    { match: 'incidents/queue', body: queue(true) },
+    { match: 'audit', body: [] },
+    { match: 'dispatch-plans', body: [] },
+  ]);
+
+  await page.goto('/en/ops');
+
+  // The list is virtualised, so the DOM holds only what is in view. A screen reader that
+  // was told "item 1 of 2" when the queue has two rows is right; one told the rendered
+  // count during a national event would be wrong by three orders of magnitude.
+  const first = queuePane(page).getByRole('listitem').first();
+  await expect(first).toHaveAttribute('aria-setsize', '2');
+  await expect(first).toHaveAttribute('aria-posinset', '1');
+});
+
+test('shows the audit trail for the selected incident', async ({ page }) => {
+  await signInAs(page);
+  await scriptGateway(page, [
+    { match: 'incidents/queue', body: queue(true) },
+    {
+      match: 'audit',
+      body: [
+        {
+          id: '018f3c2a-0020-7e90-9c2d-000000000020',
+          seq: 2,
+          occurred_at: new Date(Date.now() - 10 * 60_000).toISOString(),
+          actor_type: 'AGENT',
+          actor_id: null,
+          agent_name: 'agent:triage',
+          action: 'incident.scored',
+          subject_type: 'incident',
+          subject_id: '018f3c2a-0001-7e90-9c2d-000000000001',
+          correlation_id: '018f3c2a-7b41-7e90-9c2d-5f6a7b8c9d0e',
+          langgraph_thread_id: null,
+        },
+        {
+          id: '018f3c2a-0021-7e90-9c2d-000000000021',
+          seq: 1,
+          occurred_at: new Date(Date.now() - 30 * 60_000).toISOString(),
+          actor_type: 'HUMAN',
+          actor_id: '018f3c2a-0009-7e90-9c2d-000000000009',
+          agent_name: null,
+          action: 'incident.verified',
+          subject_type: 'incident',
+          subject_id: '018f3c2a-0001-7e90-9c2d-000000000001',
+          correlation_id: '018f3c2a-7b41-7e90-9c2d-5f6a7b8c9d0e',
+          langgraph_thread_id: null,
+        },
+      ],
+    },
+    { match: 'dispatch-plans', body: [] },
+  ]);
+
+  await page.goto('/en/ops');
+  await queuePane(page).getByText('INC-251128-K4M2XA').click();
+
+  const trail = page.getByRole('list', { name: /audit trail/i });
+  await expect(trail).toBeVisible();
+
+  // Ordered by `seq`, oldest first — the order is the content. An approval that came
+  // after a disbursement is a finding, and only the sequence shows it.
+  const actions = await trail.getByRole('listitem').allInnerTexts();
+  expect(actions[0]).toContain('incident.verified');
+  expect(actions[1]).toContain('incident.scored');
+
+  // The agent is named where an agent acted; a person is an actor type, never a name.
+  expect(actions[1]).toContain('agent:triage');
+  expect(actions[0]).toContain('HUMAN');
 });

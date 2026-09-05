@@ -40,9 +40,9 @@ finishing 20, then 21.
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-On the TypeScript side, **249 tests pass**: 64 unit and 33 axe-over-every-story in
+On the TypeScript side, **251 tests pass**: 64 unit and 33 axe-over-every-story in
 `packages/ui`, 54 in `packages/ts-shared`, and in `apps/web-ops` 19 unit, 57 axe across
-**19 screens x three locales**, and **35 Playwright tests in a real Chromium**. `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of
+**19 screens x three locales**, and **37 Playwright tests in a real Chromium**. `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of
 Done commands are clean.
 
 On the Python side, untouched by file 19:
@@ -2253,10 +2253,10 @@ before they reach the button.
 - **The composer's dry run is a notice, not a call.** It says a dry run is required and
   why. `POST /alerts/{id}/dispatch` with `dry_run` is not wired, because there is no draft
   to dispatch - see the hazard-event gap.
-- **`/ops/incidents/[id]` shows no reports, no audio and no dedup links.** It shows the
-  incident and what its location confidence means for dispatch. The linked reports with
-  original-language text and playback, the transcription confidence per report, and the
-  similarity links are all specified and unbuilt.
+- **No screen shows linked reports, audio or dedup links.** Both `/ops/incidents/[id]` and
+  the `/ops` context pane are blocked on the same thing: `GET /incidents/{id}`'s docstring
+  promises linked reports and its SQL joins none. The context pane does now show the real
+  audit trail from `GET /audit`; the reports half needs incident-svc work first.
 - **The map draws incidents and nothing else.** Division boundaries, report density and
   delivery-gap shading have builders in `packages/ui` and no data path; they are named on
   screen as not built. `NEXT_PUBLIC_SARANA_MAP_STYLE_URL` points at MapLibre's demo tiles.
@@ -2271,7 +2271,7 @@ before they reach the button.
 - **No lighthouse budget check.** The brief's fourth DoD command
   (`--assert-lcp 2000 --assert-js 250`) is not wired. It needs the app served from a
   production build, and `next build` cannot finish on Windows without Developer Mode.
-- **`next build` still cannot finish on Windows.** Compilation and all 18 static pages
+- **`next build` still cannot finish on Windows.** Compilation and all 54 static pages
   succeed; the pre-existing `output: 'standalone'` trace-copy step then fails with `EPERM`
   creating symlinks. Environmental, and unrelated to the console.
 
@@ -2511,6 +2511,44 @@ count were clipped out of an `overflow-hidden` parent - present in the DOM, invi
 screen. And the e2e incident fixture carried no coordinates at all, which made every
 incident unplaceable and would have quietly turned the map tests into tests of the empty
 case.
+
+---
+
+## The queue is virtualised, and it tells the truth about its size
+
+A national event puts thousands of incidents in the triage queue, and rendering them all is
+how the console becomes unusable on the mid-range hardware an operations room actually has.
+Only the rows in view plus six either side are in the DOM.
+
+It stays an `<ol>` rather than becoming a grid of divs, and every row carries `aria-setsize`
+and `aria-posinset` with the **real** numbers. A virtualised list that reported the rendered
+count would tell a screen reader "item 1 of 12" during an event with 1,203 incidents, which
+is worse than no count at all. An e2e test pins it.
+
+## The context pane reads the audit trail
+
+`GET /audit` on core-api takes `subject_type` and `subject_id`, so the selected incident's
+history is real rather than a placeholder. Three decisions:
+
+**Ordered by `seq`, oldest first.** The order is the content - an approval that came after a
+disbursement is a finding, and only the sequence shows it. `seq` rather than the timestamp,
+because two actions in the same millisecond still have an order.
+
+**An agent is named; a person is a type.** `agent_name` where an agent acted, `actor_type`
+where a human did. No personal name appears, because the query never selects one - a
+stronger guarantee than redacting one here would be.
+
+**A failed audit read is not an empty audit trail.** The pane says the trail could not be
+read rather than rendering nothing, because nothing reads as "this incident has no
+history".
+
+### A note on `GET /incidents/{id}`
+
+Its docstring says it returns "its linked reports and triage factors". The SQL behind it
+(`_GET_INCIDENT` in `incident-svc/repo/queries.py`) selects the incident row only and joins
+no reports. The console therefore cannot show the linked reports, the original-language
+text or the audio the brief asks for in the context pane. Widening that query is
+incident-svc work, and it is what unblocks that half of the pane.
 
 ---
 

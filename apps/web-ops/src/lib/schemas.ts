@@ -497,3 +497,33 @@ export const costScheduleSchema = z.object({
 export type CostSchedule = z.infer<typeof costScheduleSchema>;
 
 export const costScheduleListSchema = z.array(costScheduleSchema);
+
+/**
+ * One recorded action, from core-api's audit search.
+ *
+ * `actor_type` distinguishes a person from an agent, and `agent_name` names the agent when
+ * there was one. The console renders both rather than collapsing them: "the triage agent
+ * proposed this" and "a dispatcher proposed this" are different facts about the same
+ * incident, and an audit trail that flattened them would be useless for the question it
+ * exists to answer.
+ *
+ * No personal name appears. `actor_id` is an identifier; the queries behind this never
+ * select a name, which is a stronger guarantee than redacting one here.
+ */
+export const auditEntrySchema = z.object({
+  id: z.string(),
+  seq: z.number().int(),
+  occurred_at: z.string(),
+  actor_type: z.string(),
+  actor_id: z.string().nullable().default(null),
+  agent_name: z.string().nullable().default(null),
+  action: z.string(),
+  subject_type: z.string(),
+  subject_id: z.string(),
+  correlation_id: z.string(),
+  langgraph_thread_id: z.string().nullable().default(null),
+});
+
+export type AuditEntry = z.infer<typeof auditEntrySchema>;
+
+export const auditEntryListSchema = z.array(auditEntrySchema);

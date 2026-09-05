@@ -28,6 +28,7 @@ import {
   anchorResponseSchema,
   anomalyListSchema,
   assessmentListSchema,
+  auditEntryListSchema,
   costScheduleListSchema,
   dispatchPlanListSchema,
   dispatchPlanSchema,
@@ -47,6 +48,7 @@ import {
   type AlertTemplate,
   type Anomaly,
   type Assessment,
+  type AuditEntry,
   type CostSchedule,
   type Delivery,
   type DispatchPlan,
@@ -85,6 +87,8 @@ export const queryKeys = {
   templates: ['templates'] as const,
   anchors: ['ledger', 'anchors'] as const,
   costSchedules: ['cost-schedules'] as const,
+  auditFor: (subjectType: string, subjectId: string) =>
+    ['audit', subjectType, subjectId] as const,
   assessments: (division?: string) => ['assessments', division ?? 'all'] as const,
   grievanceList: (status?: string) => ['grievances', 'list', status ?? 'all'] as const,
 };
@@ -324,6 +328,31 @@ export function useGrievanceList(status?: string): UseQueryResult<Grievance[]> {
  * system is calculated from, and versions are added by migration rather than from a
  * console. Polled at the reference interval because it effectively never changes.
  */
+/**
+ * Everything recorded against one subject, oldest first.
+ *
+ * Ordered rather than sorted by recency, because the order *is* the content: an approval
+ * that came after a disbursement is a finding, and it is only visible if the sequence is
+ * preserved. `seq` is the authority on that, not the timestamp - two actions in the same
+ * millisecond still have an order.
+ */
+export function useAuditTrail(
+  subjectType: string,
+  subjectId: string,
+): UseQueryResult<AuditEntry[]> {
+  return useQuery({
+    queryKey: queryKeys.auditFor(subjectType, subjectId),
+    enabled: subjectId.length > 0,
+    queryFn: async () => {
+      const rows = await gatewayFetch('audit', {
+        query: { subject_type: subjectType, subject_id: subjectId, limit: 100 },
+        schema: auditEntryListSchema,
+      });
+      return [...rows].sort((a, b) => a.seq - b.seq);
+    },
+  });
+}
+
 export function useCostSchedules(): UseQueryResult<CostSchedule[]> {
   return useQuery({
     queryKey: queryKeys.costSchedules,
