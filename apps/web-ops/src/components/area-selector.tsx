@@ -4,8 +4,7 @@
  * Choosing the area an alert goes to.
  *
  * The brief asks for selection "on the map by GN division, DS division, district, or a
- * drawn polygon that snaps to division boundaries". Three of those four are here, and the
- * fourth is named as absent rather than approximated.
+ * drawn polygon that snaps to division boundaries". All four are here.
  *
  * **By division, by DS division and by district.** The hierarchy endpoints make all three
  * cheap: a district or DS code is a prefix of every GN code inside it, so selecting a
@@ -13,12 +12,11 @@
  * expansion is shown as a count and the codes stay visible, because an operator who picks
  * "Kandy district" and sends to 512 divisions should see 512 before they send, not after.
  *
- * **The drawn polygon is not built, and the screen says so.** Snapping a freehand shape to
- * division boundaries needs every candidate boundary in the viewport, and `core-api` serves
- * geometry one division at a time out of ~14,000. Fetching a viewport's worth to support a
- * lasso would be thousands of requests during the minutes this service is busiest. A
- * polygon tool that snapped to *nothing* would be worse than none: the operator would
- * believe they had selected divisions and would have selected an arbitrary shape.
+ * **The drawn polygon selects whole divisions, and one request does it.** The shape's
+ * bounding box goes to `GET /admin/gn-divisions?bbox=…`, which returns every division in
+ * the box with its centroid, and the point-in-polygon test runs locally. That is what
+ * "snaps to division boundaries" means for an alert: the household directory is keyed by
+ * GN division, so there is no such thing as warning half of one. See `area-draw.tsx`.
  *
  * **The codes stay editable as text.** A dispatcher reading codes off a radio needs to
  * enter them directly, and the selection is the source of truth in both directions - the
@@ -36,11 +34,12 @@ import { useState } from 'react';
 
 import { useGNDivisions } from '../lib/queries';
 import type { GNDivisionRow } from '../lib/schemas';
+import { AreaDraw } from './area-draw';
 
 /** How the operator is choosing an area. Each maps to a different search. */
-export type AreaMode = 'division' | 'ds' | 'district';
+export type AreaMode = 'division' | 'ds' | 'district' | 'draw';
 
-export const AREA_MODES: readonly AreaMode[] = ['division', 'ds', 'district'];
+export const AREA_MODES: readonly AreaMode[] = ['division', 'ds', 'district', 'draw'];
 
 /**
  * Split a comma-separated code list into clean codes.
@@ -107,15 +106,22 @@ export function AreaSelector({ codes, onChange, className }: AreaSelectorProps) 
           onValueChange={(value) => setMode(value as AreaMode)}
           options={AREA_MODES.map((value) => ({ value, label: t(`areaMode_${value}`) }))}
         />
-        <Input
-          label={t('areaSearch')}
-          description={t('areaSearchHint')}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
+        {mode === 'draw' ? null : (
+          <Input
+            label={t('areaSearch')}
+            description={t('areaSearchHint')}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        )}
       </div>
 
-      {query.trim().length >= 2 ? (
+      {mode === 'draw' ? (
+        // Drawing replaces the search, not the selection. What it finds is added to the
+        // codes already chosen, so an operator can type a code off a radio and then draw
+        // around the rest without losing the first one.
+        <AreaDraw onApply={(drawn) => add(drawn)} />
+      ) : query.trim().length >= 2 ? (
         results.isPending ? (
           <Skeleton className="h-32" />
         ) : rows.length === 0 ? (
@@ -184,9 +190,6 @@ export function AreaSelector({ codes, onChange, className }: AreaSelectorProps) 
         ) : null}
       </div>
 
-      {/* Named as absent rather than approximated. A lasso that snapped to nothing would
-          let an operator believe they had selected divisions when they had drawn a shape. */}
-      <p className="text-2xs text-[var(--text-muted)]">{t('areaPolygonNotBuilt')}</p>
     </section>
   );
 }

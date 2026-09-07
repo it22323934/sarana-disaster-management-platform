@@ -241,10 +241,10 @@ and none is a bug in the console.
 ### Tests
 
 ```bash
-pnpm --filter @sarana/web-ops verify-i18n   # 579 keys x si/ta/en, and every key the code uses
-pnpm --filter @sarana/web-ops test          # 59 unit: gates, quiet hours, CSV, map transform
+pnpm --filter @sarana/web-ops verify-i18n   # 591 keys x si/ta/en, and every key the code uses
+pnpm --filter @sarana/web-ops test          # 73 unit: gates, quiet hours, CSV, map and polygon
 pnpm --filter @sarana/web-ops test:a11y     # axe: 25 screens x 3 locales
-pnpm --filter @sarana/web-ops test:e2e      # 93 Playwright tests in real Chromium
+pnpm --filter @sarana/web-ops test:e2e      # 96 Playwright tests in real Chromium
 pnpm --filter @sarana/web-ops test:layout   # 24 routes x 3 scripts, checked for overflow
 pnpm --filter @sarana/web-ops build:local   # a production build that finishes on Windows
 pnpm --filter @sarana/web-ops lighthouse    # per-route JS budget, gzipped
@@ -429,7 +429,7 @@ them exists. What does not exist is the screens. Working backwards from the buil
   the audit ledger with CSV export and the published anchors, the anomaly disposition
   workflow, the review and grievance queues, the entitlement approval detail, the user
   directory and role catalogue, and the desk fallback for filing an assessment. 25 routes,
-  60 static pages, 93 Playwright tests. **No route says "not built".**
+  60 static pages, 96 Playwright tests. **No route says "not built".**
 
 - **All six agents exist, and none is wired to the live stack.** The forecast agent turns rainfall into per-division
   impact predictions with lead time, confidence and the drivers that produced them, and

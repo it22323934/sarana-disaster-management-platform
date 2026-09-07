@@ -9,6 +9,8 @@ export {
   MapLegend,
   MapShell,
   deliveryGapLayer,
+  drawAreaLayer,
+  drawVertexLayer,
   isGeoJsonSource,
   gnDivisionLayer,
   heatLayer,
@@ -20,5 +22,6 @@ export {
   type LayerSpec,
   type MapLegendProps,
   type MapLike,
+  type MapMouseEventLike,
   type MapShellProps,
 } from './map-shell.js';

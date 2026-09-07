@@ -41,15 +41,33 @@ export interface GeoJsonSourceLike {
   setData(data: unknown): void;
 }
 
+/**
+ * Where a pointer event landed, in geographic coordinates.
+ *
+ * The only part of MapLibre's event object anything here reads. Typed structurally like
+ * the rest of this file, so a workspace without MapLibre installed still compiles.
+ */
+export interface MapMouseEventLike {
+  readonly lngLat: { readonly lng: number; readonly lat: number };
+}
+
 /** The slice of the MapLibre map API this shell uses. */
 export interface MapLike {
-  on(event: string, handler: () => void): void;
+  /**
+   * The handler takes the event, because area selection needs the coordinate that was
+   * clicked. It was `() => void`, which is enough for `load` and `error` and silently
+   * throws away the one thing a click carries.
+   */
+  on(event: string, handler: (event: MapMouseEventLike) => void): void;
+  off?(event: string, handler: (event: MapMouseEventLike) => void): void;
   remove(): void;
   addSource(id: string, source: Record<string, unknown>): void;
   addLayer(layer: Record<string, unknown>): void;
   /** Undefined before the source is added. Narrow it before calling `setData`. */
   getSource(id: string): GeoJsonSourceLike | undefined;
   isStyleLoaded(): boolean;
+  /** Cursor and other container styling, for a map in drawing mode. */
+  getCanvas?(): { style: { cursor: string } };
 }
 
 /** Whether a source handle can take new features. Guards the `unknown` MapLibre returns. */
@@ -381,6 +399,55 @@ export function deliveryGapLayer(sourceId: string, data: unknown): LayerSpec {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 7, 5, 12, 14],
         'circle-opacity': 0.85,
         'circle-stroke-width': 1,
+        'circle-stroke-color': '#0B1220',
+      },
+    },
+  };
+}
+
+/**
+ * The polygon an operator is drawing, as they draw it.
+ *
+ * `--signal`, not a severity colour: a selection is an intent, not a hazard, and a red
+ * shape over a map where red already means class 3 would read as one. Semi-transparent so
+ * the divisions underneath stay legible, because the whole point of drawing on the map is
+ * seeing what is inside the shape.
+ */
+export function drawAreaLayer(sourceId: string, data: unknown): LayerSpec {
+  return {
+    id: `${sourceId}-fill`,
+    source: { type: 'geojson', data },
+    layer: {
+      id: `${sourceId}-fill`,
+      type: 'fill',
+      source: sourceId,
+      paint: {
+        'fill-color': '#14A0AC',
+        'fill-opacity': 0.22,
+        'fill-outline-color': '#14A0AC',
+      },
+    },
+  };
+}
+
+/**
+ * The vertices of the shape being drawn.
+ *
+ * Drawn as points as well as a fill, because a two-click shape has no area to fill and an
+ * operator mid-draw would otherwise see nothing at all happening.
+ */
+export function drawVertexLayer(sourceId: string, data: unknown): LayerSpec {
+  return {
+    id: `${sourceId}-vertices`,
+    source: { type: 'geojson', data },
+    layer: {
+      id: `${sourceId}-vertices`,
+      type: 'circle',
+      source: sourceId,
+      paint: {
+        'circle-color': '#14A0AC',
+        'circle-radius': 4,
+        'circle-stroke-width': 2,
         'circle-stroke-color': '#0B1220',
       },
     },

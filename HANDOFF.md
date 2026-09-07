@@ -33,15 +33,16 @@ two finished screens that no user could reach. The next work is 21.
 | 17 | Aid ledger & anomaly agent | Done — exposure-normalised detectors. No adapters. |
 | 18 | Supervisor & HITL | Done — routing table, both gates, conflicts. No adapters. |
 | 19 | Design system | Done — tokens, 3-script type, 34 components, 4 CI gates |
-| **20** | **Ops console** | **Done — 25 routes, 60 static pages, 93 e2e tests** |
+| **20** | **Ops console** | **Done — 25 routes, 60 static pages, 96 e2e tests** |
 | **21** | **Public dashboard** | **Scaffold only** |
 | 22–24 | Mobile (foundation, citizen, field companion) | Scaffold only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-On the TypeScript side, **329 tests pass**: 64 unit and 33 axe-over-every-story in
-`packages/ui`, 54 in `packages/ts-shared`, and in `apps/web-ops` 59 unit, 75 axe across
-**25 screens x three locales**, and **93 Playwright tests in a real Chromium**. `pnpm lint`,
+On the TypeScript side, **362 tests pass**: 64 unit and 33 axe-over-every-story in
+`packages/ui`, 54 in `packages/ts-shared`, and in `apps/web-ops` 73 unit, 75 axe across
+**25 screens x three locales**, and **96 Playwright tests in a real Chromium** — of which
+25 are the overflow gate over every route in all three scripts. `pnpm lint`,
 `pnpm typecheck` and all seven of file 19's Definition of Done commands are clean. Of file
 20's four, three pass; the fourth reports a measured LCP that the stack cannot meet, and
 says so with the evidence rather than passing quietly.
@@ -2100,8 +2101,8 @@ src/lib/                gateway client, queries, schemas, session, step-up, auth
 src/components/         shell, gate banner, both gates, route map, forecast board, alerts,
                         composer, area selector, quiet hours, dry run, incidents, linked
                         reports, audit, chain, directory, assessments, queues
-messages/               579 keys x si/ta/en, gated by verify-i18n
-e2e/                    93 Playwright tests, including 24 routes x 3 scripts for overflow
+messages/               591 keys x si/ta/en, gated by verify-i18n
+e2e/                    96 Playwright tests, including 24 routes x 3 scripts for overflow
 ```
 
 ### Five backend gaps closed, and why each was blocking a screen rather than a nicety
@@ -2178,6 +2179,46 @@ Bindings are resolved **positionally**. One file routinely holds several compone
 with its own `const t = useTranslations(...)` on a different namespace, and matching by name
 alone resolves every call against whichever declaration happened to be last — which reports
 dozens of real keys as missing and buries any genuine finding.
+
+### The drawn polygon is built, and it needs one request rather than thousands
+
+I said this was not buildable and was wrong about why. The obstacle looked like geometry —
+snapping a freehand shape needs every candidate boundary in the viewport, and `core-api`
+serves geometry one division at a time out of ~14,000. But `GET /admin/gn-divisions` has
+taken a `bbox` since file 07, and it returns each division's **centroid** with the row. So
+the shape's bounding box is one request, and the point-in-polygon test runs locally against
+the centroids that came back with it.
+
+**Snapping means selecting whole divisions, never parts of one.** That is not a
+simplification of the brief: an alert is addressed to GN divisions because the household
+directory is keyed by them, and there is no such thing as warning half a division. The shape
+decides which divisions are in; it never becomes the target area itself.
+
+**The rule is centroid containment, and the screen says so.** A division lying half inside
+the shape is out. The alternative reading — anything the shape touches — differs by exactly
+the divisions on the boundary, which are the ones the operator is deciding about, so leaving
+it implicit would be leaving the decision implicit.
+
+Three things the screen refuses to do quietly:
+
+- **Nothing is applied until apply is pressed.** Drawing shows a count and stops. A stray
+  click that replaced a typed list of codes would be worse than having no tool.
+- **A shape covering more than 400 divisions is refused, not truncated.** Selecting the
+  first 400 of a larger set is selecting a subset nobody chose, on the screen that decides
+  who gets warned. The cap is on the response rather than on the shape, so a large sparse
+  area is fine and a small dense one is what gets caught — which is the right way round.
+- **Divisions with no recorded centroid are counted, not dropped.** Seed boundaries below
+  district level are generated and some rows carry no centroid; silently skipping them would
+  mean an operator drew over an area and warned fewer people than they saw.
+
+The geometry is a pure module with 14 tests, because every failure in it is silent: a
+polygon test that is subtly wrong selects the wrong divisions and the alert goes to the
+wrong district while the screen looks correct. The tests are written around the ways ray
+casting is got wrong rather than around a happy path — a concave notch that a bounding-box
+test would pass, a vertex lying exactly on the ray, a shape drawn anticlockwise.
+
+`MapLike.on` took `() => void`, which is enough for `load` and `error` and throws away the
+one thing a click carries. It now passes the event.
 
 ### Every route, in three scripts, checked for overflow in a real browser
 
@@ -2435,7 +2476,7 @@ errors in the log beside pages that look fine.
 
 ### What the e2e suite proves, and what it does not
 
-93 Playwright tests run against `next dev` with the gateway routes intercepted in the
+96 Playwright tests run against `next dev` with the gateway routes intercepted in the
 browser, not against a booted platform. That is a trade, not a shortcut: the flows these
 protect are properties of the console, and making them depend on six Docker services, a
 seeded Postgres and a working TOTP secret would produce a suite that fails for reasons
@@ -2450,11 +2491,8 @@ button, will not send an alert nobody has dry-run, warns on a rule-ordered queue
 
 ### Still placeholder, and honest about it
 
-- **A drawn polygon that snaps to boundaries is not built.** Area selection works by GN
-  division, DS division and district. A lasso needs every candidate boundary in the
-  viewport and geometry is served one division at a time out of ~14,000; one that snapped
-  to nothing would be worse than none, because the operator would believe they had selected
-  divisions when they had drawn a shape.
+- **Area selection is complete: division, DS division, district and a drawn polygon.** See
+  below for how the polygon snaps without needing per-division geometry.
 - **Audio is not playable.** `raw_audio_uri` is an object key and media signing is not wired
   (file 08). The screen says a recording exists and cannot be played here, rather than
   rendering an `<audio>` that fails silently — an operator who presses play and hears
@@ -2881,6 +2919,14 @@ These each cost real debugging time. They are written down so they cost you none
 
 ### The test suite's flakiest failure is not your code — it is disk
 
+**The Playwright suite has the same disease with a quieter symptom.** It reports
+`N passed` with **zero failures and a total lower than the inventory** — 85 of 96 on the
+run that hit it here. Nothing errors, because the tests that never started cannot fail.
+`playwright test --list` prints the real total, so compare the two before believing a green
+run. `.next/cache` and `apps/web-ops/test-results` are the regenerable things to clear
+first; `npx` also needs cache space and fails with `npm error nospc` when there is none,
+which is the loudest signal you will get.
+
 If a run dies with dozens of errors at *fixture setup* saying `Port mapping for container
 … and port 8080 is not available`, nothing has regressed. **Zero `FAILED` and many
 `ERROR` is the signature.** There are two causes and it is usually the second:
@@ -3213,10 +3259,10 @@ pnpm --filter @sarana/ui storybook            # localhost:6006, three scripts si
 
 # ops console (file 20)
 pnpm --filter @sarana/web-ops dev              # http://localhost:3000
-pnpm --filter @sarana/web-ops verify-i18n      # 579 keys x si/ta/en, + every key the code uses
-pnpm --filter @sarana/web-ops test             # 59 unit
+pnpm --filter @sarana/web-ops verify-i18n      # 591 keys x si/ta/en, + every key the code uses
+pnpm --filter @sarana/web-ops test             # 73 unit
 pnpm --filter @sarana/web-ops test:a11y        # axe, 25 screens x 3 locales
-pnpm --filter @sarana/web-ops test:e2e         # 93 Playwright, real Chromium
+pnpm --filter @sarana/web-ops test:e2e         # 96 Playwright, real Chromium
 pnpm --filter @sarana/web-ops test:layout      # 24 routes x 3 scripts, overflow only
 pnpm --filter @sarana/web-ops build            # 60 static pages; see the Windows EPERM note
 pnpm --filter @sarana/web-ops lighthouse -- --assert-js 250   # JS budget, per route, gzipped

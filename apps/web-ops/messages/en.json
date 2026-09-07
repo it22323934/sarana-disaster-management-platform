@@ -440,8 +440,20 @@
     "areaSelected": "{count} selected",
     "areaMore": "and {count} more",
     "areaClear": "Clear",
-    "areaPolygonNotBuilt": "Drawing a polygon that snaps to boundaries is not built. It needs every candidate boundary in the viewport, and geometry is served one division at a time out of about 14,000. A lasso that snapped to nothing would be worse than none.",
-    "openDraft": "Open the draft"
+    "openDraft": "Open the draft",
+    "areaMode_draw": "Drawing on the map",
+    "drawMap": "Draw the area",
+    "drawHint": "Click the map to place each corner, then search. The shape selects whole divisions; it never becomes the target area itself.",
+    "drawVertices": "{count, plural, =0 {No corners placed} one {# corner placed} other {# corners placed}}",
+    "drawNeedsThree": "Three corners at least. Two is a line and encloses nothing.",
+    "drawSearch": "Find divisions in this shape",
+    "drawClear": "Start again",
+    "drawFound": "{count, plural, =0 {No division falls inside this shape} one {# division falls inside this shape} other {# divisions fall inside this shape}}",
+    "drawCentroidRule": "A division is selected when its centre lies inside the shape, so one lying half inside is out. Divisions on the boundary are the ones this decides.",
+    "drawWithoutCentroid": "{count, plural, one {# division in this area has no recorded centre and was not selected} other {# divisions in this area have no recorded centre and were not selected}}. Add them by code if they belong.",
+    "drawApply": "{count, plural, one {Add # division} other {Add # divisions}}",
+    "drawTooMany": "This shape covers {count} divisions, above the {cap} a single drawing may select. Draw a smaller area. Selecting the first {cap} would be selecting a subset nobody chose.",
+    "drawUnavailable": "The map could not load, so there is nothing to draw on. Select by division, DS division or district instead - those need no map."
   },
   "chain": {
     "title": "Chain verification",
