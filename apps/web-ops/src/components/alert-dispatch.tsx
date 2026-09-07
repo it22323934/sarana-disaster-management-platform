@@ -37,6 +37,7 @@ import {
   DialogRoot,
   DialogTrigger,
   EmptyState,
+  LKRAmount,
   ReferenceCode,
   RelativeTime,
   SeverityPill,
@@ -47,7 +48,7 @@ import {
 import type { SeverityLevel } from '@sarana/ui';
 import { LOCALE_NAMES, type Locale } from '@sarana/ts-shared/i18n';
 import { useLocale, useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { Link } from '../i18n/routing';
 import { gatewayFetch } from '../lib/gateway-client';
@@ -324,12 +325,16 @@ function DryRunResult({ plan, compact = false }: { readonly plan: DryRun; readon
     <div data-dry-run-targeted={plan.targeted} className="flex flex-col gap-3">
       <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2">
         <Figure label={t('targeted')} value={plan.targeted.toLocaleString('en-LK')} />
+        {/* `LKRAmount`, not a locally formatted string. This screen briefly grew its own
+            money format - two formats in one product is exactly what the "one unambiguous
+            money format" rule exists to prevent, and a mixed-language operations room is
+            where that costs something. The dry run reports rupees, so it is converted to
+            the minor units every money path on this platform carries. */}
         <Figure
           label={t('estimatedCost')}
-          value={`Rs. ${plan.estimated_cost_lkr.toLocaleString('en-LK', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}`}
+          value={
+            <LKRAmount cents={Math.round(plan.estimated_cost_lkr * 100)} />
+          }
           hint={t('estimatedCostHint')}
         />
         <Figure
@@ -369,7 +374,8 @@ function Figure({
   hint,
 }: {
   readonly label: string;
-  readonly value: string;
+  /** A node, because money is rendered by `LKRAmount` rather than formatted to a string. */
+  readonly value: ReactNode;
   readonly hint?: string;
 }) {
   return (

@@ -59,11 +59,12 @@ export function LKRAmount({
   voidedLabel,
   className,
 }: LKRAmountProps) {
-  // `en-LK` grouping in all three locales, which is what `formatLKR` documents: Sinhala
-  // and Tamil use the same lakh-free thousands grouping for currency in Sri Lanka, and
-  // switching digit shapes per locale would break the column alignment the mono stack
-  // exists to provide.
-  const formatted = formatLKR(cents, { withCurrency, locale: 'en-LK' });
+  // No locale is passed, because `formatLKR` no longer takes one: money is grouped in
+  // `en-LK` always. Tamil's own Intl locale groups in lakhs and crores, so a per-locale
+  // format would render the same entitlement as `1,25,000` to one approver and `125,000`
+  // to another - and switching digit shapes would break the column alignment the mono
+  // stack exists to provide.
+  const formatted = formatLKR(cents, { withCurrency });
 
   return (
     <span

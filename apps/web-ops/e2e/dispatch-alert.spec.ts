@@ -61,7 +61,10 @@ test.describe('the mandatory dry run', () => {
     // pushes costs and behaves differently from one that is the reverse.
     await expect(result).toContainText('SMS');
     await expect(result).toContainText('PUSH');
-    await expect(result).toContainText('Rs. 2,105.25');
+    // `LKR`, through the shared `LKRAmount`, not a locally formatted string. This screen
+    // briefly printed `Rs.` from its own `toLocaleString` - one product with two money
+    // formats is what the "one unambiguous money format" rule forbids.
+    await expect(result).toContainText('LKR 2,105.25');
   });
 
   test('clears a stale plan when the dry run is re-run', async ({ page }) => {

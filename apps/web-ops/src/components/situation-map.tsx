@@ -13,10 +13,13 @@
  *                impact class from `GET /impact-forecasts`
  *   gaps         drawn on the delivery panel, where an alert scopes them - see `GapMap`
  *
- * **Shelters are still named on screen as not built.** `admin.household` has no shelter
- * table and nothing supplies occupancy, so a toggle for it would be a toggle that does
- * nothing - and an operator who switches on a layer and sees an unchanged map concludes
- * there is nothing to see rather than nothing to draw.
+ * **Shelters are still named on screen as not built**, and the reason is narrower than "no
+ * data exists". `admin.rg_entity` accepts `entity_type = 'shelter'`, nothing populates it,
+ * and the only real shelter feed is gov-mock's `/dmc/v1/shelters` - which the gateway
+ * deliberately cannot reach. So the layer waits on a decision about drawing a mocked
+ * government feed onto an operational map, not on an endpoint. Either way a toggle that
+ * does nothing is worse than an absent one: an operator who switches on a layer and sees an
+ * unchanged map concludes there is nothing to see rather than nothing to draw.
  *
  * **Boundaries are fetched per division, bounded by the queue.** There are roughly 14,000
  * divisions and the endpoint serves one at a time, so the layer requests only the

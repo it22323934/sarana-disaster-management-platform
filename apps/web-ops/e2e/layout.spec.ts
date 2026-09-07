@@ -311,6 +311,35 @@ function everything(): GatewayScript[] {
   ];
 }
 
+/**
+ * Wait for the page to be worth measuring.
+ *
+ * **Not `networkidle`.** `PendingGates` polls `dispatch-plans` every five seconds on every
+ * console page, with `refetchIntervalInBackground` on, so the network never idles for long
+ * and "idle" arrives at an arbitrary point between polls. Measuring there is measuring a
+ * random render, which made this gate flaky - `/admin` failed in a full run and passed
+ * alone. A flaky layout gate is worse than none: the e2e config sets `retries: 0` precisely
+ * so a flake cannot be hidden, so the wait has to be deterministic rather than retried.
+ *
+ * Instead: wait for content, then wait for the layout to stop moving. Two consecutive
+ * measurements of the document width agreeing means rendering has settled, whatever the
+ * poll is doing - and a skeleton has a different width from the populated screen, so this
+ * also rules out measuring one.
+ */
+async function settle(page: Page): Promise<void> {
+  await page.waitForLoadState('domcontentloaded');
+  // Something with text. Every route renders a heading; the sign-in page renders a form.
+  await page.locator('h1, form').first().waitFor({ state: 'visible', timeout: 15_000 });
+
+  let previous = -1;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const width = await page.evaluate(() => document.documentElement.scrollWidth);
+    if (width === previous) return;
+    previous = width;
+    await page.waitForTimeout(150);
+  }
+}
+
 /** What the browser reports about a rendered page. Serialisable, so it crosses cleanly. */
 interface LayoutReport {
   readonly documentOverflowPx: number;
@@ -406,7 +435,7 @@ test('the overflow detector catches an overflow', async ({ page }) => {
   await signInAs(page);
   await scriptGateway(page, everything());
   await page.goto('/en/login');
-  await page.waitForLoadState('networkidle');
+  await settle(page);
 
   await expect
     .poll(async () => (await measureLayout(page)).clipped.length)
@@ -441,9 +470,7 @@ test.describe('every route, in three scripts, without overflow', () => {
 
       for (const locale of LOCALES) {
         await page.goto(`/${locale}${route}`);
-        // Settle before measuring. A skeleton fits every layout, so measuring one would
-        // pass while the populated screen overflowed.
-        await page.waitForLoadState('networkidle');
+        await settle(page);
 
         const report = await measureLayout(page);
 

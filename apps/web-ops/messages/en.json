@@ -91,7 +91,7 @@
     "layerDeliveryGaps": "Delivery gaps",
     "noCoordinate": "no coordinate",
     "unplaceable": "{count, plural, one {# incident has no coordinate and is not on the map} other {# incidents have no coordinate and are not on the map}}",
-    "layersNotBuilt": "Shelters with occupancy are not drawn: nothing on this platform holds shelter positions or capacity. Delivery-gap shading is on the alert delivery screen, where an alert scopes it.",
+    "layersNotBuilt": "Shelters with occupancy are not drawn. The only shelter data on this platform is a mocked government feed that the gateway deliberately does not reach, so wiring the layer is a decision about mock data on an operational map rather than a missing endpoint. Delivery-gap shading is on the alert delivery screen, where an alert scopes it.",
     "orderedBy": "Ordered by",
     "noFactors": "No factor breakdown was recorded for this incident.",
     "auditTrail": "Audit trail",

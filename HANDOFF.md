@@ -39,8 +39,8 @@ two finished screens that no user could reach. The next work is 21.
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-On the TypeScript side, **362 tests pass**: 64 unit and 33 axe-over-every-story in
-`packages/ui`, 54 in `packages/ts-shared`, and in `apps/web-ops` 73 unit, 75 axe across
+On the TypeScript side, **366 tests pass**: 64 unit and 33 axe-over-every-story in
+`packages/ui`, 58 in `packages/ts-shared`, and in `apps/web-ops` 73 unit, 75 axe across
 **25 screens x three locales**, and **96 Playwright tests in a real Chromium** — of which
 25 are the overflow gate over every route in all three scripts. `pnpm lint`,
 `pnpm typecheck` and all seven of file 19's Definition of Done commands are clean. Of file
@@ -2180,6 +2180,40 @@ with its own `const t = useTranslations(...)` on a different namespace, and matc
 alone resolves every call against whichever declaration happened to be last — which reports
 dozens of real keys as missing and buries any genuine finding.
 
+### Money grouped in Tamil is a different number, and `formatLKR` said otherwise
+
+`formatLKR` took a `locale` for digit grouping, documented as safe because "Sinhala and
+Tamil both use the en-LK grouping". **That is false for Tamil.** `Intl.NumberFormat('ta-LK')`
+groups in lakhs and crores:
+
+```
+                          en-LK / si-LK              ta-LK
+one entitlement           LKR 125,000.00             LKR 1,25,000.00
+a national total          LKR 120,000,000,000.00     LKR 1,20,00,00,00,000.00
+```
+
+Build file 20's rule is that LKR reads the same regardless of locale, "because a
+mixed-language operations room needs one unambiguous money format" — and this is exactly
+that room: two approvers reading one figure off one screen and saying different numbers
+aloud.
+
+**Nothing was rendering it wrongly.** `LKRAmount` pinned `en-LK` on every call, and it is
+the only caller. But an option typed as a locale string, whose docstring says the locales
+agree, is an invitation — and the rule is now held by the signature instead: `formatLKR`
+takes no locale. The test that would have caught it did not exist; money had eight tests
+and none of them mentioned a language.
+
+The console had also grown a second money format: the alert dry run printed
+`Rs. 2,105.25` from a local `toLocaleString` while everything else rendered `LKR` through
+`LKRAmount`. One product with two money formats is the failure the rule names, so it now
+uses the shared component like every other figure.
+
+**On `Rs.` versus `LKR`:** the brief writes the format as `Rs. X,XXX.XX` and this platform
+renders `LKR`. That deviation predates file 20 — file 19 built `LKRAmount` that way and
+`conventions.md` uses `LKR` in its own error-message example — so it is consistent
+everywhere, which is the property that actually matters. Recorded here because the brief
+says otherwise and the next person will notice.
+
 ### The drawn polygon is built, and it needs one request rather than thousands
 
 I said this was not buildable and was wrong about why. The obstacle looked like geometry —
@@ -2498,15 +2532,27 @@ button, will not send an alert nobody has dry-run, warns on a rule-ordered queue
   rendering an `<audio>` that fails silently — an operator who presses play and hears
   nothing concludes the recording is empty. When the store is wired and the key becomes an
   http(s) URL, the player appears with no change to this code.
-- **Shelter positions and occupancy do not exist.** No table holds them. Named on the map as
+- **Shelter positions and occupancy are not readable, which is narrower than "do not
+  exist".** `admin.rg_entity` accepts `entity_type = 'shelter'` with a JSONB attribute bag,
+  so the schema has a home for them; nothing populates it, `GET /rg/entities` has no
+  list-by-type surface, and `rg` answers to `system:admin` rather than to an operator. The
+  only actual shelter data on the platform is gov-mock's `GET /dmc/v1/shelters` - name,
+  capacity, occupancy - and gov-mock is deliberately outside the gateway's service map.
+  Wiring the layer therefore means deciding whether an operational map may draw a mocked
+  government feed, which is a bigger question than a missing endpoint. Named on the map as
   absent rather than offered as a toggle that does nothing.
 - **The spine still plots two milestones, not six.** Declaration and landfall are readable;
   forecast issued, alert dispatched, first incident, peak queue depth and first disbursement
   each need a query that does not exist.
 - **The visual regression gate measures overflow, not pixels** — see below. A screenshot
   baseline suite is the literal reading of the brief and would be the wrong tool here.
-- **Still no SSE anywhere.** The console polls. `LIVE_INTERVAL_MS` in
-  `apps/web-ops/src/lib/queries.ts` is the one place that changes when a stream exists.
+- **Still no SSE anywhere, and file 07 never asked for it.** File 20's stack section says
+  "live data arrives over SSE from core-api"; core-api's own build file specifies no
+  streaming surface of any kind - no SSE, no websocket, no long poll. So this is a
+  disagreement between two build files rather than an unbuilt requirement, and resolving it
+  is a design decision about the event backbone rather than console work. The console polls
+  and says so; `LIVE_INTERVAL_MS` in `apps/web-ops/src/lib/queries.ts` is the one place that
+  changes when a stream exists.
 - **The simulated LCP budget is not met, and is not reachable on this stack.** 2415 ms
   against a 2000 ms budget, with 196 KB transferred of which ~100 KB is React and the Next
   runtime. Observed LCP is 199 ms. Both figures are printed by the gate. Closing it would

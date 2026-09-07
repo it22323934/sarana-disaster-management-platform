@@ -10,13 +10,32 @@ export type LKRCents = number;
 
 export const CENTS_PER_RUPEE = 100;
 
+/**
+ * The one grouping locale money is ever formatted in.
+ *
+ * Not a parameter, and this is the rule rather than a default. Build file 20: "LKR always
+ * displayed the same regardless of locale — a mixed-language operations room needs one
+ * unambiguous money format."
+ *
+ * The option used to exist, documented as safe on the grounds that "Sinhala and Tamil both
+ * use the en-LK grouping". **That is false for Tamil.** `Intl.NumberFormat('ta-LK')` groups
+ * in lakhs and crores, so the same entitlement renders `LKR 1,25,000.00` to a Tamil reader
+ * and `LKR 125,000.00` to an English one — and a national total as `1,20,00,00,00,000.00`
+ * against `120,000,000,000.00`. Two people reading the same figure off the same screen and
+ * saying different numbers aloud is precisely the failure the rule exists to prevent, and
+ * it is worst in the room where it matters most.
+ *
+ * Nothing was rendering it wrongly - `LKRAmount` pinned `en-LK` on every call - but an
+ * option typed as a locale string, with a docstring saying the locales agree, is an
+ * invitation. Removing it is what actually holds the rule.
+ */
+const GROUPING_LOCALE = 'en-LK';
+
 export interface MoneyFormatOptions {
   /** Show the `LKR` prefix. Off inside a column already headed with the currency. */
   readonly withCurrency?: boolean;
   /** Drop the decimal part. Used on dashboards where cents are noise. */
   readonly whole?: boolean;
-  /** Locale for digit grouping. Sinhala and Tamil both use the en-LK grouping. */
-  readonly locale?: string;
 }
 
 /**
@@ -32,10 +51,10 @@ export function formatLKR(cents: LKRCents, options: MoneyFormatOptions = {}): st
     );
   }
 
-  const { withCurrency = true, whole = false, locale = 'en-LK' } = options;
+  const { withCurrency = true, whole = false } = options;
   const fractionDigits = whole ? 0 : 2;
 
-  const formatted = new Intl.NumberFormat(locale, {
+  const formatted = new Intl.NumberFormat(GROUPING_LOCALE, {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
   }).format(Math.abs(cents) / CENTS_PER_RUPEE);
