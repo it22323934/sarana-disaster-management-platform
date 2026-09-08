@@ -107,13 +107,21 @@ describe('surfaces', () => {
     roles: ['GN_OFFICER'] as const,
     displayName: null,
     gnDivisionCode: DIVISION,
+    householdId: null,
   };
-  const citizen = { subjectId: 'b', roles: ['CITIZEN'] as const, displayName: null, gnDivisionCode: null };
+  const citizen = {
+    subjectId: 'b',
+    roles: ['CITIZEN'] as const,
+    displayName: null,
+    gnDivisionCode: null,
+    householdId: '018f4a2b-0000-7000-8000-00000000abcd',
+  };
   const approver = {
     subjectId: 'c',
     roles: ['DS_APPROVER'] as const,
     displayName: null,
     gnDivisionCode: null,
+    householdId: null,
   };
 
   it('gives every signed-in user the citizen app', () => {

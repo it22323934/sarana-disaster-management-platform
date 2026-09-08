@@ -12,7 +12,7 @@
  */
 
 import { Pressable, StyleSheet, View, useColorScheme } from 'react-native';
-import Svg, { Circle, Path, Polygon, Rect } from 'react-native-svg';
+import Svg, { Circle, Path, Rect } from 'react-native-svg';
 
 import { INCIDENT_TYPES, type IncidentType } from '../report-draft.js';
 import { Text, useSurface } from '../../components/primitives.js';

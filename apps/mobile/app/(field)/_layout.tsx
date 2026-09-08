@@ -19,7 +19,7 @@ export default function FieldLayout() {
   if (!session) return <Redirect href="/sign-in" />;
   // Checked on every entry, not only at sign-in. A role revoked mid-shift takes effect
   // the next time the officer navigates, rather than at the next cold start.
-  if (!mayEnter(session, 'field')) return <Redirect href="/(citizen)" />;
+  if (!mayEnter(session, 'field')) return <Redirect href="/(citizen)/(tabs)/home" />;
 
   return <Stack screenOptions={{ headerShown: false }} />;
 }

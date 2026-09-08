@@ -49,5 +49,5 @@ export default function Index() {
   if (!ready) return <View style={{ flex: 1, backgroundColor: SURFACES[scheme].base }} />;
   if (!session) return <Redirect href="/sign-in" />;
 
-  return <Redirect href={surface === 'field' ? '/(field)' : '/(citizen)'} />;
+  return <Redirect href={surface === 'field' ? '/(field)' : '/(citizen)/(tabs)/home'} />;
 }

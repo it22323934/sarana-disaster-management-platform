@@ -1,0 +1,23 @@
+# A severity 3 alert with every notification muted.
+#
+# It arrives anyway. An evacuation order is not a notification preference, and someone who
+# turned off flood watches in June did not thereby decline a warning in November.
+appId: lk.sarana.app
+name: Severity 3 delivers with notifications muted
+---
+- launchApp:
+    clearState: true
+- runFlow: ../subflows/sign-in-citizen.yaml
+
+- tapOn: 'Settings'
+- tapOn: 'Watches and above'
+- back
+
+# The bridge writes a class 3 alert into the cache and runs it through the same policy the
+# push handler uses.
+- openLink: sarana://debug?action=deliver-alert&class=3
+- assertVisible: 'ok: delivered now (mute bypassed)'
+- back
+
+- assertVisible:
+    text: '.*active warnings for your area.*'

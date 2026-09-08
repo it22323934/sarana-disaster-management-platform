@@ -91,7 +91,13 @@ export function Heading({ children, size = 'xl' }: { children: ReactNode; size?:
 }
 
 export interface ScreenProps {
-  readonly children: ReactNode;
+  /**
+   * Optional, because a screen waiting on its first local read renders an empty frame.
+   *
+   * Not a spinner: reading a row out of SQLite takes milliseconds, and a spinner that
+   * flashes for one frame is worse than a background colour that does not.
+   */
+  readonly children?: ReactNode;
   /** Scrolling is the default: a form at 200% text size is taller than any handset. */
   readonly scroll?: boolean;
   readonly style?: StyleProp<ViewStyle>;

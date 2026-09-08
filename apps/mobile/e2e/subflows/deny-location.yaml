@@ -1,0 +1,13 @@
+# Refuse the location permission dialog.
+#
+# The report has to be submittable without a coordinate, and the only way to prove that is
+# to actually say no to the OS.
+appId: lk.sarana.app
+---
+- runFlow:
+    when:
+      visible:
+        text: '.*(Deny|Don.t allow).*'
+    commands:
+      - tapOn:
+          text: '.*(Deny|Don.t allow).*'

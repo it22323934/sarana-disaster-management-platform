@@ -35,6 +35,15 @@ export interface Session {
   readonly displayName: string | null;
   /** The GN division a field officer is assigned to. Null for everyone else. */
   readonly gnDivisionCode: string | null;
+  /**
+   * The household this person's aid records belong to, if they have linked one.
+   *
+   * Null is the normal state and not an error: linking is optional, it is skipped at
+   * onboarding by most people, and a citizen who never links still gets warnings and can
+   * still report. The Aid tab is the only surface that needs it, and it says so rather
+   * than rendering an empty screen.
+   */
+  readonly householdId: string | null;
 }
 
 /**

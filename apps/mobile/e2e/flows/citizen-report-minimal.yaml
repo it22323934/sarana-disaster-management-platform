@@ -1,0 +1,20 @@
+# A report with no location, no photo, no voice note and no text.
+#
+# Just a type. It is dispatchable and the platform accepts it - which is the property that
+# makes the thirty-second target reachable at all.
+appId: lk.sarana.app
+name: A report with only a type submits
+---
+- setAirplaneMode: enabled
+- launchApp:
+    clearState: true
+- runFlow: ../subflows/sign-in-citizen.yaml
+
+- tapOn: 'Report an emergency'
+# Location permission is refused, so there is no coordinate at all.
+- runFlow: ../subflows/deny-location.yaml
+- tapOn: 'People trapped'
+- tapOn: 'Send report'
+
+- assertVisible:
+    text: '.*Will send when you have signal.*'

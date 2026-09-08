@@ -12,59 +12,14 @@
 
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { TextInput, View } from 'react-native';
+import { View } from 'react-native';
 
-import { Button, Card, Heading, Screen, Text, useSurface } from '../src/components/primitives.js';
+import { Button, Card, Heading, Screen, Text } from '../src/components/primitives.js';
+import { TextField } from '../src/components/TextField.js';
 import { useLocale, useSession } from '../src/providers/index.js';
-import { RADIUS, SPACE, touchTarget, type } from '../src/theme/index.js';
+import { SPACE } from '../src/theme/index.js';
 
 type Mode = 'citizen' | 'officer';
-
-function Field({
-  label,
-  value,
-  onChange,
-  keyboardType,
-  secure,
-}: {
-  label: string;
-  value: string;
-  onChange: (next: string) => void;
-  keyboardType?: 'phone-pad' | 'number-pad' | 'email-address';
-  secure?: boolean;
-}) {
-  const { locale } = useLocale();
-  const surface = useSurface();
-  const metrics = type('base', locale);
-
-  return (
-    <View style={{ gap: SPACE[1] }}>
-      <Text size="sm" muted>
-        {label}
-      </Text>
-      <TextInput
-        value={value}
-        onChangeText={onChange}
-        keyboardType={keyboardType}
-        secureTextEntry={secure}
-        autoCapitalize="none"
-        accessibilityLabel={label}
-        allowFontScaling={false}
-        placeholderTextColor={surface.muted}
-        style={{
-          ...metrics,
-          color: surface.text,
-          backgroundColor: surface.raised,
-          borderColor: surface.divider,
-          borderWidth: 1,
-          borderRadius: RADIUS.default,
-          paddingHorizontal: SPACE[3],
-          minHeight: touchTarget('min'),
-        }}
-      />
-    </View>
-  );
-}
 
 export default function SignInScreen() {
   const { t } = useLocale();
@@ -104,13 +59,13 @@ export default function SignInScreen() {
       <Card>
         {mode === 'citizen' ? (
           <>
-            <Field
+            <TextField
               label={t('auth.signIn.msisdn')}
               value={msisdn}
               onChange={setMsisdn}
               keyboardType="phone-pad"
             />
-            <Field
+            <TextField
               label={t('auth.signIn.otp')}
               value={otp}
               onChange={setOtp}
@@ -119,19 +74,19 @@ export default function SignInScreen() {
           </>
         ) : (
           <>
-            <Field
+            <TextField
               label={t('auth.signIn.email')}
               value={email}
               onChange={setEmail}
               keyboardType="email-address"
             />
-            <Field
+            <TextField
               label={t('auth.signIn.password')}
               value={password}
               onChange={setPassword}
               secure
             />
-            <Field
+            <TextField
               label={t('auth.signIn.totp')}
               value={totp}
               onChange={setTotp}
@@ -152,6 +107,7 @@ export default function SignInScreen() {
               roles: mode === 'officer' ? ['GN_OFFICER'] : ['CITIZEN'],
               displayName: null,
               gnDivisionCode: mode === 'officer' ? 'LK-2-05-020-1015' : null,
+              householdId: null,
             });
             router.replace('/');
           }}

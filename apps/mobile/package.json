@@ -34,6 +34,7 @@
     "expo-device": "~57.0.1",
     "expo-file-system": "~57.0.6",
     "expo-image-manipulator": "~57.0.16",
+    "expo-linking": "~7.0.5",
     "expo-localization": "~57.0.1",
     "expo-location": "~57.0.16",
     "expo-network": "~57.0.1",

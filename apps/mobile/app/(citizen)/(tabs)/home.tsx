@@ -19,7 +19,7 @@ import { Card, Screen, Text, useSurface } from '../../../src/components/primitiv
 import { nearestShelters, shelterCacheAge } from '../../../src/citizen/shelters.js';
 import { describeAge } from '../../../src/offline/status/model.js';
 import { useLocale, useOffline } from '../../../src/providers/index.js';
-import { RADIUS, SPACE, fontScale, touchTarget, type } from '../../../src/theme/index.js';
+import { RADIUS, SPACE, fontScale, touchTarget } from '../../../src/theme/index.js';
 import { body, headline, shelterName, useCachedAlerts, useCachedShelters } from '../../../src/citizen/cache.js';
 
 export default function CitizenHome() {

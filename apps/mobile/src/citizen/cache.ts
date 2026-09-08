@@ -45,14 +45,22 @@ export function shelterName(shelter: Shelter, locale: Locale): string {
   return locale === 'si' ? shelter.name_si : locale === 'ta' ? shelter.name_ta : shelter.name_en;
 }
 
-/** Rows from a table, re-read whenever `deps` change. Empty until the read lands. */
+/**
+ * Rows from a table, re-read when the query or the revision changes.
+ *
+ * `params` and `revision` are collapsed into one string key rather than spread into the
+ * dependency array. A spread array is a variable-length dependency list, which React
+ * cannot check and the lint rule cannot either - and the failure mode is a query that
+ * silently stops re-running when a caller adds a parameter.
+ */
 function useRows<T>(
   db: Database | null,
   sql: string,
   params: readonly (string | number)[] = [],
-  deps: readonly unknown[] = [],
+  revision: number | string = 0,
 ): T[] {
   const [rows, setRows] = useState<T[]>([]);
+  const key = `${sql}|${params.join('')}|${revision}`;
 
   useEffect(() => {
     if (!db) return;
@@ -63,8 +71,7 @@ function useRows<T>(
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, sql, ...deps]);
+  }, [db, key]);
 
   return rows;
 }
@@ -82,7 +89,9 @@ export function useCachedAlerts(db: Database | null, now: string = new Date().to
     'SELECT * FROM alert_cache WHERE effective_from <= ? AND (effective_to IS NULL OR effective_to > ?) ' +
       'ORDER BY severity DESC, effective_from DESC',
     [now, now],
-    [now.slice(0, 13)],
+    // Re-read on the hour, not on every render: `now` is a fresh ISO string each time and
+    // would otherwise make the key change constantly.
+    now.slice(0, 13),
   );
 }
 
@@ -112,6 +121,6 @@ export function useLocalReports(db: Database | null, revision = 0) {
     'SELECT local_id, server_id, public_ref, incident_type, text, created_at, status ' +
       'FROM report ORDER BY created_at DESC',
     [],
-    [revision],
+    revision,
   );
 }

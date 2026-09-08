@@ -1,0 +1,31 @@
+# Raising a grievance with no network, and the SLA date shown before submitting.
+appId: lk.sarana.app
+name: A grievance raised offline, and synced later
+---
+- setAirplaneMode: enabled
+- launchApp:
+    clearState: true
+- runFlow: ../subflows/sign-in-citizen.yaml
+
+- openLink: sarana://debug?action=seed-aid
+- back
+- tapOn: 'Aid'
+- tapOn: 'Raise a grievance'
+
+# The commitment is on screen before they submit, not produced afterwards.
+- assertVisible:
+    text: '.*We owe you an answer by.*'
+- tapOn:
+    text: 'The damage recorded is less than what happened'
+- tapOn: 'Raise it'
+- assertVisible:
+    text: '.*we owe you an answer within.*'
+
+- setAirplaneMode: disabled
+- tapOn:
+    text: '.*waiting.*'
+- tapOn: 'Sync now'
+- extendedWaitUntil:
+    visible:
+      text: '.*all synced.*'
+    timeout: 60000

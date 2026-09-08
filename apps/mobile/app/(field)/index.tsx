@@ -64,7 +64,7 @@ export default function FieldHome() {
         variant="secondary"
         onPress={() => {
           setSurface('citizen');
-          router.replace('/(citizen)');
+          router.replace('/(citizen)/(tabs)/home');
         }}
       />
     </Screen>

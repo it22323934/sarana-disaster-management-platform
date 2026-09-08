@@ -13,6 +13,7 @@
  * URL.
  */
 
+import { decideNotification } from '../citizen/notification-policy.js';
 import type { Database } from '../offline/db/types.js';
 import type { OperationLog } from '../offline/log/operation-log.js';
 
@@ -24,6 +25,9 @@ export type DebugAction =
   | 'force-conflict'
   | 'set-free-storage'
   | 'set-font-scale'
+  | 'show-last-report-payload'
+  | 'deliver-alert'
+  | 'seed-aid'
   | 'reset';
 
 export interface DebugRequest {
@@ -88,6 +92,83 @@ export async function runDebugAction(
     case 'set-font-scale': {
       overrides.fontScale = Number(request.params.scale ?? '1');
       return { ok: true, detail: `text scale forced to ${request.params.scale}` };
+    }
+
+    case 'show-last-report-payload': {
+      // Reads the payload that will actually be sent, not the screen that produced it.
+      // The people-at-risk case is about the wire, and asserting on a highlighted button
+      // would pass while the field was wrong.
+      const [row] = await context.db.select<{ payload: string }>(
+        "SELECT payload FROM operation_log WHERE entity_type = 'report' ORDER BY seq DESC LIMIT 1",
+      );
+      return { ok: row !== undefined, detail: row?.payload ?? 'no report has been written' };
+    }
+
+    case 'deliver-alert': {
+      // Writes an alert into the cache and runs it through the same policy the push
+      // handler uses, so the "class 3 always delivers" rule is asserted on the rule and
+      // not on a fixture.
+      const level = Number(request.params.class ?? '0');
+      const now = Date.now();
+      await context.db.execute(
+        'INSERT OR REPLACE INTO alert_cache (id, headline_si, headline_ta, headline_en, ' +
+          'body_si, body_ta, body_en, severity, hazard_type, area_codes, effective_from, ' +
+          'effective_to, received_at, read_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)',
+        [
+          `debug-alert-${level}`,
+          'පරීක්ෂණ අනතුරු ඇඟවීම',
+          'சோதனை எச்சரிக்கை',
+          'Test warning',
+          'ඉවත් වන්න',
+          'வெளியேறுங்கள்',
+          'Evacuate now',
+          level,
+          'FLOOD',
+          'LK-2-05-020-1015',
+          new Date(now - 60_000).toISOString(),
+          new Date(now + 6 * 3_600_000).toISOString(),
+          new Date(now).toISOString(),
+        ],
+      );
+
+      const decision = decideNotification({
+        kind: 'alert',
+        impactClass: level,
+        at: new Date(now),
+        // Everything muted, which is the point of the test: a class 3 arrives anyway.
+        preferences: { minimumAlertClass: 5, aidUpdates: false, reportUpdates: false },
+      });
+      const detail =
+        decision.deliver === 'now'
+          ? `delivered now${decision.bypassedMute ? ' (mute bypassed)' : ''}`
+          : decision.deliver === 'deferred'
+            ? `deferred to ${decision.until.toISOString()}`
+            : 'suppressed by preference';
+      return { ok: true, detail };
+    }
+
+    case 'seed-aid': {
+      // A shelter and nothing else. The aid records live on the server and are read
+      // through the API; seeding those belongs to the stack, not to a device hook.
+      await context.db.execute(
+        'INSERT OR REPLACE INTO shelter_cache (id, name_si, name_ta, name_en, ' +
+          'gn_division_code, latitude, longitude, capacity, occupancy, status, cached_at) ' +
+          'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          'debug-shelter-1',
+          'පල්ලේකැලේ මහා විද්‍යාලය',
+          'பள்ளேகலை மகா வித்தியாலயம்',
+          'Pallekele Maha Vidyalaya',
+          'LK-2-05-020-1015',
+          7.2906,
+          80.6337,
+          200,
+          40,
+          'OPEN',
+          new Date().toISOString(),
+        ],
+      );
+      return { ok: true, detail: 'one shelter cached' };
     }
 
     case 'reset': {

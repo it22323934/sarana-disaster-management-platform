@@ -33,6 +33,7 @@ from ledger_svc.adapters.events import publish
 from ledger_svc.adapters.rails import RAIL_DESCRIPTIONS, build_rail
 from ledger_svc.api.deps import CorrelationDep, SessionDep
 from ledger_svc.domain import disbursement_gate as gate
+from ledger_svc.domain import grievance as grievance_domain
 from ledger_svc.domain.ledger_entry import public_entry
 from ledger_svc.repo import chain_writer, queries
 from sarana_shared.auth.dependencies import require
@@ -55,6 +56,12 @@ _log = structlog.get_logger(__name__)
 router = APIRouter(tags=["disbursements"])
 
 ReadPrincipal = Depends(require(Scope.DISBURSEMENT_READ))
+
+# Confirming receipt is the household's own answer about their own payment, so it sits on
+# the scope a citizen actually holds. `GRIEVANCE_FILE` rather than a new one: the "no"
+# branch raises a grievance, which is precisely what that scope authorises, and inventing
+# a `disbursement:confirm` scope would create a permission that grants nothing new.
+ConfirmPrincipal = Depends(require(Scope.GRIEVANCE_FILE))
 
 # The gate. `require` refuses every machine principal on this scope outright, and
 # `strip_human_gates` removed it from every agent token at mint time, so an agent cannot
@@ -277,3 +284,129 @@ async def list_disbursements(
 ) -> Any:
     rows = await queries.ledger_page(session, from_seq=from_seq, limit=limit)
     return [{**row, "simulated": True} for row in rows]
+
+
+class ConfirmReceiptRequest(BaseModel):
+    """A household answering whether the money arrived."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    received: bool = Field(
+        description="True if the money arrived. False raises a grievance and notifies the DS."
+    )
+
+
+class ConfirmReceiptResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    disbursement_id: str
+    confirmed: bool
+    grievance_id: str | None = None
+    grievance_ref: str | None = None
+    sla_due_at: datetime | None = None
+    action: str
+
+
+@router.post("/disbursements/{disbursement_id}/confirm", response_model=ConfirmReceiptResponse)
+async def confirm_receipt(
+    disbursement_id: UUID,
+    body: ConfirmReceiptRequest,
+    session: SessionDep,
+    correlation_id: CorrelationDep,
+    principal: Principal = ConfirmPrincipal,
+) -> Any:
+    """Record a household's answer from the app.
+
+    The same loop as the SMS reply in `api/internal/confirmations.py`, reached by a tap
+    instead of a text. It is a second door onto one path, not a second path: both write
+    through `record_citizen_confirmation`, both raise the same grievance on a no, and both
+    stamp the channel so a reviewer can see which door was used.
+
+    A separate endpoint rather than reusing the gateway's, because the gateway's takes a
+    raw message body and parses it. An app that had to send the literal string "YES" to be
+    understood would be encoding a UI decision as an SMS, and the day the button label
+    changed the confirmation would silently stop being recognised.
+
+    **A repeated confirmation is not an error.** A household that taps twice, or that
+    answered by SMS yesterday and taps today, has done nothing wrong.
+    """
+    disbursement = await queries.get_disbursement(session, disbursement_id)
+    if disbursement is None:
+        raise NotFound("No such disbursement.")
+
+    if body.received:
+        recorded = await queries.record_citizen_confirmation(
+            session, disbursement_id=disbursement_id, channel="APP"
+        )
+        if recorded is None:
+            return {
+                "disbursement_id": str(disbursement_id),
+                "confirmed": True,
+                "action": "already confirmed; nothing changed",
+            }
+
+        publish(
+            session,
+            catalogue.AID_DISBURSEMENT_CITIZEN_CONFIRMED,
+            {
+                "disbursement_id": str(disbursement_id),
+                "entitlement_id": recorded["entitlement_id"],
+                "channel": "APP",
+                "confirmed_at": recorded["citizen_confirmed_at"].isoformat(),
+            },
+            subject=str(disbursement_id),
+        )
+        _log.info("citizen_confirmed", disbursement_id=str(disbursement_id), channel="APP")
+        return {
+            "disbursement_id": str(disbursement_id),
+            "confirmed": True,
+            "action": "receipt confirmed by the household",
+        }
+
+    # A "no" is a household saying money they were told about did not arrive. It becomes a
+    # grievance automatically rather than a form they then have to find, and the DS is
+    # notified: every day of this is a day they go without it.
+    raised = grievance_domain.from_confirmation_reply(
+        household_id=UUID(disbursement["household_id"]),
+        disbursement_id=disbursement_id,
+        body="NO",
+        assigned_ds_division_code=disbursement["gn_division_code"],
+        correlation_id=correlation_id,
+    )
+    if raised is None:  # pragma: no cover - `from_confirmation_reply` returns a NO here
+        raise NotFound("The answer could not be turned into a grievance.")
+
+    stored = await queries.insert_grievance(
+        session, **raised.as_columns(grievance_id=uuid7())
+    )
+
+    publish(
+        session,
+        catalogue.AID_GRIEVANCE_RAISED,
+        {
+            "grievance_id": stored["id"],
+            "public_ref": stored["public_ref"],
+            "subject_type": "DISBURSEMENT",
+            "subject_id": str(disbursement_id),
+            "channel": "APP",
+            "sla_due_at": raised.sla_due_at.isoformat(),
+            "assigned_ds_division_code": disbursement["gn_division_code"],
+            "notify_ds": True,
+            "source": "citizen_confirmation_app",
+        },
+        subject=stored["id"],
+    )
+    _log.warning(
+        "citizen_reported_non_receipt",
+        disbursement_id=str(disbursement_id),
+        grievance_ref=stored["public_ref"],
+        channel="APP",
+    )
+    return {
+        "disbursement_id": str(disbursement_id),
+        "confirmed": False,
+        "grievance_id": stored["id"],
+        "grievance_ref": stored["public_ref"],
+        "sla_due_at": raised.sla_due_at,
+        "action": "grievance raised and the DS notified",
+    }

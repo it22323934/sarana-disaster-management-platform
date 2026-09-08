@@ -1,0 +1,24 @@
+# Every citizen screen at 200% text, in ${LOCALE}.
+#
+# The SOS button and the six incident tiles break first: both are sized from the text
+# metrics, and Sinhala and Tamil need more leading than Latin at the same size.
+appId: lk.sarana.app
+name: Citizen screens at 200% text in ${LOCALE}
+---
+- openLink: sarana://debug?action=set-font-scale&scale=2
+- back
+- launchApp:
+    clearState: true
+- runFlow: ../subflows/pick-locale.yaml
+- runFlow: ../subflows/sign-in-citizen.yaml
+
+- takeScreenshot: home-${LOCALE}
+- tapOn: 'Report an emergency'
+- takeScreenshot: report-${LOCALE}
+- back
+- tapOn:
+    index: 2
+- takeScreenshot: status-${LOCALE}
+- tapOn:
+    index: 3
+- takeScreenshot: aid-${LOCALE}

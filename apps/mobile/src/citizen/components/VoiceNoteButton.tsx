@@ -17,7 +17,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Text, useSurface } from '../../components/primitives.js';
 import { useLocale } from '../../providers/LocaleProvider.js';
-import { RADIUS, SPACE, fontScale, touchTarget } from '../../theme/index.js';
+import { SPACE, fontScale, touchTarget } from '../../theme/index.js';
 
 /**
  * The cap incident-svc enforces at presign.

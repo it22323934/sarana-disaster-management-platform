@@ -12,24 +12,26 @@
  * Someone who taps the first tile and hits Submit has filed a dispatchable report.
  */
 
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, TextInput, View } from 'react-native';
 
-import { Button, Card, Heading, Screen, Text, useSurface } from '../../../src/components/primitives.js';
+import { Button, Card, Heading, Screen, Text } from '../../../src/components/primitives.js';
+import { TextField } from '../../../src/components/TextField.js';
 import { IncidentTypeGrid } from '../../../src/citizen/components/IncidentTypeGrid.js';
 import { PeopleAtRisk } from '../../../src/citizen/components/PeopleAtRisk.js';
 import { VoiceNoteButton } from '../../../src/citizen/components/VoiceNoteButton.js';
 import { isSubmittable, saveReport, type IncidentType, type ReportDraft, type ReportLocation } from '../../../src/citizen/report-draft.js';
 import { captureLocation } from '../../../src/citizen/location.js';
 import { useLocale, useOffline } from '../../../src/providers/index.js';
-import { RADIUS, SPACE, touchTarget, type } from '../../../src/theme/index.js';
 
 export default function NewReportScreen() {
   const { t, locale } = useLocale();
   const { log, media, engine, refresh, network } = useOffline();
-  const surface = useSurface();
   const router = useRouter();
+  // The camera screen hands the compressed file back through the route params rather than
+  // through a store: it is one string, it belongs to this navigation, and a global would
+  // outlive the report it was taken for.
+  const { photoUri } = useLocalSearchParams<{ photoUri?: string }>();
 
   const [incidentType, setIncidentType] = useState<IncidentType | null>(null);
   const [text, setText] = useState('');
@@ -37,7 +39,6 @@ export default function NewReportScreen() {
   const [location, setLocation] = useState<ReportLocation | null>(null);
   const [locating, setLocating] = useState(true);
   const [voiceUri, setVoiceUri] = useState<string | null>(null);
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [saved, setSaved] = useState<{ reference: string; online: boolean } | null>(null);
   const [refused, setRefused] = useState(false);
 
@@ -77,7 +78,7 @@ export default function NewReportScreen() {
 
     for (const [uri, kind, contentType] of [
       [voiceUri, 'audio', 'audio/m4a'],
-      [photoUri, 'photo', 'image/jpeg'],
+      [photoUri ?? null, 'photo', 'image/jpeg'],
     ] as const) {
       if (!uri) continue;
       await media.enqueue({
@@ -147,29 +148,10 @@ export default function NewReportScreen() {
         }}
       />
 
-      <View style={{ gap: SPACE[1] }}>
-        <Text size="sm" muted>
-          {t('report.describe')}
-        </Text>
-        <TextInput
-          value={text}
-          onChangeText={setText}
-          multiline
-          accessibilityLabel={t('report.describe')}
-          allowFontScaling={false}
-          placeholderTextColor={surface.muted}
-          style={[
-            styles.input,
-            type('base', locale),
-            {
-              color: surface.text,
-              backgroundColor: surface.raised,
-              borderColor: surface.divider,
-              minHeight: touchTarget('min') * 2,
-            },
-          ]}
-        />
-      </View>
+      {/* Text is last on purpose. It is the slowest input under stress and the one most
+          likely to be skipped, and putting it above the voice button would make it the
+          default. */}
+      <TextField label={t('report.describe')} value={text} onChange={setText} multiline />
 
       <PeopleAtRisk value={peopleAtRisk} onChange={setPeopleAtRisk} />
 
@@ -188,13 +170,3 @@ export default function NewReportScreen() {
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  input: {
-    borderWidth: 1,
-    borderRadius: RADIUS.default,
-    paddingHorizontal: SPACE[3],
-    paddingVertical: SPACE[2],
-    textAlignVertical: 'top',
-  },
-});
