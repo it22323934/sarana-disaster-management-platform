@@ -294,6 +294,118 @@ enforce their gates - that is the Python suite's job, against a real Postgres. I
 the console asks for the second factor, will not approve on Enter, and shows a blocking
 grievance before the approver reaches the button.
 
+## The public dashboard
+
+```bash
+pnpm --filter web-public dev           # http://localhost:3001, redirects to /en
+```
+
+No login. That is the product rather than a convenience: a journalist checking these figures
+must not need an account issued by the institution whose numbers they are checking.
+
+Ten routes plus a district drill-down, in three scripts:
+
+| Route | What it is |
+|---|---|
+| `/` | Four headline numbers with their denominators, and the four failure figures at the same size |
+| `/allocations` | The funnel stage by stage, with the fraction that survived each step |
+| `/districts` | Choropleth plus the same figures as a table, switchable by metric |
+| `/districts/[code]` | One district by DS division, with what was withheld stated |
+| `/schedule` | Every cost schedule version, every formula verbatim, a worked example per line |
+| `/ledger` | The anonymised entry feed, paged by `seq`, with CSV and JSON export |
+| `/anchors` | Every daily Merkle root, and which ones have no external anchor |
+| `/grievances` | The platform's own complaint rate, by district |
+| `/alerts` | Warnings actually sent, with `targeted` and `reached` side by side |
+| `/verify` | How to check the chain yourself, in six steps |
+| `/methodology` | How each number is produced, and our own error rates |
+
+### It works with JavaScript switched off, and that is tested
+
+Every figure is read on the server and rendered into the HTML. There is no client-side
+fetch anywhere, no `NextIntlClientProvider`, and one client component on the whole site —
+the map, dynamically imported, on one route.
+
+That is not minimalism for its own sake. The brief names the reader: a journalist behind a
+locked-down corporate proxy. `pnpm --filter web-public test:no-js` runs Chromium with
+scripting genuinely disabled and asserts the headline figures, the cost schedule, the
+ledger, the language switcher and the district metric selector all still work.
+
+The language switcher is three `<a>` elements. The metric selector is a GET form. Both
+could have been client components and neither is.
+
+### Commands
+
+```bash
+pnpm --filter web-public build         # 34 static pages; see the Windows EPERM note below
+pnpm --filter web-public build:local   # the same build without the standalone bundle
+pnpm --filter web-public test          # 70 unit: the PII battery, formatters, the map scale
+pnpm --filter web-public test:pii-sweep    # 37 in Chromium: every route, every export
+pnpm --filter web-public test:no-js        # 6 with scripting disabled
+pnpm --filter web-public test:a11y         # 33: axe over 11 routes x 3 locales
+pnpm --filter web-public test:layout       # 38: overflow at 390px in three scripts
+pnpm --filter web-public verify-i18n       # 264 keys x si/ta/en, and every key the code uses
+pnpm --filter web-public budget            # per-route JS, gzipped, against the 120 KB budget
+bash apps/web-public/scripts/verify-page-examples.sh   # the curl snippets on /verify work
+```
+
+The four Playwright suites boot **a production build** rather than `next dev`, plus a stub
+of the three public services on port 8099. The production build matters: a dev server
+inlines every module path into the RSC payload, and the first run of the PII sweep reported
+forty findings per page — all of them pnpm paths, none of them anything the app had written.
+A sweep whose signal is buried under its own harness is a sweep somebody switches off.
+
+`build` fails on Windows at the standalone packaging step with `EPERM: operation not
+permitted, symlink`, exactly as `web-ops` does, and for the same reason: the trace copy
+creates symlinks and Windows refuses them without Developer Mode. **Compilation and all 34
+static pages succeed first** — the failure is purely about packaging the deployment
+artefact. `build:local` sets `SARANA_BUILD_STANDALONE=0` and completes everywhere.
+
+### The PII sweep is the test that matters
+
+```bash
+pnpm --filter web-public test:pii-sweep
+```
+
+It loads all eleven routes in all three locales, plus the JSON feed, the CSV export and the
+GeoJSON, and runs every response through a regex battery for NICs in both formats, Sri
+Lankan mobile numbers, household references, GN division codes, coordinate pairs inside the
+national bounding box, raw geometry and email addresses.
+
+Two things about it are worth knowing before you change it.
+
+**The patterns come from what this platform actually generates** — `gov_mock.data.names`
+and `tools/seed/generate.py` — not from a generic PII list. A pattern that cannot match
+anything the system produces makes the sweep look thorough while catching nothing.
+
+**A twelve-digit run is a NIC unless it is inside a published identifier.** UUIDs end in
+twelve hex characters and mock payment references end in twelve more, and both are on
+`/ledger` by design. `publishedSpans` in `src/lib/pii.ts` is what tells them apart, and it
+tests containment rather than tokenisation — because in the RSC payload the identifiers
+arrive JSON-escaped and prefixed. Getting this wrong does not produce a leak; it produces a
+sweep that fires on every correct page, and then somebody loosens the NIC pattern until it
+catches nothing at all.
+
+### The JavaScript budget, and the design-system entry point it produced
+
+```bash
+pnpm --filter web-public budget    # every route within 120 KB gzipped
+```
+
+The overview is 105 KB gzipped, against the brief's 120 KB. It was 186 KB until the header
+stopped importing `MockDataBadge` from the `@sarana/ui` root barrel: the barrel re-exports
+the twelve Radix-backed primitives, so importing one server component from it pulled **69 KB
+of Radix into every route of a site with no interactive control on it**.
+
+`@sarana/ui/server` is the fix — the subset of the design system that has no `'use client'`
+anywhere in its import graph. `packages/ui/src/server.test.ts` walks that graph and fails on
+the first client module it reaches, so a component that later grows a `useState` cannot
+silently put the boundary back.
+
+The LCP half of the brief's performance requirement is **not** measured. It needs a browser
+against a served build; `apps/web-ops/scripts/performance-budget.ts` has the pattern, and
+the budget script says so rather than printing a number it did not measure.
+
+
 ## Things that will confuse you otherwise
 
 **The hierarchy cache holds misses.** `/admin/resolve` caches negative answers for an hour,
@@ -417,12 +529,22 @@ goes anywhere.
 
 ## What is not built yet
 
-All six backend services are complete and the stack boots, and the design system above
-them exists. What does not exist is the screens. Working backwards from the build files:
+All six backend services are complete and the stack boots, the design system above them
+exists, and both web surfaces are built. What is missing is the three mobile apps and the
+platform files. Working backwards from the build files:
 
-- **The design system and the ops console are built. The public dashboard is
-  not started.** `packages/ui` has tokens, a three-script type scale, 34 components and
-  four CI gates. `apps/web-ops` has every route the brief names - the shell, the gateway,
+- **The design system, the ops console and the public dashboard are built. The mobile apps
+  are not started.** `packages/ui` has tokens, a three-script type scale, 34 components,
+  four CI gates and a server-only entry point. `apps/web-public` has every route the brief
+  names - the overview with its failure figures at the same size as its good news, the
+  allocation funnel, the district choropleth with a table beside it, the DS drill-down with
+  its suppression disclosed, the cost schedule with every formula verbatim, the anonymised
+  ledger with CSV and JSON export, the anchors including the days with no external anchor,
+  the platform's own complaint rate, the alert history with `targeted` and `reached` side by
+  side, the six-step verification guide, and the methodology page that publishes our own
+  error rates. 11 routes, 34 static pages, 114 browser tests. It works with JavaScript
+  switched off and there is a suite that proves it. `apps/web-ops` has every route the
+  brief names - the shell, the gateway,
   sign-in and step-up, the common operating picture, **both human gate screens with the
   agent's reasoning**, the impact forecast board, the alert composer and the mandatory dry
   run behind it, the delivery-gaps panel, the incident and alert lists with linked reports,
@@ -500,6 +622,20 @@ Worth knowing before you demo anything:
 
 - **Every payment rail is a mock**, and every payment reference starts `MOCK-`. Nothing
   moves money.
+- **The public aggregates could not read their own table until file 21, and nothing failed.**
+  `aid.damage_assessment` carries FORCE row-level security, an anonymous session gets the
+  empty scope, and the empty scope covers nothing - so every public query joining it was
+  filtered to zero rows. `/api/v1/public/ledger-summary` had been returning `[]` to every
+  caller since file 10. It looked exactly like a country that had disbursed nothing, which
+  on an empty test database is indistinguishable from working. ledger-svc migration 0011
+  adds a second, SELECT-only policy gated on a transaction-local marker that
+  `get_public_session` sets; the original scope policy is untouched, so an officer still
+  sees only their own divisions and a connection that forgot its scope still sees nothing.
+- **The dashboard's district boundaries are generated, and every response says so.** This
+  seed carries geometry at GN level only, as rectangles around real district centroids, so
+  a district outline is the union of those rectangles. `GET /api/v1/public/areas/districts.geojson`
+  returns `is_generated: true` and a note naming what the shapes must not be used for, and
+  `/methodology` repeats it in words. Do not present them as survey boundaries.
 - **Alert targeting reads real households.** Delivery counts describe actual people. A
   household with no contact number is targeted and recorded as `NO_CHANNEL`, so it shows up
   in `/alerts/{id}/delivery/gaps` rather than being quietly dropped from the denominator.

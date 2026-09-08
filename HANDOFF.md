@@ -1,6 +1,6 @@
 # SARANA — handoff
 
-State of the build as of 2026-09-02. Written for whoever picks this up next.
+State of the build as of 2026-09-08. Written for whoever picks this up next.
 
 Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 
@@ -9,10 +9,13 @@ Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 ## Where the build has got to
 
 The repository is organised around 30 numbered build files in `.claude/`. Progress is
-strictly sequential. **Files 03-20 are complete.** Every route the brief names is built
-and tested end to end in a browser; no route renders a "not built" screen. Closing file 20
-needed five read endpoints the platform had data for and no way to return, and it turned up
-two finished screens that no user could reach. The next work is 21.
+strictly sequential. **Files 03-21 are complete.** Every route both web surfaces name is
+built and tested end to end in a browser; no route renders a "not built" screen. Closing
+file 20 needed five read endpoints the platform had data for and no way to return, and it
+turned up two finished screens that no user could reach. Closing file 21 needed six more
+public endpoints, and it turned up something worse: `/api/v1/public/ledger-summary` had
+been returning an empty list to every anonymous caller since file 10, and nothing had
+failed. The next work is 22.
 
 | File | Area | State |
 |---|---|---|
@@ -34,23 +37,28 @@ two finished screens that no user could reach. The next work is 21.
 | 18 | Supervisor & HITL | Done — routing table, both gates, conflicts. No adapters. |
 | 19 | Design system | Done — tokens, 3-script type, 34 components, 4 CI gates |
 | **20** | **Ops console** | **Done — 25 routes, 60 static pages, 96 e2e tests** |
-| **21** | **Public dashboard** | **Scaffold only** |
-| 22–24 | Mobile (foundation, citizen, field companion) | Scaffold only |
+| **21** | **Public dashboard** | **Done — 11 routes, 34 static pages, 114 browser tests** |
+| **22–24** | Mobile (foundation, citizen, field companion) | Scaffold only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-On the TypeScript side, **366 tests pass**: 64 unit and 33 axe-over-every-story in
-`packages/ui`, 58 in `packages/ts-shared`, and in `apps/web-ops` 73 unit, 75 axe across
-**25 screens x three locales**, and **96 Playwright tests in a real Chromium** — of which
-25 are the overflow gate over every route in all three scripts. `pnpm lint`,
+On the TypeScript side, **552 tests pass**: 66 unit and 33 axe-over-every-story in
+`packages/ui`, 58 in `packages/ts-shared`, in `apps/web-ops` 73 unit, 75 axe across
+**25 screens x three locales** and **96 Playwright tests in a real Chromium**, and in
+`apps/web-public` 70 unit plus **114 in Chromium against a production build** — 37 PII
+sweep, 33 axe, 38 overflow and 6 with JavaScript genuinely disabled. `pnpm lint`,
 `pnpm typecheck` and all seven of file 19's Definition of Done commands are clean. Of file
 20's four, three pass; the fourth reports a measured LCP that the stack cannot meet, and
-says so with the evidence rather than passing quietly.
+says so with the evidence rather than passing quietly. **All five of file 21's pass.**
 
-On the Python side, untouched by file 19:
-**1,663 tests passing, 2 skipped** (1,665 collected across `tests/` and
-`packages/py-shared/tests`). `ruff check`, `ruff format --check` and `mypy` (342
-source files) all clean. File 14 added 122 (76 under `tests/agents/warning`, 46 for the
+On the Python side:
+**1,740 collected across `tests/` and `packages/py-shared/tests`**. `ruff check`,
+`ruff format --check` and `mypy` (346 source files) all clean. File 21 added 37: 22 under
+`tests/ledger/test_public_aggregates.py`, 8 under `tests/alerting/test_public_alerts.py`
+and 7 under `tests/core_api/test_public_areas.py`. All three are deliberately
+database-free — they read the SQL text and a pure function — because a privacy property
+that can only be checked by booting Postgres is a privacy property that gets checked less
+often. File 14 added 122 (76 under `tests/agents/warning`, 46 for the
 SMS segment gate); file 15 added 79 under `tests/agents/intake`; file 16 added 79 under
 `tests/agents/triage`; file 17 added 74 under `tests/agents/ledger_anomaly`; file 18
 added 51 under `tests/agents/supervisor` and 7 under `tests/e2e`; plus 15 for the
@@ -60,11 +68,17 @@ under `tests/ledger/test_console_vocabularies.py` — the last two are cross-lan
 vocabulary gates, checking the console's scope names and enumerations against the Python
 ones it cannot import.
 
+**A note on the Python count, so nobody reads it as a regression.** 245 of those 1,740 are
+database-backed and error without Docker; on the machine this was written on Docker Desktop
+was not running, so what was verified was **1,495 passed, 0 failed**. The 245 are the same
+tests that passed in the file 20 run and none of them was touched. Boot Docker and run the
+suite before trusting any count in this file.
+
 ```
-core-api        33 endpoints,  7,171 lines
+core-api        36 endpoints,  7,171 lines   <- +3 public area reference (file 21)
 incident-svc    20 endpoints,  4,657 lines
-alerting-svc    15 endpoints,  4,177 lines
-ledger-svc      30 endpoints,  7,149 lines
+alerting-svc    16 endpoints,  4,177 lines   <- +1 public alert history (file 21)
+ledger-svc      33 endpoints,  7,149 lines   <- +3 dashboard aggregates (file 21)
 gov-mock        31 endpoints,  4,865 lines   <- 7 mocked systems + control plane
 agent-svc        6 endpoints, 21,543 lines   <- runtime, all 6 agents + supervisor
 ```
@@ -2566,6 +2580,263 @@ button, will not send an alert nobody has dry-run, warns on a rule-ordered queue
 
 ---
 
+## File 21 is done — the public dashboard, and the bug it found on the way
+
+Eleven routes plus a district drill-down, in three scripts, on `apps/web-public`. No login,
+light theme, prints cleanly, works with JavaScript switched off. 34 static pages, 70 unit
+tests and 114 in a real Chromium against a production build.
+
+Closing it needed **six public endpoints** the platform had the data for and no anonymous
+way to return, and it turned up one bug that had been live since file 10 and that nothing
+had failed on.
+
+### `/api/v1/public/ledger-summary` had been returning `[]` to every caller since file 10
+
+This is the finding worth reading before anything else in this section, because the shape of
+it will recur.
+
+`aid.damage_assessment` carries `ENABLE` **and** `FORCE ROW LEVEL SECURITY` with one policy,
+`assessment_in_scope`, over `public.sarana_scope_covers(gn_division_code)`. That function
+reads the `sarana.user_scope` session variable, and an unset variable yields an empty array
+which covers nothing — deliberately, so a connection that forgot to set a scope sees no rows
+rather than every row. `get_public_session` has no principal to scope by, so it calls
+`apply_row_security_scope(connection, None)` and the scope is empty by design.
+
+Every public query joining that table was therefore filtered to zero rows. `_PUBLIC_LEDGER`
+joins it to reach `gn_division_code`, so the district summary the public dashboard was
+supposed to be built on had always been `[]`.
+
+**Nothing failed.** It looked like a district that had disbursed nothing, which on an empty
+test database is indistinguishable from working correctly — and every test that touched it
+had an empty database. There was no test asserting the endpoint returned rows, because
+returning no rows is a legitimate answer.
+
+`services/ledger-svc/alembic/versions/20260908_0011_public_aggregate_reads.py` closes it
+with a **second permissive policy, not a weaker first one**. `assessment_in_scope` is
+untouched: an officer still sees their own divisions and a forgotten scope still sees
+nothing. Alongside it, `assessment_public_aggregate` permits `SELECT` only, and only when
+the transaction has set `sarana.public_aggregate` to `on`. Postgres ORs permissive policies,
+so a session that has not set the marker is exactly as restricted as before.
+
+Four things keep that narrow:
+
+- **`FOR SELECT`.** A permissive policy without it would let an unauthenticated session
+  write, which would undo ADR-006's single-writer property — the thing that makes the
+  offline operation log sufficient and a CRDT unnecessary. `tests/ledger/test_public_aggregates.py`
+  asserts the `FOR SELECT` is there.
+- **Transaction-local.** `set_config(..., true)` means it dies with the transaction and
+  cannot leak to the next request on a pooled connection, the same property the scope has.
+- **One caller.** `mark_public_aggregate_read` is called from `get_public_session` and
+  nowhere else, and a test asserts that function still calls it. Remove the call and the
+  dashboard silently reads zeroes again.
+- **The name is checked in two places.** `PUBLIC_AGGREGATE_SETTING` lives in
+  `sarana_shared.db.sql` and is restated in the migration, and a test asserts the two
+  spellings agree. A typo in either restores the bug with nothing failing.
+
+What actually protects the data is the aggregate SQL, and that was always the design — the
+docstring on `get_public_session` has said "the scope is a second fence, not the first"
+since file 10. This migration makes the second fence a fence rather than a wall.
+
+### Six endpoints, and why each is on the service it is on
+
+| Endpoint | Service | Why it did not exist |
+|---|---|---|
+| `GET /public/funnel` | ledger-svc | The four headline numbers, read at one instant |
+| `GET /public/districts` | ledger-svc | Per-district metrics, including median days to disbursement |
+| `GET /public/districts/{code}` | ledger-svc | DS drill-down with the privacy floor applied |
+| `GET /public/alerts` | alerting-svc | The alert history in the shape a page renders |
+| `GET /public/areas/districts` and `/ds-divisions` | core-api | `LK-21` is not a name a reader can use |
+| `GET /public/areas/districts.geojson` | core-api | The choropleth needs boundaries |
+
+`/api/v1/public/` is already an anonymous prefix in `sarana_shared.auth.middleware`, so none
+of them needed a per-route exemption.
+
+**The funnel is one SQL statement, not four.** A reader comparing `approved` against
+`assessed` must be comparing one instant; a disbursement landing between two queries would
+publish a stage larger than the one above it, and a transparency page showing 101% has spent
+its credibility on a race condition.
+
+**The district metrics use a FULL OUTER JOIN.** A district appears the moment it has
+assessed, approved, disbursed *or* complained. A district that assessed damage and disbursed
+nothing is the most newsworthy row on the page and a chain of LEFT JOINs from `assessed`
+would have dropped the one whose only presence is a grievance.
+
+**District geometry is dissolved from GN divisions, because `admin.district.geom` is null.**
+The seed produces geometry at GN level only, as rectangles around real district centroids, so
+the honest district outline is `ST_Union` over its members. Every geometry response carries
+`is_generated: true` and a note naming what the shapes must not be used for, and
+`/methodology` repeats it in words. Do not present them as survey boundaries.
+
+### DS division is the floor, and the brief asked for GN
+
+The brief's drill-down reaches GN division and the privacy floor suppresses any cell below
+five disbursements. Those two requirements fight, and in this seed the floor wins decisively:
+a GN division holds a few hundred households of which a handful are ever disbursed, so nearly
+every GN cell would suppress — and the ones that survived would be the largest divisions,
+which is a biased sample published as though it were the picture.
+
+So the drill stops at DS division and there is no parameter that lowers it. `min_cell` on
+`/public/districts/{code}` may be *raised* and is `ge=MIN_CELL_SIZE`, because a caller who
+could pass `min_cell=1` would make the floor decorative.
+
+`ledger_svc/domain/suppression.py` holds the rule as a named function rather than a loop
+inside a handler, with three properties each tested on its own terms:
+
+- **A zero is published; a small non-zero cell is withheld.** Only a small non-zero cell
+  identifies anybody, and "nothing was paid in this division" is the most useful row on the
+  page. A filter on `count < min_cell` would drop both.
+- **Withheld rows are still in the district total.** A page whose DS subtotals do not add up
+  to the district figure on the previous screen costs more credibility than the suppression
+  saves.
+- **Suppression is disclosed.** The response carries how many divisions were withheld and how
+  much money they held, and the page renders it. A gap reads as missing data.
+
+### The app ships almost no JavaScript, and that is what makes the brief's requirements hold
+
+Every figure is read on the server and rendered into the HTML. There is no client-side fetch,
+no `NextIntlClientProvider`, and one client component on the whole site — the map, dynamically
+imported, on one route.
+
+Two consequences the brief asks for follow directly:
+
+**It works with JavaScript disabled.** `test:no-js` runs Chromium with scripting genuinely
+off and asserts the headline figures, the cost schedule, the ledger, the language switcher
+and the district metric selector all still work. The language switcher is three `<a>`
+elements and the metric selector is a GET form; both could have been client components and
+neither is.
+
+**It fits the 120 KB budget.** Every route is at or under 106 KB gzipped.
+
+### `@sarana/ui/server`, and the 69 KB that motivated it
+
+The overview was **186 KB gzipped** on the first measurement, against a 120 KB budget, on a
+site with no interactive control on it.
+
+The cause: the header imports `MockDataBadge`, which is a pure server-renderable component,
+from the `@sarana/ui` root barrel. The barrel re-exports the twelve Radix-backed primitives,
+so importing one server component from it pulled the whole client module graph into every
+route.
+
+`packages/ui/src/server.ts` is the subset with no `'use client'` anywhere in its import
+graph — `trust`, `severity-pill`, `badge`, `skeleton`, `cn` and the tokens. Switching one
+import took the overview to 105 KB.
+
+Reimplementing the badge in the app would have been worse: it carries the trilingual
+"simulated data" strings, and a second copy is a second thing to forget when the wording
+changes, on the one component whose whole job is to stop a viewer believing the data is real.
+
+`packages/ui/src/server.test.ts` walks the real import graph from that entry point and fails
+on the first `'use client'` it reaches, naming the path that got there. Without it, a
+component that grows a `useState` next month silently puts the client boundary back into
+every server-rendered page and nothing looks wrong.
+
+### The PII sweep, and the two false positives that nearly broke it
+
+`test:pii-sweep` loads all eleven routes in three locales plus the JSON feed, the CSV export
+and the GeoJSON, and runs every response through a regex battery. It is the most important
+test on this app and the privacy claim rests on three independent things: the SQL selects
+nothing identifying, the response models carry no field for it, and this reads the bytes and
+looks anyway.
+
+Two lessons from getting it working, and both are about the failure mode where a gate becomes
+worthless by being too loud rather than too quiet.
+
+**A twelve-digit run is a NIC unless it is inside a published identifier.** UUIDs end in
+twelve hex characters and mock payment references end in twelve more, and both are on
+`/ledger` by design — the payment reference is what an auditor reconciles against a bank
+statement. `publishedSpans` in `src/lib/pii.ts` tells them apart, and it tests **containment
+rather than tokenisation**: in the RSC flight payload the identifiers arrive JSON-escaped
+(`\"MOCK-…\"`) and as prefixed DOM ids (`schedule-018f3c2a-…`), so the token around a match
+is not the identifier. Asking whether the match *falls inside* one is indifferent to what was
+concatenated onto the front.
+
+**The suite runs against a production build, not `next dev`.** A dev server inlines every
+module's file path into the RSC payload for hot reload, and the first run reported forty
+findings per page — all of them pnpm paths like `next@15.5.24_@babel+core@7.29.7_` matching
+the email pattern, none of them anything the app had written. The email pattern now requires a
+letter TLD, and the harness builds first. A sweep whose signal is buried under its own harness
+is a sweep somebody switches off, and the fix they reach for is loosening the pattern until it
+catches nothing.
+
+`src/lib/pii.test.ts` is the other half: 23 tests feeding the battery values this platform
+really generates, and asserting the negative cases too — a 64-character digest, a UUID, a
+formatted national total, a mock payment reference and an ISO timestamp all pass clean.
+
+### axe found a real keyboard failure, in one language before the others
+
+`scrollable-region-focusable`, on `/ta/ledger` before `/en/ledger`. Every table on this site
+sits in an `overflow-x: auto` box so it can be wider than a phone without the page scrolling
+sideways — and a container that scrolls with a finger cannot be scrolled with a keyboard
+unless it can hold focus. A keyboard-only reader could see the first four columns of the
+ledger and had no way to reach the fifth.
+
+It fired in Tamil first because Tamil is wider, so the table overflowed in one language and
+not the other. That is exactly the failure a single-locale sweep misses, and the reason the
+axe run is 11 routes × 3 locales rather than 11 routes.
+
+`ScrollableTable` now takes a required `label` and renders `role="region"`, `aria-label` and
+`tabIndex={0}`. The label is required rather than optional because a focusable region with no
+accessible name trades one violation for another — the same reasoning the design system's
+`Pagination` uses.
+
+### Things that were decided and are worth not re-litigating
+
+**A failed read renders as a stated failure, never as a zero.** `Result<T>` in
+`src/lib/public-api.ts` is either data or a named reason, and every page checks the
+discriminant. A page that rendered `Rs. 0` when a service timed out would not have degraded
+gracefully — it would have published a specific, false and damaging claim about a district
+that may have disbursed a great deal.
+
+**Null is not zero, all the way down.** A district that disbursed nothing has no confirmation
+rate and no median wait. Those fields are nullable in the API, `formatPercent(null)` is an em
+dash, and `normalise()` returns null so the choropleth paints a distinct "no data" fill rather
+than the palest end of the ramp. Pale reads as "almost none"; "we do not know" is not "almost
+none".
+
+**The choropleth ramp direction is per metric.** `higherIsBetter` is on every metric
+definition. One ramp over both money and median-days would paint the slowest district the same
+colour as the best-funded one, and a reader who has learned that dark means good would draw
+exactly the wrong conclusion from the view the brief calls the most newsworthy on the site.
+
+**Every number groups in `en-LK`, in all three languages.** `formatLKR` already pinned this
+and the reasoning is in that file; the counts, percentages and day spans this app adds follow
+it. A journalist screenshots the Tamil page and a fact-checker opens the English one, and
+they must be looking at the same digits. Dates do not follow: a date is read, not compared
+digit by digit.
+
+**`/verify` claims exactly what is true.** Step 6 gives equal space and equal weight to what
+the chain proves and what it does not. Overclaiming what a hash chain proves is the fastest
+way to lose a technically literate critic, and the claim here is narrow: the record has not
+been altered since it was anchored. It says nothing about whether the original assessment was
+right, and it says so.
+
+**The curl snippets are generated from the same constants the app fetches with.**
+`scripts/verify-page-examples.sh` fetches `/en/verify`, extracts every
+`<code data-verify-command>` and runs it. A snippet that drifts from the real endpoint fails
+CI rather than wasting a reader's afternoon on the page carrying the platform's central claim.
+
+### Still placeholder, and honest about it
+
+- **The LCP is not measured.** The brief asks for under 1.5s on 3G. `scripts/js-budget.ts`
+  asserts the JavaScript half and names the other half rather than printing a number it did
+  not measure. `apps/web-ops/scripts/performance-budget.ts` has the pattern for wiring
+  Lighthouse against a served build.
+- **There is no visual regression suite**, for the same reason file 19 has none. The overflow
+  gate is a real browser measuring real font metrics at 390px in three scripts, which is the
+  regression that actually matters, and it is not a pixel comparison and does not claim to be.
+- **The Open Graph cards are Latin script only.** `ImageResponse` rasterises with fonts it is
+  given, and no Noto Sinhala or Noto Tamil face is vendored (a known gap from file 19). The
+  card carries the district *code* and the money rather than a name it would render as boxes.
+  Vendoring the fonts fixes both this and file 19's gap in one change.
+- **The map has no basemap.** A `background` layer and the district polygons, nothing else.
+  No third-party tile request from a page that promises no tracking, and it renders identically
+  offline. If a basemap is added later it needs to be self-hosted for the same reason.
+- **The site does not stream.** Figures are regenerated on a five-minute ISR schedule.
+  `/methodology` says so, and says the operations console is the live surface during an
+  incident while this one is the record. The no-SSE gap from files 07/20 is unchanged.
+
+---
+
 ## The SMS segment count now exists in TypeScript, and it is pinned to the Python one
 
 `packages/ts-shared/src/format/sms.ts` mirrors `sarana_shared.domain.sms`. It is the only
@@ -3214,7 +3485,29 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
   breakdown and the `unservable` list, and keeps the degraded banner for the case that is
   still real: a plan nothing recorded a reason for.
 - **No SSE anywhere (files 07/20).** The console polls. `LIVE_INTERVAL_MS` in
-  `apps/web-ops/src/lib/queries.ts` is the one place that changes when a stream exists.
+  `apps/web-ops/src/lib/queries.ts` is the one place that changes when a stream exists. The
+  public dashboard does not poll at all — it is ISR on a five-minute revalidation, and
+  `/methodology` says so rather than implying the figures are live.
+- **~~The public aggregates could not read `aid.damage_assessment`~~ — closed in file 21.**
+  It is worth keeping the shape of it. `FORCE ROW LEVEL SECURITY` plus an anonymous session's
+  empty scope filtered every public query joining that table to zero rows, so
+  `/api/v1/public/ledger-summary` had returned `[]` to every caller since file 10 and nothing
+  had failed — an empty result is a legitimate answer, and every test that touched it had an
+  empty database. ledger-svc migration 0011 adds a SELECT-only permissive policy gated on a
+  transaction-local marker. **If you add a public endpoint over an RLS-protected table,
+  check it returns rows before you believe it works.**
+- **The public dashboard's district boundaries are generated (file 21).** `admin.district.geom`
+  is null in this seed, so `/public/areas/districts.geojson` dissolves the GN rectangles with
+  `ST_Union`. Every response carries `is_generated: true` and a note; `/methodology` repeats
+  it. Real district centroids, invented shapes around them.
+- **The public dashboard's Open Graph cards are Latin script only (files 19/21).** No Noto
+  Sinhala or Noto Tamil face is vendored, and `ImageResponse` would render the names as
+  boxes, so the card carries the district code and the money instead. Vendoring the fonts
+  closes this and file 19's gap in one change.
+- **The public dashboard's LCP is unmeasured (file 21).** The brief asks for under 1.5s on
+  3G. `scripts/js-budget.ts` asserts the JavaScript half — every route at or under 106 KB
+  gzipped against a 120 KB budget — and names the other half rather than printing a figure it
+  did not measure.
 - **No visual regression suite (file 19).** Required by the brief, and it needs a real
   browser. `test:i18n-overflow` is a width *model* standing in for the one regression that
   matters most; it is not a pixel comparison and does not claim to be.
@@ -3316,6 +3609,24 @@ SARANA_LIGHTHOUSE_URL=http://localhost:3000/en/ops \
   pnpm --filter @sarana/web-ops lighthouse     # adds the LCP measurement
 uv run pytest tests/auth/test_console_scopes.py       # console scopes vs the Scope enum
 uv run pytest tests/ledger/test_console_vocabularies.py  # console enums vs the Python ones
+
+# public dashboard (file 21)
+pnpm --filter web-public dev                   # http://localhost:3001
+pnpm --filter web-public verify-i18n           # 264 keys x si/ta/en, + every key the code uses
+pnpm --filter web-public test                  # 70 unit: the PII battery, formatters, map scale
+pnpm --filter web-public test:pii-sweep        # 37: every route x 3 locales, + every export
+pnpm --filter web-public test:no-js            # 6, with scripting genuinely disabled
+pnpm --filter web-public test:a11y             # 33: axe over 11 routes x 3 locales
+pnpm --filter web-public test:layout           # 38: overflow at 390px in three scripts
+pnpm --filter web-public budget                # per-route JS, gzipped, against 120 KB
+pnpm --filter web-public build:local           # 34 static pages; see the Windows EPERM note
+bash apps/web-public/scripts/verify-page-examples.sh   # the curl snippets on /verify work
+uv run pytest tests/ledger/test_public_aggregates.py   # the privacy floor and the RLS marker
+uv run pytest tests/alerting/test_public_alerts.py     # no unapproved alert is ever published
+uv run pytest tests/core_api/test_public_areas.py      # places, never people
+
+# the design system's server-only entry point (file 21)
+pnpm --filter @sarana/ui test                  # includes server.test.ts, the client-boundary walk
 
 # supervisor (file 18)
 make eval AGENT=supervisor

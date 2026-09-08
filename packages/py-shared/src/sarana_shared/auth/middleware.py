@@ -29,7 +29,7 @@ from starlette.types import ASGIApp
 
 from sarana_shared.auth.principal import Principal
 from sarana_shared.auth.tokens import TokenKind, TokenService, bearer_token
-from sarana_shared.db.sql import SCOPE_SETTING
+from sarana_shared.db.sql import PUBLIC_AGGREGATE_SETTING, SCOPE_SETTING
 from sarana_shared.errors import SaranaError, problem_response
 
 _log = structlog.get_logger(__name__)
@@ -151,3 +151,19 @@ async def apply_row_security_scope(
     await connection.execute(
         text(f"SELECT set_config('{SCOPE_SETTING}', :scope, true)"), {"scope": codes}
     )
+
+
+async def mark_public_aggregate_read(connection: AsyncConnection) -> None:
+    """Let this transaction aggregate over rows no scope covers.
+
+    The unauthenticated transparency endpoints have no principal and therefore an empty
+    scope, which covers nothing - and `aid.damage_assessment` is under FORCE row-level
+    security, so every public query that joins it was filtered to zero rows. This marker
+    is what the `assessment_public_aggregate` policy (ledger-svc migration 0011) tests
+    for, and it is narrow deliberately: SELECT only, one table, and transaction-local so
+    it dies with the transaction exactly as the scope does.
+
+    Call it only from a session dependency that serves anonymous, aggregate-only handlers.
+    It is not a way to read rows on behalf of a user - `apply_row_security_scope` is.
+    """
+    await connection.execute(text(f"SELECT set_config('{PUBLIC_AGGREGATE_SETTING}', 'on', true)"))

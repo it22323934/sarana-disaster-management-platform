@@ -16,6 +16,9 @@ from core_api.domain.hierarchy.queries import (
     list_gn_exposure,
     list_households,
     list_provinces,
+    public_district_geometry,
+    public_districts,
+    public_ds_divisions,
     resolve_cache_key,
     resolve_point,
 )
@@ -34,6 +37,9 @@ __all__ = [
     "list_gn_exposure",
     "list_households",
     "list_provinces",
+    "public_district_geometry",
+    "public_districts",
+    "public_ds_divisions",
     "resolve_cache_key",
     "resolve_point",
 ]

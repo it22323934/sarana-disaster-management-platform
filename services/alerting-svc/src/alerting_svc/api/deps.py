@@ -56,7 +56,27 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
             raise
 
 
+async def get_public_session(request: Request) -> AsyncIterator[AsyncSession]:
+    """A session for the unauthenticated public alert history.
+
+    There is no principal to scope by, so the connection gets the empty scope. Nothing in
+    `alerting` is under row-level security, so unlike ledger-svc's equivalent this needs no
+    marker: the scope call is here so that a table which gains a policy later fails closed
+    rather than quietly publishing itself.
+
+    Never commits. The public surface is read-only and a handler that tried to write
+    through this dependency would roll back at the end of the request.
+    """
+    factory: async_sessionmaker[AsyncSession] = request.app.state.session_factory
+
+    async with factory() as session:
+        connection = await session.connection()
+        await apply_row_security_scope(connection, None)
+        yield session
+
+
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+PublicSessionDep = Annotated[AsyncSession, Depends(get_public_session)]
 PrincipalDep = Annotated[Principal, Depends(get_principal)]
 CorrelationDep = Annotated[str, Depends(get_correlation_id)]

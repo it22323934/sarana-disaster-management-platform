@@ -88,8 +88,28 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
             raise
 
 
+async def get_public_session(request: Request) -> AsyncIterator[AsyncSession]:
+    """A session for the unauthenticated area-reference endpoints.
+
+    There is no principal, so the connection gets the empty scope - which covers nothing.
+    That is correct here rather than a limitation: the only table in `admin` under
+    row-level security is `admin.household`, and the public area endpoints never read it.
+    A future table that gains a policy is therefore invisible to this session by default,
+    which is the direction a public surface should fail in.
+
+    Never commits. These endpoints read reference data and nothing else.
+    """
+    factory: async_sessionmaker[AsyncSession] = request.app.state.session_factory
+
+    async with factory() as session:
+        connection = await session.connection()
+        await apply_row_security_scope(connection, None)
+        yield session
+
+
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+PublicSessionDep = Annotated[AsyncSession, Depends(get_public_session)]
 TokensDep = Annotated[TokenService, Depends(get_tokens)]
 PasswordDep = Annotated[PasswordHasherService, Depends(get_password_hasher)]
 KeyedHasherDep = Annotated[KeyedHasher, Depends(get_keyed_hasher)]

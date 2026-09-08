@@ -1,23 +1,18 @@
-import type { Metadata } from 'next';
+/**
+ * The root layout.
+ *
+ * Deliberately thin. Next requires a root layout with `<html>` and `<body>`, but the real
+ * one is `app/[locale]/layout.tsx`, which is where the locale is known and where `lang`
+ * and the font stacks can be set correctly. Setting `lang="en"` here and overriding it
+ * below would ship a wrong `lang` to anything rendered outside the locale segment — and on
+ * a trilingual public site that is the difference between a screen reader speaking Tamil
+ * and a screen reader spelling it out in English phonemes.
+ */
+
 import type { ReactNode } from 'react';
 
 import './globals.css';
 
-export const metadata: Metadata = {
-  title: 'SARANA Transparency Dashboard',
-  description:
-    'Public, independently verifiable view of disaster aid in Sri Lanka. Aggregate figures only.',
-};
-
-export default function RootLayout({ children }: { children: ReactNode }) {
-  // The public dashboard is light by default: it is read in daylight, screenshotted into
-  // articles, and printed. A reader can still switch; the default is the decision.
-  //
-  // `lang` is set per-request once locale negotiation lands with build file 21. English
-  // is the documented default until then, matching the API.
-  return (
-    <html lang="en" data-theme="light">
-      <body>{children}</body>
-    </html>
-  );
+export default function RootLayout({ children }: { readonly children: ReactNode }) {
+  return children as ReactNode;
 }

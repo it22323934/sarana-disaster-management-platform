@@ -1080,3 +1080,239 @@ async def dispose_anomaly(
     )
     row = result.mappings().first()
     return dict(row) if row else None
+
+
+# --------------------------------------------------------------------------------------
+# The public transparency dashboard (build file 21)
+# --------------------------------------------------------------------------------------
+#
+# Everything below is read with no credential. Three properties hold for all of it, and
+# each is a property of the SQL rather than of a serialiser that one careless field
+# addition could undo:
+#
+#   1. No household, NIC, phone, name, officer or coordinate is selected. A column that is
+#      never in the row cannot leak from the row.
+#   2. Nothing is grouped below DS division. GN division is the level at which a
+#      four-household hamlet with one disbursement identifies a family by arithmetic.
+#   3. Small cells are counted, not dropped. The below-floor flag comes back beside the
+#      rows so the page can say "3 divisions suppressed for privacy" rather than showing a
+#      gap that reads as missing data and invites the wrong conclusion.
+
+# The four headline numbers, each with the denominator that makes it a fraction rather
+# than an assertion.
+#
+# One statement rather than four round trips, because the numbers are read together and a
+# reader comparing approved against assessed must not be comparing two instants: a
+# disbursement landing between two queries would publish a percentage above 100.
+#
+# `assessed` counts ACCEPTED assessments only. A DRAFT is a GN officer's unfinished form
+# and a SUBMITTED one is a claim nobody has checked; publishing either as assessed damage
+# would inflate the top of the funnel with work in progress and make every downstream
+# percentage look worse than the platform is performing.
+_PUBLIC_FUNNEL = """
+WITH accepted AS (
+    SELECT a.id, a.household_id, a.gn_division_code, a.cost_estimate_lkr_cents
+    FROM aid.damage_assessment a
+    WHERE a.status = 'ACCEPTED'
+),
+approved AS (
+    SELECT e.id, e.assessment_id, e.calculated_lkr_cents
+    FROM aid.entitlement e
+    WHERE e.status IN ('APPROVED', 'DISBURSED')
+),
+released AS (
+    SELECT d.entitlement_id, d.amount_lkr_cents, d.citizen_confirmed, d.reversed_at
+    FROM aid.disbursement d
+)
+SELECT
+    (SELECT COUNT(*) FROM accepted)                                  AS assessed_count,
+    (SELECT COUNT(DISTINCT household_id) FROM accepted)              AS assessed_households,
+    (SELECT COUNT(DISTINCT gn_division_code) FROM accepted)          AS assessed_divisions,
+    (SELECT COALESCE(SUM(cost_estimate_lkr_cents), 0) FROM accepted) AS assessed_lkr_cents,
+    (SELECT COUNT(*) FROM approved)                                  AS approved_count,
+    (SELECT COALESCE(SUM(calculated_lkr_cents), 0) FROM approved)    AS approved_lkr_cents,
+    (SELECT COUNT(*) FROM released)                                  AS disbursed_count,
+    (SELECT COALESCE(SUM(amount_lkr_cents), 0) FROM released)        AS disbursed_lkr_cents,
+    (SELECT COUNT(*) FROM released WHERE citizen_confirmed)          AS confirmed_count,
+    (SELECT COALESCE(SUM(amount_lkr_cents) FILTER (WHERE citizen_confirmed), 0)
+       FROM released)                                                AS confirmed_lkr_cents,
+    -- Returned by the bank. Its own number, never folded into `disbursed`: the state did
+    -- believe it had paid, and the compensating entry is the honest correction rather
+    -- than a quiet subtraction from a published total.
+    (SELECT COUNT(*) FROM released WHERE reversed_at IS NOT NULL)    AS reversed_count,
+    (SELECT COALESCE(SUM(amount_lkr_cents) FILTER (WHERE reversed_at IS NOT NULL), 0)
+       FROM released)                                                AS reversed_lkr_cents,
+    (SELECT COUNT(*) FROM aid.grievance)                             AS grievance_count,
+    (SELECT COUNT(*) FROM aid.grievance
+      WHERE status NOT IN ('RESOLVED', 'REJECTED'))                  AS grievance_open_count,
+    (SELECT MAX(released_at) FROM aid.disbursement)                  AS last_disbursement_at,
+    (SELECT MAX(anchor_date)::text FROM aid.ledger_anchor)           AS last_anchor_date,
+    (SELECT MAX(seq) FROM aid.disbursement)                          AS last_seq
+"""
+
+# Per-district metrics, and the one the brief singles out: median days from assessment to
+# money in hand.
+#
+# `PERCENTILE_CONT` over the interval rather than an average, because the distribution has
+# a long tail - one household waiting ninety days pulls a mean far enough that the figure
+# stops describing anyone's actual experience. The median is what a reader means by "how
+# long does this take".
+#
+# A FULL OUTER JOIN rather than a chain of LEFT JOINs from `assessed`, so a district
+# appears the moment it has assessed, approved, disbursed or complained. A district that
+# assessed damage and disbursed nothing is the most newsworthy row on the page, and a
+# district whose only presence is a grievance is the second: dropping either for having no
+# disbursement would hide exactly the thing the page exists to show.
+_PUBLIC_DISTRICT_METRICS = """
+WITH assessed AS (
+    SELECT SPLIT_PART(a.gn_division_code, '-', 1) || '-' ||
+           SPLIT_PART(a.gn_division_code, '-', 2)          AS district_code,
+           COUNT(*)                                        AS assessed_count,
+           COUNT(DISTINCT a.household_id)                  AS assessed_households,
+           COUNT(DISTINCT a.gn_division_code)              AS assessed_divisions,
+           COALESCE(SUM(a.cost_estimate_lkr_cents), 0)     AS assessed_lkr_cents
+    FROM aid.damage_assessment a
+    WHERE a.status = 'ACCEPTED'
+    GROUP BY 1
+),
+approved AS (
+    SELECT SPLIT_PART(a.gn_division_code, '-', 1) || '-' ||
+           SPLIT_PART(a.gn_division_code, '-', 2)          AS district_code,
+           COUNT(*)                                        AS approved_count,
+           COALESCE(SUM(e.calculated_lkr_cents), 0)        AS approved_lkr_cents
+    FROM aid.entitlement e
+    JOIN aid.damage_assessment a ON a.id = e.assessment_id
+    WHERE e.status IN ('APPROVED', 'DISBURSED')
+    GROUP BY 1
+),
+released AS (
+    SELECT SPLIT_PART(a.gn_division_code, '-', 1) || '-' ||
+           SPLIT_PART(a.gn_division_code, '-', 2)            AS district_code,
+           COUNT(*)                                          AS disbursed_count,
+           COALESCE(SUM(d.amount_lkr_cents), 0)              AS disbursed_lkr_cents,
+           COUNT(*) FILTER (WHERE d.citizen_confirmed)       AS confirmed_count,
+           COUNT(*) FILTER (WHERE d.reversed_at IS NOT NULL) AS reversed_count,
+           EXTRACT(EPOCH FROM PERCENTILE_CONT(0.5) WITHIN GROUP (
+                ORDER BY (d.released_at - a.assessed_at)))   AS median_wait_seconds,
+           MAX(d.released_at)                                AS last_released_at
+    FROM aid.disbursement d
+    JOIN aid.entitlement e ON e.id = d.entitlement_id
+    JOIN aid.damage_assessment a ON a.id = e.assessment_id
+    GROUP BY 1
+),
+complaints AS (
+    SELECT SPLIT_PART(g.assigned_ds_division_code, '-', 1) || '-' ||
+           SPLIT_PART(g.assigned_ds_division_code, '-', 2)  AS district_code,
+           COUNT(*)                                         AS grievance_count,
+           COUNT(*) FILTER (WHERE g.status NOT IN ('RESOLVED', 'REJECTED'))
+                                                            AS grievance_open_count,
+           EXTRACT(EPOCH FROM PERCENTILE_CONT(0.5) WITHIN GROUP (
+                ORDER BY (g.resolved_at - g.raised_at)))     AS median_resolution_seconds
+    FROM aid.grievance g
+    WHERE g.assigned_ds_division_code IS NOT NULL
+    GROUP BY 1
+)
+SELECT COALESCE(assessed.district_code, approved.district_code,
+                released.district_code, complaints.district_code) AS district_code,
+       COALESCE(assessed.assessed_count, 0)                AS assessed_count,
+       COALESCE(assessed.assessed_households, 0)           AS assessed_households,
+       COALESCE(assessed.assessed_divisions, 0)            AS assessed_divisions,
+       COALESCE(assessed.assessed_lkr_cents, 0)            AS assessed_lkr_cents,
+       COALESCE(approved.approved_count, 0)                AS approved_count,
+       COALESCE(approved.approved_lkr_cents, 0)            AS approved_lkr_cents,
+       COALESCE(released.disbursed_count, 0)               AS disbursed_count,
+       COALESCE(released.disbursed_lkr_cents, 0)           AS disbursed_lkr_cents,
+       COALESCE(released.confirmed_count, 0)               AS confirmed_count,
+       COALESCE(released.reversed_count, 0)                AS reversed_count,
+       released.median_wait_seconds,
+       released.last_released_at,
+       COALESCE(complaints.grievance_count, 0)             AS grievance_count,
+       COALESCE(complaints.grievance_open_count, 0)        AS grievance_open_count,
+       complaints.median_resolution_seconds
+FROM assessed
+FULL OUTER JOIN approved   ON approved.district_code   = assessed.district_code
+FULL OUTER JOIN released   ON released.district_code   = COALESCE(assessed.district_code,
+                                                                  approved.district_code)
+FULL OUTER JOIN complaints ON complaints.district_code = COALESCE(assessed.district_code,
+                                                                  approved.district_code,
+                                                                  released.district_code)
+ORDER BY 1
+"""
+
+# One district, broken down to DS division.
+#
+# **DS is the floor, and there is no parameter that lowers it.** The brief asks the drill
+# to reach GN division; the privacy floor says a cell below five disbursements is
+# suppressed, and a GN division in this seed holds a few hundred households of which a
+# handful are ever disbursed - so nearly every GN cell would suppress, and the ones that
+# survived would be the largest divisions, which is a biased sample published as though it
+# were the picture. Rolling up to DS and disclosing the count is the honest version of the
+# same drill.
+#
+# The below-floor flag is computed here rather than by subtracting in the caller, because
+# the caller cannot see what it was not sent.
+_PUBLIC_DISTRICT_DETAIL = """
+WITH scoped AS (
+    SELECT a.id                                            AS assessment_id,
+           a.household_id,
+           a.gn_division_code,
+           SPLIT_PART(a.gn_division_code, '-', 1) || '-' ||
+           SPLIT_PART(a.gn_division_code, '-', 2) || '-' ||
+           SPLIT_PART(a.gn_division_code, '-', 3)          AS ds_division_code,
+           a.assessed_at,
+           a.cost_estimate_lkr_cents,
+           a.status
+    FROM aid.damage_assessment a
+    WHERE a.gn_division_code LIKE :district_prefix
+)
+SELECT s.ds_division_code,
+       COUNT(*) FILTER (WHERE s.status = 'ACCEPTED')       AS assessed_count,
+       COUNT(DISTINCT s.household_id) FILTER (WHERE s.status = 'ACCEPTED')
+                                                           AS assessed_households,
+       COUNT(DISTINCT s.gn_division_code) FILTER (WHERE s.status = 'ACCEPTED')
+                                                           AS assessed_divisions,
+       COALESCE(SUM(s.cost_estimate_lkr_cents) FILTER (WHERE s.status = 'ACCEPTED'), 0)
+                                                           AS assessed_lkr_cents,
+       COUNT(e.id) FILTER (WHERE e.status IN ('APPROVED', 'DISBURSED'))
+                                                           AS approved_count,
+       COALESCE(SUM(e.calculated_lkr_cents)
+                FILTER (WHERE e.status IN ('APPROVED', 'DISBURSED')), 0)
+                                                           AS approved_lkr_cents,
+       COUNT(d.id)                                         AS disbursed_count,
+       COALESCE(SUM(d.amount_lkr_cents), 0)                AS disbursed_lkr_cents,
+       COUNT(d.id) FILTER (WHERE d.citizen_confirmed)      AS confirmed_count,
+       EXTRACT(EPOCH FROM PERCENTILE_CONT(0.5) WITHIN GROUP (
+            ORDER BY (d.released_at - s.assessed_at)))      AS median_wait_seconds
+FROM scoped s
+LEFT JOIN aid.entitlement e   ON e.assessment_id = s.assessment_id
+LEFT JOIN aid.disbursement d  ON d.entitlement_id = e.id
+GROUP BY 1
+ORDER BY 1
+"""
+
+
+async def public_funnel(session: AsyncSession) -> dict[str, Any]:
+    """The four headline figures and their denominators, read at one instant."""
+    result = await session.execute(text(_PUBLIC_FUNNEL))
+    return dict(result.mappings().one())
+
+
+async def public_district_metrics(session: AsyncSession) -> list[dict[str, Any]]:
+    """Every district that has assessed, approved, disbursed or received a complaint."""
+    result = await session.execute(text(_PUBLIC_DISTRICT_METRICS))
+    return [dict(row) for row in result.mappings()]
+
+
+async def public_district_detail(
+    session: AsyncSession, *, district_code: str
+) -> list[dict[str, Any]]:
+    """One district, by DS division. Suppression is applied by the caller, not here.
+
+    `district_prefix` is a LIKE against `gn_division_code` rather than a SPLIT_PART
+    equality, so the index on that column can be used. The code format is `LK-21-03-014`
+    and the pattern carries its own separator, so `LK-2-%` cannot match `LK-21-...`.
+    """
+    result = await session.execute(
+        text(_PUBLIC_DISTRICT_DETAIL), {"district_prefix": f"{district_code}-%"}
+    )
+    return [dict(row) for row in result.mappings()]

@@ -359,3 +359,96 @@ async def list_gn_exposure(
         {"district_codes": district_codes, "limit": limit},
     )
     return [dict(row) for row in result.mappings()]
+
+
+# --------------------------------------------------------------------------------------
+# Public area reference (build file 21)
+# --------------------------------------------------------------------------------------
+#
+# Administrative area names and boundaries, readable without a credential. They are not
+# data about anyone: a district name is on every road sign in the country, and the public
+# transparency dashboard needs them to turn `LK-21` into "Kandy" before a reader can use
+# any figure on the page.
+#
+# `admin.household` is the one table in this schema under row-level security, and nothing
+# here touches it.
+
+_PUBLIC_DISTRICTS_SQL = """
+SELECT d.code, d.name, p.code AS province_code, p.name AS province_name,
+       COUNT(g.id)                       AS gn_division_count,
+       COALESCE(SUM(g.population), 0)    AS population,
+       COALESCE(SUM(g.household_count), 0) AS household_count,
+       ST_X(ST_Centroid(ST_Collect(g.centroid))) AS centroid_lon,
+       ST_Y(ST_Centroid(ST_Collect(g.centroid))) AS centroid_lat
+FROM admin.district d
+JOIN admin.province p     ON p.id = d.province_id
+LEFT JOIN admin.ds_division ds ON ds.district_id = d.id
+LEFT JOIN admin.gn_division g  ON g.ds_division_id = ds.id
+GROUP BY d.code, d.name, p.code, p.name
+ORDER BY d.code
+"""
+
+# District outlines, dissolved from the GN divisions they contain.
+#
+# **`admin.district.geom` is NULL in this seed and this query does not read it.** The seed
+# generator produces geometry at GN level only - rectangles around real district centroids
+# - so the honest district outline is the union of those rectangles rather than an invented
+# polygon. `ST_Union` over the members says exactly what the platform knows: where its GN
+# divisions are. It is a *generated* outline over generated members and the dashboard's
+# methodology page says so; nothing here should ever be presented as a survey boundary.
+#
+# ST_SimplifyPreserveTopology rather than ST_Simplify, for the same reason the GN geometry
+# endpoint gives: a simplification that crosses a boundary over itself would render one
+# district inside another.
+#
+# Ordered by code so the payload is byte-stable and its ETag does not change when Postgres
+# picks a different plan.
+_PUBLIC_DISTRICT_GEOMETRY_SQL = """
+SELECT d.code,
+       ST_AsGeoJSON(
+           CASE WHEN :tolerance > 0
+                THEN ST_SimplifyPreserveTopology(ST_Union(g.geom), :tolerance)
+                ELSE ST_Union(g.geom) END
+       ) AS geojson
+FROM admin.district d
+JOIN admin.ds_division ds ON ds.district_id = d.id
+JOIN admin.gn_division g  ON g.ds_division_id = ds.id
+GROUP BY d.code
+ORDER BY d.code
+"""
+
+_PUBLIC_DS_DIVISIONS_SQL = """
+SELECT ds.code, ds.name, d.code AS district_code,
+       COUNT(g.id)                         AS gn_division_count,
+       COALESCE(SUM(g.population), 0)      AS population,
+       COALESCE(SUM(g.household_count), 0) AS household_count
+FROM admin.ds_division ds
+JOIN admin.district d         ON d.id = ds.district_id
+LEFT JOIN admin.gn_division g ON g.ds_division_id = ds.id
+WHERE (CAST(:district_code AS text) IS NULL OR d.code = CAST(:district_code AS text))
+GROUP BY ds.code, ds.name, d.code
+ORDER BY ds.code
+"""
+
+
+async def public_districts(session: AsyncSession) -> list[dict[str, Any]]:
+    """Every district with its name, province, centroid and population. No auth."""
+    result = await session.execute(text(_PUBLIC_DISTRICTS_SQL))
+    return [dict(row) for row in result.mappings()]
+
+
+async def public_district_geometry(
+    session: AsyncSession, *, tolerance: float = DEFAULT_SIMPLIFY_TOLERANCE
+) -> list[dict[str, Any]]:
+    """District outlines as GeoJSON, dissolved from their GN divisions."""
+    clamped = max(0.0, min(tolerance, MAX_SIMPLIFY_TOLERANCE))
+    result = await session.execute(text(_PUBLIC_DISTRICT_GEOMETRY_SQL), {"tolerance": clamped})
+    return [dict(row) for row in result.mappings()]
+
+
+async def public_ds_divisions(
+    session: AsyncSession, *, district_code: str | None = None
+) -> list[dict[str, Any]]:
+    """DS divisions with their names, optionally within one district. No auth."""
+    result = await session.execute(text(_PUBLIC_DS_DIVISIONS_SQL), {"district_code": district_code})
+    return [dict(row) for row in result.mappings()]

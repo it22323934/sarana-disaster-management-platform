@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from core_api.api.v1 import admin, admin_events, audit, auth, directory, meta, rg
+from core_api.api.v1 import admin, admin_events, audit, auth, directory, meta, public, rg
 
 router = APIRouter()
 router.include_router(auth.router)
@@ -23,3 +23,6 @@ router.include_router(admin_events.router)
 router.include_router(directory.router)
 router.include_router(rg.router)
 router.include_router(audit.router)
+# Area reference for the public dashboard. Under `/public`, which the auth middleware
+# treats as anonymous by prefix - the same door ledger-svc's transparency feed uses.
+router.include_router(public.router)

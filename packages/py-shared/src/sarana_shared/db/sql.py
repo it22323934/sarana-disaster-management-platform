@@ -184,6 +184,19 @@ $function$;
 # `SET LOCAL` means it cannot leak to the next request on a pooled connection.
 SCOPE_SETTING: Final = "sarana.user_scope"
 
+# The marker an unauthenticated transparency request sets instead of a scope.
+#
+# An empty scope covers nothing, which is what makes a forgotten scope fail closed - and it
+# is also what stopped the public aggregates reading the table they aggregate. This is the
+# one documented way past that, and it is narrow on three axes: SELECT only (the policy in
+# ledger_svc migration 0011 is `FOR SELECT`), one table, and transaction-local so it dies
+# with the transaction like the scope does.
+#
+# What protects the data is the aggregate SQL those endpoints run, which names no
+# household, no NIC, no phone, no officer and no coordinate, and groups no finer than DS
+# division. See the migration's docstring for the full reasoning.
+PUBLIC_AGGREGATE_SETTING: Final = "sarana.public_aggregate"
+
 
 ROW_SECURITY_HELPERS: Final = f"""
 CREATE OR REPLACE FUNCTION public.sarana_current_scopes()

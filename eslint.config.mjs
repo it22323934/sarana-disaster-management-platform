@@ -50,17 +50,33 @@ export default tseslint.config(
     },
   },
   {
-    // Node scripts and tests print by design.
-    files: ['**/scripts/**/*.ts', '**/scripts/**/*.mjs', '**/*.test.ts', '**/*.test.tsx'],
+    // Node scripts, test harnesses and tests print by design.
+    files: [
+      '**/scripts/**/*.ts',
+      '**/scripts/**/*.mjs',
+      '**/e2e/**/*.mjs',
+      '**/*.test.ts',
+      '**/*.test.tsx',
+    ],
     rules: { 'no-console': 'off' },
   },
   {
-    // Plain-JS build scripts. `.ts` files under `scripts/` are linted with the TypeScript
-    // config, which already knows about Node; a `.mjs` falls through to the base config
-    // and has no `process` or `console` in scope without this.
-    files: ['**/scripts/**/*.mjs'],
+    // Plain-JS Node programs: build scripts, and the stub-services harness the public
+    // dashboard's Playwright suite boots. `.ts` files under `scripts/` are linted with the
+    // TypeScript config, which already knows about Node; a `.mjs` falls through to the base
+    // config and has none of these in scope without this.
+    //
+    // `URL` and `URLSearchParams` are globals in every Node this repository supports, and
+    // the stub uses them to route a request. They are listed rather than pulling in a full
+    // Node globals package for four names.
+    files: ['**/scripts/**/*.mjs', '**/e2e/**/*.mjs'],
     languageOptions: {
-      globals: { process: 'readonly', console: 'readonly' },
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
+      },
     },
   },
   {

@@ -345,3 +345,67 @@ async def delivery_rows(session: AsyncSession, alert_id: UUID) -> list[dict[str,
 async def dispatches_for(session: AsyncSession, alert_id: UUID) -> list[dict[str, Any]]:
     result = await session.execute(text(_DISPATCHES_BY_ALERT), {"alert_id": alert_id})
     return [dict(row) for row in result.mappings()]
+
+
+# --------------------------------------------------------------------------------------
+# The public alert history (build file 21)
+# --------------------------------------------------------------------------------------
+
+# Dispatched and cancelled alerts, newest first, for the transparency dashboard.
+#
+# **DRAFT and PENDING_SIGNOFF are excluded, and that exclusion is the whole design of this
+# query.** A draft is a proposal an officer has not committed to, and a pending one is
+# sitting in front of a human at the second gate. Publishing either would put unapproved
+# life-safety copy on a page a broadcaster or a resident could act on - which is exactly
+# what the sign-off gate exists to prevent. A gate is only real if every surface downstream
+# of it holds the same line.
+#
+# DISPATCHING is excluded for a narrower reason: the fan-out is mid-flight, so the delivery
+# counts below would be a partial number published as a total.
+#
+# CANCELLED *is* published. An alert that went out and was withdrawn is a fact about what
+# people were told, and a history that quietly drops its own retractions is not a history.
+#
+# The delivery counts are joined from the receipts rather than recomputed. `targeted` is
+# how many the dispatch aimed at and `reached` is how many the transport confirmed; both
+# count contact hashes, never people, and a hash in this table resolves to a household
+# nowhere in this response. `NO_CHANNEL` is deliberately not in the reached set - a
+# household with no number is targeted and unreachable, and counting it as reached would
+# report a division as covered when nobody there was told anything.
+_PUBLIC_ALERTS = """
+SELECT a.id::text,
+       a.cap_identifier,
+       a.headline,
+       a.description,
+       a.instruction,
+       a.severity,
+       a.urgency,
+       a.certainty,
+       a.status,
+       a.effective_at,
+       a.expires_at,
+       a.created_at,
+       cardinality(a.area_gn_division_ids)                      AS gn_division_count,
+       COALESCE(d.targeted, 0)                                  AS targeted,
+       COALESCE(d.reached, 0)                                   AS reached
+FROM alerting.alert a
+LEFT JOIN (
+    SELECT disp.alert_id,
+           COUNT(*)                                             AS targeted,
+           COUNT(*) FILTER (WHERE r.status IN ('SENT', 'DELIVERED', 'READ')) AS reached
+    FROM alerting.delivery_receipt r
+    JOIN alerting.alert_dispatch disp ON disp.id = r.dispatch_id
+    GROUP BY disp.alert_id
+) d ON d.alert_id = a.id
+WHERE a.status IN ('DISPATCHED', 'CANCELLED')
+ORDER BY a.effective_at DESC, a.created_at DESC
+LIMIT :limit OFFSET :offset
+"""
+
+
+async def public_alerts(
+    session: AsyncSession, *, limit: int = 50, offset: int = 0
+) -> list[dict[str, Any]]:
+    """Alerts the public was actually sent, newest first. No auth, no scope."""
+    result = await session.execute(text(_PUBLIC_ALERTS), {"limit": limit, "offset": offset})
+    return [dict(row) for row in result.mappings()]

@@ -18,6 +18,7 @@ from ledger_svc.api.v1 import (
     entitlements,
     grievances,
     ledger,
+    public,
 )
 
 router = APIRouter()
@@ -27,3 +28,7 @@ router.include_router(entitlements.router)
 router.include_router(disbursements.router)
 router.include_router(grievances.router)
 router.include_router(anomalies.router)
+# The dashboard aggregates. Mounted last because `/public/...` cannot collide with
+# anything above it, and last is where a reader looks for the surface that is not
+# part of the chain.
+router.include_router(public.router)
