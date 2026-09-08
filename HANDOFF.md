@@ -9,13 +9,15 @@ Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 ## Where the build has got to
 
 The repository is organised around 30 numbered build files in `.claude/`. Progress is
-strictly sequential. **Files 03-21 are complete.** Every route both web surfaces name is
+strictly sequential. **Files 03-22 are complete.** Every route both web surfaces name is
 built and tested end to end in a browser; no route renders a "not built" screen. Closing
 file 20 needed five read endpoints the platform had data for and no way to return, and it
 turned up two finished screens that no user could reach. Closing file 21 needed six more
 public endpoints, and it turned up something worse: `/api/v1/public/ledger-summary` had
 been returning an empty list to every anonymous caller since file 10, and nothing had
-failed. The next work is 22.
+failed. File 22 needed no new endpoints at all — the offline sync contract has been
+waiting on the server since file 10 — and it turned up two bugs in its own engine that
+only a test could find. The next work is 23.
 
 | File | Area | State |
 |---|---|---|
@@ -38,21 +40,25 @@ failed. The next work is 22.
 | 19 | Design system | Done — tokens, 3-script type, 34 components, 4 CI gates |
 | **20** | **Ops console** | **Done — 25 routes, 60 static pages, 96 e2e tests** |
 | **21** | **Public dashboard** | **Done — 11 routes, 34 static pages, 114 browser tests** |
-| **22–24** | Mobile (foundation, citizen, field companion) | Scaffold only |
+| **22** | **Mobile foundation** | **Done — offline core, sync engine, 143 tests** |
+| 23–24 | Mobile (citizen, field companion) | Shells only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-On the TypeScript side, **552 tests pass**: 66 unit and 33 axe-over-every-story in
+On the TypeScript side, **695 tests pass**: 66 unit and 33 axe-over-every-story in
 `packages/ui`, 58 in `packages/ts-shared`, in `apps/web-ops` 73 unit, 75 axe across
-**25 screens x three locales** and **96 Playwright tests in a real Chromium**, and in
+**25 screens x three locales** and **96 Playwright tests in a real Chromium**, in
 `apps/web-public` 70 unit plus **114 in Chromium against a production build** — 37 PII
-sweep, 33 axe, 38 overflow and 6 with JavaScript genuinely disabled. `pnpm lint`,
-`pnpm typecheck` and all seven of file 19's Definition of Done commands are clean. Of file
-20's four, three pass; the fourth reports a measured LCP that the stack cannot meet, and
-says so with the evidence rather than passing quietly. **All five of file 21's pass.**
+sweep, 33 axe, 38 overflow and 6 with JavaScript genuinely disabled — and in `apps/mobile`
+**143 against a real SQLite engine and a fake server that follows the real sync contract**.
+`pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of Done commands are
+clean. Of file 20's four, three pass; the fourth reports a measured LCP that the stack
+cannot meet, and says so with the evidence rather than passing quietly. **All five of file
+21's pass.** Of file 22's three, one passes; the other two need an Android device and say
+so rather than skipping — see the file 22 section.
 
 On the Python side:
-**1,740 collected across `tests/` and `packages/py-shared/tests`**. `ruff check`,
+**1,777 collected across `tests/` and `packages/py-shared/tests`**. `ruff check`,
 `ruff format --check` and `mypy` (346 source files) all clean. File 21 added 37: 22 under
 `tests/ledger/test_public_aggregates.py`, 8 under `tests/alerting/test_public_alerts.py`
 and 7 under `tests/core_api/test_public_areas.py`. All three are deliberately
@@ -68,9 +74,9 @@ under `tests/ledger/test_console_vocabularies.py` — the last two are cross-lan
 vocabulary gates, checking the console's scope names and enumerations against the Python
 ones it cannot import.
 
-**A note on the Python count, so nobody reads it as a regression.** 245 of those 1,740 are
+**A note on the Python count, so nobody reads it as a regression.** 245 of those 1,777 are
 database-backed and error without Docker; on the machine this was written on Docker Desktop
-was not running, so what was verified was **1,495 passed, 0 failed**. The 245 are the same
+was not running, so what was verified was **1,532 passed, 0 failed**. The 245 are the same
 tests that passed in the file 20 run and none of them was touched. Boot Docker and run the
 suite before trusting any count in this file.
 
@@ -3230,6 +3236,193 @@ for them to disagree.
 
 ---
 
+## File 22 is done — the offline core, and the two bugs its own tests found
+
+One Expo app, two role-gated surfaces, and underneath both of them a sync engine that
+assumes the network is absent. 143 tests, none of which need a device.
+
+The shape is the one the Python services use: ports, adapters, and fakes. `Database`,
+`NetworkMonitor` and `SyncTransport` are interfaces; `expo-sqlite`, `expo-network` and the
+`SaranaClient` sit behind them in the app, and in the tests a real SQLite engine and a
+fake server sit behind them instead. The rules that lose a household's assessment if they
+are wrong are all plain TypeScript, and a rule that can only be checked by booting an
+emulator is a rule that gets checked once.
+
+### The tests run against real SQLite, not a fake
+
+`test-support/node-database.ts` is Node's built-in `node:sqlite` behind the same
+`Database` port `expo-sqlite` implements. The migrations, the CHECK constraints and the
+SQL in `operation-log.ts` are the ones that ship — a status the constraint would reject on
+a handset is rejected in the test too. What a test cannot see is SQLCipher and the JSI
+bridge; everything above them is identical.
+
+One wrinkle worth knowing: **Vite's list of Node builtins predates `node:sqlite`**, so a
+static `import` of it is resolved as a package called "sqlite" and the whole suite fails to
+collect with `Failed to load url sqlite`. It is loaded through `createRequire` instead.
+
+### `FakeServer` re-implements the contract rather than returning canned answers
+
+`ledger_svc.domain.sync.plan` is transcribed into `test-support/fakes.ts` — the cursor, the
+idempotency set, the gap rule, the `seq_already_consumed` conflict. That is what makes the
+assertions meaningful: a device bug shows up as *the wrong number of assessments on the
+server*, which is the shape the bug takes in production. Where the fake and the Python
+disagree, the Python is right and the fake is the bug.
+
+Three failure modes are scripted rather than random. `failNextPushAfterApply` is the
+important one: the server stores all twenty operations and the response never arrives. A
+random failure injector would produce that case occasionally; scripting it means the
+idempotency key is tested on every run.
+
+### Two bugs, both found by a test, both real
+
+**The server's `missing_seq` was overwriting the device's own.** A batch that stops one
+short of a gap looks contiguous from the server's side, so it correctly answers
+`missing_seq: null` — a true statement about the batch and a false one about the device.
+The engine was assigning it straight over the local gap it had just detected, so a device
+with a hole in its log reported no hole and the officer was never told. The local answer
+now wins and is applied once, after the run.
+
+**Two triggers in one tick both ran.** `request()` checked `#running`, but `#run` set the
+flag after its first `await`, so a foreground event and a connectivity change landing in
+the same tick — the normal case on a handset, not an edge one — both passed the check and
+sent the same batch twice. The flag is now claimed before the first `await`. The batch
+would have come back as fifty duplicates rather than a hundred assessments, so this was
+not going to corrupt anything; it was going to double every sync on a bad network, which
+is where the battery budget is tightest.
+
+### The status strip is a pure function, and the fraction has a denominator
+
+The brief calls the strip "arguably the most important component in the mobile app". The
+rendering is about ninety lines. `offline/status/model.ts` — which decides what a device in
+a given state should tell an officer — is tested twelve ways.
+
+The one design decision inside it: **"syncing 3 of 12" takes its total from the engine, not
+from the log.** Counting the queue would make the denominator shrink as the run progressed,
+so 3 of 12 would become 3 of 9, which reads as the work disappearing rather than as
+progress. The engine is the only thing that knows what the run started with.
+
+Ordering is the substance of the rest. Attention beats being offline, because the fix for a
+conflict is on the device and the officer needs to know whether or not there is a signal.
+Offline beats syncing, because "syncing 3 of 12" on a dead network is a lie. And a device
+that has *never* synced gets its own sentence: "last synced never" is more alarming than
+"4h ago" and belongs in its own string.
+
+### A conflict jams the queue on purpose
+
+Sequence ordering means an operation the server refuses leaves a hole, and everything
+behind it waits. That is the server's design (`unknown_category` does not advance
+`applied_seq`), and the device mirrors it: `planBatch` stops at a conflict and names the
+operation that is jamming the queue, which is what the strip counts as needing attention.
+
+The alternative — skipping it — would rebuild a household's record out of an update whose
+create never arrived.
+
+### `blocked` is in the local status vocabulary, and the brief does not list it
+
+The brief's statuses are `pending | syncing | synced | conflict | failed`. The server
+reports an operation held behind a gap as `blocked`, and calling that a conflict on the
+device would send the officer looking for a disagreement that does not exist. The CHECK
+constraint carries all six. Where the brief and the server vocabulary differ, the server
+wins.
+
+### Media is a second queue, and it never evicts anything unsent
+
+A 4MB photo on a 2G link must not hold up a 200-byte assessment. Metadata syncs first,
+photos follow, linked by `client_operation_id` — and a photo whose record has not synced
+yet is *held*, not failed, because there is nothing on the server to attach it to.
+
+`plannedEvictions` only ever deletes items with status `uploaded`. If the uploaded items
+are not enough to get under the 500MB cap, it says `stillOver: true` rather than reaching
+for an unsent one. The honest answer to a full disk is to stop accepting new photos, which
+`assessStorage` already does at 50MB free — refusing before the camera opens rather than
+after a zero-byte file has been saved into a form.
+
+### Logging out is refused, and the refusal offers only real actions
+
+`mayLogOut` returns a verdict, not a boolean, so the screen can name the number: "40
+changes have not reached the server" is the message that does not get dismissed. The offers
+are `sync-now` and `export-queue`, and `force-sign-out` only when something needs a person
+— because "Sync now" will not clear a conflict and offering only that sends the officer
+round a loop.
+
+The export carries the operations, the device id, the cursor and the schema version, and
+**no token, no key and no session**: a test asserts that the serialised file contains none
+of those four strings. A payload that will not parse is exported as
+`{ unreadable: true, raw: ... }` rather than skipped — the point of the file is that it is
+a complete account of what is on the device.
+
+### Three vocabularies are checked against the Python, as text
+
+`test/vocabulary.test.ts` reads `sarana_shared/auth/scopes.py`,
+`ledger_svc/domain/sync.py`, `ledger_svc/repo/base.py` and
+`core_api/domain/auth/capability.py` and compares the enum members against the TypeScript
+copies. This is file 20's cross-language gate pointed the other way. It also asserts that
+the server's `MAX_BATCH_OPERATIONS` is at least the device's batch size — if the server's
+cap ever drops below 50, every sync from every field device fails at once.
+
+### The debug bridge, and why it is a route rather than a port
+
+Three of the seven e2e flows need a device state no amount of tapping produces: a hole in
+the operation log, a full disk, a conflict the server has already recorded. Maestro drives
+the OS and the UI; it cannot reach inside an encrypted SQLite file.
+
+`sarana://debug?action=...` is an expo-router route that renders its result as one line of
+text, which is what Maestro can read. There is no port listening and nothing reachable from
+off the device. `runDebugAction` refuses on anything that is not a development build,
+before it looks at the action — a hook that could delete an operation from a real officer's
+log is not a testing convenience, it is a data-loss bug with a URL.
+
+It also carries the two overrides that let the brief's own test cases run at all: free
+storage and text scale both come from the OS, and neither can be set from a test.
+
+### The e2e suite exits non-zero on a machine with no device, and says which piece is missing
+
+`pnpm --filter mobile test:e2e -- --config offline.config.ts` runs, checks for `maestro`,
+`adb` and an attached device, and when they are absent prints all seven flows with the
+failure each one would catch — then exits 1. It does not skip and it does not pass. A suite
+that reports success with no device turns "the offline path is tested" into a sentence
+nobody has checked, which is the claim these flows exist to make true.
+
+Two of the brief's cases were adjusted rather than faked, and the flows say so in comments.
+Maestro cannot cut a link mid-request, so `interrupted-mid-batch` toggles airplane mode the
+instant the batch starts and asserts only that the retry never produces a second copy
+either way; the deterministic version is `test/sync-engine.test.ts`. Maestro cannot throttle
+a link either, so the "syncing 3 of 12" fraction is asserted in the unit test and the flow
+asserts the state that is always reachable.
+
+### `expo-audio`, not `expo-av`
+
+The brief names `expo-av`. Its last release is 16.0.8, for SDK 53/54; it is not published
+on the SDK 57 line this app is pinned to. `expo-audio` is its successor and has the same
+recording surface.
+
+### `ACCESS_BACKGROUND_LOCATION` is in `blockedPermissions`
+
+Not omitted — blocked, so a transitive dependency cannot reintroduce it. No continuous
+background location, ever: a foreground service during an active incident with a visible
+notification, and nothing else. Silent background tracking of citizens during a disaster is
+both a battery problem and a trust problem.
+
+### Still placeholder, and honest about it
+
+- **Sign-in seats a session without calling core-api.** `/auth/login`, `/auth/otp/verify`
+  and `/auth/capability-token` all exist and the client is wired; the screen does not call
+  them yet. It says so in a comment rather than pretending. Wiring it is part of files
+  23 and 24.
+- **`putMedia` has no object store to put anything in.** It throws a named
+  `PermanentSyncError` saying the file is still on the device and nothing has been lost.
+  This is the media gap carried since file 08, reaching the client.
+- **No fonts are vendored.** `fontFamilyFor` returns `NotoSansSinhala` and `NotoSansTamil`
+  and nothing loads them, so the three-script metrics are applied to whatever the platform
+  substitutes. Same gap as file 19, same fix.
+- **The offline map tiles are not cached.** `@maplibre/maplibre-react-native` is a
+  dependency and nothing uses it yet. The map is file 24.
+- **`app/(citizen)` and `app/(field)` are shells.** Deliberately: they exist so the core
+  underneath them can be exercised on a device before there is anything to exercise it
+  with.
+
+---
+
 ## Things that will bite you
 
 These each cost real debugging time. They are written down so they cost you none.
@@ -3514,6 +3707,19 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
 - **No fonts are vendored (file 19).** The three-script metrics are tuned for Noto Sans
   Sinhala and Noto Sans Tamil, and nothing loads them. On a machine without those faces
   installed, the uplift and leading are applied to whatever the browser substitutes.
+- **The mobile app has never run on a device (file 22).** The offline core, the sync
+  engine, the operation log and the status strip are built and tested against a real
+  SQLite engine and a fake server that follows the real contract. What has not happened is
+  one `expo start` against a booted stack, so the `expo-sqlite`, `expo-network` and
+  `expo-secure-store` adapters are reviewed rather than exercised. The SQLCipher key path
+  in particular has never been run.
+- **The mobile e2e suite has never run (file 22).** Seven Maestro flows are written and
+  the runner works; it needs `maestro`, `adb` and an Android device, and on a machine with
+  none of those it prints all seven and exits 1 rather than reporting a pass.
+- **No `eas build` has been attempted (file 22).** `eas.json` has three profiles and the
+  config plugins are declared, including `useSQLCipher`. Nothing has compiled them.
+- **Mobile sign-in does not call core-api (file 22).** It seats a session locally so the
+  shell and the offline core can be driven. The endpoints exist and the client is wired.
 - **Payment rails are mocks.** Every reference starts `MOCK-`.
 - **Nothing here is delivered to a real handset.** The payment notices go out through
   `MockSmsGateway`, like every other channel in Phase 1. The message text, the language
@@ -3627,6 +3833,15 @@ uv run pytest tests/core_api/test_public_areas.py      # places, never people
 
 # the design system's server-only entry point (file 21)
 pnpm --filter @sarana/ui test                  # includes server.test.ts, the client-boundary walk
+
+# mobile (file 22)
+pnpm --filter mobile typecheck
+pnpm --filter mobile test                      # 143, real SQLite, no device
+pnpm --filter mobile verify-i18n               # 69 keys x si/ta/en + every key the code uses
+pnpm --filter mobile test:e2e -- --config offline.config.ts   # 7 Maestro flows; needs a device
+pnpm --filter mobile dev                       # expo start
+eas build --profile preview --platform android --local
+npx vitest run test/vocabulary.test.ts --dir apps/mobile      # the device's copy of four Python enums
 
 # supervisor (file 18)
 make eval AGENT=supervisor

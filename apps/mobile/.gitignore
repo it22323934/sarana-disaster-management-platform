@@ -1,0 +1,4 @@
+.expo/
+dist/
+web-build/
+*.tsbuildinfo

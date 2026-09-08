@@ -1,0 +1,27 @@
+# A device with no room left.
+#
+# The failure being prevented: the camera returns a zero-byte file, the form saves
+# happily, and forty assessments turn out to have no photographs.
+appId: lk.sarana.app
+name: Photo capture is refused with a message, not a silent failure
+---
+- launchApp:
+    clearState: true
+- runFlow: ../subflows/sign-in-officer.yaml
+- openLink: sarana://debug?action=set-free-storage&mb=40
+- back
+
+- tapOn: 'New assessment'
+- tapOn: 'Take photo'
+
+# Refused before the camera opens, with the number in the message.
+- assertVisible:
+    text: '.*Cannot take a photo.*MB of storage is free.*'
+- assertNotVisible:
+    id: 'shutter'
+
+# The assessment itself still saves. Losing the photo must not lose the record.
+- tapOn: 'Partial house damage'
+- inputText: '185000'
+- tapOn: 'Save'
+- assertVisible: 'Saved on this device'

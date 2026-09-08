@@ -9,3 +9,4 @@ export * from './api/index.js';
 export * from './schemas/index.js';
 export * from './i18n/index.js';
 export * from './format/index.js';
+export * from './domain/index.js';

@@ -89,6 +89,27 @@ export default tseslint.config(
     },
   },
   {
+    // Maestro's JavaScript scripts. They run inside Maestro's own Rhino-based runtime,
+    // not Node or a browser: `http` and `json` are injected by Maestro, `output` is how a
+    // script returns a value to the flow, and every `--env` name is injected as a bare
+    // global. Without this the offline e2e scripts cannot be linted at all.
+    files: ['apps/mobile/e2e/scripts/**/*.js'],
+    languageOptions: {
+      globals: {
+        http: 'readonly',
+        json: 'readonly',
+        output: 'writable',
+        SARANA_API_URL: 'readonly',
+        SARANA_E2E_TOKEN: 'readonly',
+        GN_DIVISION: 'readonly',
+        EXPECTED: 'readonly',
+        LOCALE: 'readonly',
+        LOCALE_NAME: 'readonly',
+        FONT_SCALE: 'readonly',
+      },
+    },
+  },
+  {
     // Build tooling that has to stay CommonJS for the bundler that reads it.
     files: ['**/*.config.js', '**/*.config.cjs', '**/babel.config.js'],
     languageOptions: {

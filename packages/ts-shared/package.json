@@ -10,7 +10,8 @@
     "./api": "./src/api/index.ts",
     "./schemas": "./src/schemas/index.ts",
     "./i18n": "./src/i18n/index.ts",
-    "./format": "./src/format/index.ts"
+    "./format": "./src/format/index.ts",
+    "./domain": "./src/domain/index.ts"
   },
   "scripts": {
     "build": "tsc --build",

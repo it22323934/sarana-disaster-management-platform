@@ -1,0 +1,300 @@
+{
+  "a11y": {
+    "openSyncDetail": "Open sync detail",
+    "syncStrip": "Sync status. {message}"
+  },
+  "action": {
+    "cancel": "Cancel",
+    "exportQueue": "Export queue",
+    "retry": "Retry",
+    "save": "Save",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "syncNow": "Sync now",
+    "understood": "I understand"
+  },
+  "aid": {
+    "assessmentBy": "Recorded by a GN officer on {when}",
+    "assessmentCategory": "Category: {category}",
+    "assessmentNone": "No damage assessment has been recorded for your household.",
+    "assessmentPhotos": "{count} photos were submitted",
+    "assessments": "Damage recorded",
+    "confirmNo": "No, I did not",
+    "confirmThanks": "Thank you. This is recorded.",
+    "confirmTitle": "Did you receive this payment?",
+    "confirmYes": "Yes, I received it",
+    "disbursement": "Your payment",
+    "disbursementNone": "No payment has been made yet.",
+    "disbursementRef": "Reference {reference}",
+    "disbursementSent": "Sent {when} by {rail}",
+    "entitlement": "Your compensation",
+    "entitlementNone": "No compensation has been calculated yet.",
+    "entitlementStatus": "Status: {status}",
+    "explain": {
+      "capped": "A limit was applied: {caps}.",
+      "notCapped": "No limit was applied.",
+      "openSchedule": "See the published rates",
+      "schedule": "Using the published rates, version {version}.",
+      "step": "{description}",
+      "title": "How this was worked out",
+      "total": "Total",
+      "unavailable": "The working for this figure is not available. You can raise a grievance about that."
+    },
+    "grievanceOpen": "Raise a grievance"
+  },
+  "alert": {
+    "area": "Affected area",
+    "effective": "From {from}",
+    "expired": "This warning has ended.",
+    "expires": "Until {to}",
+    "instruction": "What to do",
+    "openMap": "Show the area"
+  },
+  "app": {
+    "name": "SARANA",
+    "simulated": "Simulated data. No live government system is connected.",
+    "tagline": "Report a problem, receive warnings, and track aid."
+  },
+  "auth": {
+    "capability": {
+      "absent": "You have no offline permit. Connect once before going into the field.",
+      "expired": "Your offline permit has expired. Connect once to renew it.",
+      "explains": "It allows one thing: drafting damage assessments in your own division.",
+      "held": "Valid for {hours} more hours in {division}",
+      "title": "Offline permit",
+      "wrongDivision": "Your offline permit covers {held}, not {asked}."
+    },
+    "logout": {
+      "blocked": "{count} changes have not reached the server. Signing out would delete them.",
+      "blockedWithAttention": "{count} changes have not reached the server, and {attention} of them need a person. Signing out would delete them.",
+      "forceBody": "This cannot be undone. Export the queue first if this device is going to someone else.",
+      "forceTitle": "Sign out and discard {count} changes?"
+    },
+    "signIn": {
+      "citizenTitle": "Sign in with your phone number",
+      "email": "Email",
+      "msisdn": "Phone number",
+      "officerTitle": "Officer sign-in",
+      "otp": "Code sent by SMS",
+      "password": "Password",
+      "requestOtp": "Send code",
+      "totp": "Authenticator code"
+    }
+  },
+  "grievance": {
+    "about": "What is this about?",
+    "chooseReason": "Choose what happened",
+    "freeText": "Anything else you want to add",
+    "isARight": "This is your right. You do not need a reason to use it.",
+    "raised": "Raised. Reference {reference}.",
+    "reason": {
+      "amountDiffers": "I received a different amount",
+      "amountTooLow": "The amount is lower than I expected",
+      "calculationUnclear": "I do not understand how this was worked out",
+      "damageUnderstated": "The damage recorded is less than what happened",
+      "itemsMissing": "Things I lost are not on the list",
+      "neverVisited": "Nobody came to look",
+      "notAssessed": "Nobody assessed my house",
+      "notOnList": "My household is not on the list",
+      "notReceived": "I did not receive the money",
+      "wrongAccount": "It went to the wrong account or number",
+      "wrongCategory": "The damage category is wrong",
+      "wrongHousehold": "This is not my household"
+    },
+    "slaDue": "We owe you an answer by {date}.",
+    "slaDueQueued": "Once this sends, we owe you an answer within {days} days.",
+    "status": "Status: {status}",
+    "submit": "Raise it",
+    "title": "Raise a grievance"
+  },
+  "home": {
+    "activeAlerts": "{count} active warnings for your area",
+    "nearestShelter": "Nearest shelter",
+    "noAlerts": "No active warnings for your area.",
+    "sos": "Report an emergency",
+    "sosHint": "Sends your location straight away. You can add a voice note or photo next."
+  },
+  "language": {
+    "change": "Change language",
+    "choose": "Choose your language",
+    "confirm": "Continue"
+  },
+  "onboarding": {
+    "householdSkip": "Skip for now",
+    "householdTitle": "Link your household",
+    "householdWhy": "Optional. Linking lets you see damage assessments and compensation for your household. You can do this later.",
+    "phoneTitle": "Your phone number",
+    "phoneWhy": "We send you warnings for your area, and updates about anything you report.",
+    "privacyTitle": "Before you start"
+  },
+  "permission": {
+    "camera": {
+      "title": "Camera",
+      "why": "A photo lets responders assess the situation before they arrive."
+    },
+    "location": {
+      "denied": "Without location, choose the division by hand. The report is still accepted.",
+      "title": "Location",
+      "why": "Your location places the report in the right GN division so responders can reach you."
+    },
+    "microphone": {
+      "title": "Microphone",
+      "why": "A voice note lets you report in Sinhala or Tamil without typing."
+    },
+    "notifications": {
+      "title": "Warnings",
+      "why": "Warnings for your area are delivered here even when the app is closed."
+    }
+  },
+  "privacy": {
+    "collect": "Your phone number. Anything you report, including any photo or voice note. Your location, only at the moment you send a report - never in the background.",
+    "collectTitle": "What we collect",
+    "delete": "Ask your Divisional Secretariat, or raise a grievance in this app. Records tied to a payment cannot be deleted while an audit is open, and we will tell you if that applies.",
+    "deleteTitle": "Getting it deleted",
+    "keep": "Reports and assessments are kept for seven years, because compensation can be audited years later. Voice notes are kept for one year.",
+    "keepTitle": "How long we keep it",
+    "note": "This is a prototype. No live government system is connected and no real payment is made.",
+    "share": "Responders see your report and where it came from, so they can reach you. Your GN officer sees damage recorded for your household. The public dashboard shows district totals only - never your name, never your location, never your amount.",
+    "shareTitle": "Who sees it",
+    "title": "What we collect, and who sees it"
+  },
+  "report": {
+    "describe": "Or type what is happening",
+    "emptyRefused": "Add a type, a photo or a few words first.",
+    "eta": {
+      "notConfident": "We cannot give a reliable arrival time yet.",
+      "notYetAssigned": "No team assigned yet.",
+      "range": "Expected in {low} to {high} minutes"
+    },
+    "landmark": "Nearest landmark",
+    "lastAttempt": "Last tried {age}",
+    "locating": "Finding your location",
+    "locationDrag": "Drag the pin if this is wrong",
+    "locationFound": "Location found, accurate to about {metres}m",
+    "locationNone": "No location. Name the nearest landmark instead.",
+    "newTitle": "What is happening?",
+    "peopleCount": "{count} people",
+    "peopleDontKnow": "I don't know",
+    "peopleDontKnowHint": "This is a real answer. It is more useful than a guess.",
+    "peopleTitle": "Anyone in danger?",
+    "photo": "Add a photo",
+    "progress": {
+      "assigning": "A response team is being assigned.",
+      "duplicate": "Someone else reported this too. It is being handled under their report.",
+      "humanReview": "Someone is reading your report now.",
+      "inProgress": "A response team is working on this now.",
+      "onTheWay": "A response team is on the way.",
+      "queued": "Saved on this device. It will send when you have signal.",
+      "received": "Received. Nobody has looked at it yet.",
+      "rejected": "This report is not being acted on.",
+      "resolved": "This report is closed.",
+      "stuck": "This report could not be sent and needs someone to look at it. Take this phone to your GN officer.",
+      "triaged": "Your report has been received and prioritised.",
+      "verified": "Your report has been checked."
+    },
+    "queuePosition": "{position} of {total} waiting to send",
+    "recording": "Recording {seconds}s",
+    "reference": "Reference {reference}",
+    "referenceHint": "Quote this if you call.",
+    "savedOffline": "Saved. Will send when you have signal.",
+    "savedOnline": "Sent.",
+    "submit": "Send report",
+    "type": {
+      "FLOOD": "Flooding",
+      "LANDSLIDE": "Landslide",
+      "MEDICAL": "Someone is hurt",
+      "OTHER": "Something else",
+      "STRUCTURAL": "Building damage",
+      "TRAPPED": "People trapped"
+    },
+    "typeTitle": "What is happening?",
+    "voiceHint": "Speaking is faster than typing. Say what you can see.",
+    "voiceNote": "Hold to speak"
+  },
+  "settings": {
+    "aidUpdates": "Payments and grievances",
+    "cannotMute": "Warnings at level 3 and above always arrive, and always make a sound. An evacuation order is not a notification setting.",
+    "class": {
+      "0": "Everything, including advisories",
+      "1": "Advisories and above",
+      "2": "Watches and above"
+    },
+    "minimumClass": "Warn me about",
+    "notifications": "Warnings and updates",
+    "privacy": "What we collect",
+    "reportUpdates": "My reports",
+    "signOut": "Sign out",
+    "title": "Settings"
+  },
+  "shelter": {
+    "away": "About {metres}m away",
+    "cached": "From a list saved {age}",
+    "capacity": "{occupancy} of {capacity}",
+    "directions": "Directions",
+    "full": "Full",
+    "none": "No shelters are listed for your area yet.",
+    "space": "Has space",
+    "stale": "This list is more than six hours old. Check before you travel.",
+    "title": "Shelters",
+    "unranked": "Distance unknown - no location"
+  },
+  "status": {
+    "none": "You have not reported anything.",
+    "queuedSince": "Waiting since {when}",
+    "submittedAt": "Sent {when}"
+  },
+  "storage": {
+    "cacheEvicted": "Removed {count} uploaded photos to free space. Nothing unsent was deleted.",
+    "criticalRefusePhoto": "Cannot take a photo: only {freeMb} MB of storage is free. Free up space or sync over Wi-Fi first.",
+    "lowWarning": "Storage is low: {freeMb} MB free. Sync and connect to Wi-Fi soon."
+  },
+  "sync": {
+    "conflict": {
+      "body": "The server did not accept this change and nothing has been merged. A record like this is never resolved automatically.",
+      "detail": "Reference {id}",
+      "title": "Needs a person"
+    },
+    "detail": {
+      "attention": "{count} need attention",
+      "device": "Device {id}",
+      "lastSynced": "Last synced {age}",
+      "never": "Never synced",
+      "nextAttempt": "Next attempt in {seconds}s",
+      "queued": "{count} waiting to send",
+      "title": "Sync detail"
+    },
+    "gap": {
+      "action": "Export queue",
+      "body": "This device is missing change {seq}. Nothing after it can be sent, because it would rebuild a record out of order. Take this device to the district office.",
+      "title": "Sync paused"
+    },
+    "status": {
+      "allSynced": "Online · all synced",
+      "attention": "{count} items need attention",
+      "offline": {
+        "days": "Offline · {count} changes queued · last synced {age}d ago",
+        "hours": "Offline · {count} changes queued · last synced {age}h ago",
+        "justNow": "Offline · {count} changes queued · last synced just now",
+        "minutes": "Offline · {count} changes queued · last synced {age}m ago"
+      },
+      "offlineClear": "Offline · nothing waiting",
+      "offlineNeverSynced": "Offline · {count} changes queued · never synced",
+      "queued": "Online · {count} waiting",
+      "syncing": "Online · syncing {done} of {total}"
+    }
+  },
+  "tabs": {
+    "aid": "Aid",
+    "home": "Home",
+    "report": "Report",
+    "status": "My reports"
+  },
+  "time": {
+    "age": {
+      "days": "{age}d ago",
+      "hours": "{age}h ago",
+      "justNow": "just now",
+      "minutes": "{age}m ago"
+    }
+  }
+}

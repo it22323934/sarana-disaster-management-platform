@@ -1,0 +1,12 @@
+# Switch the app to ${LOCALE}.
+#
+# The language names are written in their own script and never translated, which is what
+# makes this subflow work in all three: the tap target is the same string whatever the app
+# is currently set to.
+appId: lk.sarana.app
+---
+- openLink: sarana://language
+- tapOn:
+    text: '${LOCALE_NAME}'
+- tapOn:
+    index: 3

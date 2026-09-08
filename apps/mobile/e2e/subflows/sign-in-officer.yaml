@@ -1,0 +1,13 @@
+# Sign in as a GN officer and land in the Field Companion.
+#
+# A subflow rather than a script: it is UI, and Maestro drives UI better than JavaScript
+# does. Every flow that needs a signed-in officer starts here, so a change to the sign-in
+# screen is one edit rather than seven.
+appId: lk.sarana.app
+---
+- tapOn: 'Officer sign-in'
+- tapOn:
+    id: 'sign-in'
+- extendedWaitUntil:
+    visible: 'Offline permit'
+    timeout: 30000

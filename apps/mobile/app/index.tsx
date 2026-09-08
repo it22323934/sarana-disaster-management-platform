@@ -1,37 +1,53 @@
-import { StyleSheet, Text, View } from 'react-native';
-
 /**
- * The app shell.
+ * The entry point, which decides where a user actually starts.
  *
- * The citizen report flow, the alert inbox and the Field Companion assessment forms are
- * built in a later step. This screen exists so the app boots and states what it is.
+ * Three branches, in this order:
+ *
+ *   1. The device database would not open. Fatal, and stated - an app that silently fell
+ *      back to memory would lose a day's fieldwork without ever saying so.
+ *   2. The language has never been chosen and the device locale is not one SARANA
+ *      speaks. The picker goes in front of them rather than defaulting silently.
+ *   3. Otherwise, the surface their role earns them.
+ *
+ * There is no "loading" screen with a spinner. Opening a local SQLite file takes
+ * milliseconds, and the honest thing to show for milliseconds is the background colour.
  */
-export default function Index() {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>SARANA</Text>
-      <Text style={styles.subtitle}>සරණ · சரண</Text>
-      <Text style={styles.body}>
-        Report a problem, receive warnings, and track aid - in Sinhala, Tamil or English.
-        Works without a connection: what you record is saved on the device and syncs when
-        the network returns.
-      </Text>
-      <Text style={styles.note}>Simulated data. No live government system is connected.</Text>
-    </View>
-  );
-}
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    padding: 32,
-  },
-  title: { fontSize: 34, fontWeight: '600', letterSpacing: 2 },
-  // Sinhala and Tamil glyphs need more vertical room than Latin at the same size.
-  subtitle: { fontSize: 20, lineHeight: 34, opacity: 0.8 },
-  body: { fontSize: 15, lineHeight: 24, textAlign: 'center' },
-  note: { fontSize: 12, opacity: 0.6, textAlign: 'center', marginTop: 8 },
-});
+import { Redirect } from 'expo-router';
+import { View, useColorScheme } from 'react-native';
+
+import { Card, Screen, Text, Heading } from '../src/components/primitives.js';
+import { useLocale, useOffline, useSession } from '../src/providers/index.js';
+import { SURFACES } from '../src/theme/index.js';
+
+export default function Index() {
+  const { promptForLocale, t } = useLocale();
+  const { ready, failure } = useOffline();
+  const { session, surface } = useSession();
+  const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
+
+  if (failure !== null) {
+    return (
+      <Screen>
+        <Heading>{t('app.name')}</Heading>
+        <Card>
+          <Text weight="medium">This device&apos;s secure database could not be opened.</Text>
+          <Text muted size="sm">
+            Nothing has been lost - the data is still on the device, encrypted. Report this
+            to the district office rather than reinstalling: a reinstall discards the
+            encryption key and everything it protects.
+          </Text>
+          <Text muted size="xs">
+            {failure}
+          </Text>
+        </Card>
+      </Screen>
+    );
+  }
+
+  if (promptForLocale) return <Redirect href="/language" />;
+  if (!ready) return <View style={{ flex: 1, backgroundColor: SURFACES[scheme].base }} />;
+  if (!session) return <Redirect href="/sign-in" />;
+
+  return <Redirect href={surface === 'field' ? '/(field)' : '/(citizen)'} />;
+}

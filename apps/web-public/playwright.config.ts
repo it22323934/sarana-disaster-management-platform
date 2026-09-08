@@ -78,7 +78,21 @@ export default defineConfig({
       // as the project directory and refuses to boot.
       command: `pnpm run build:local && pnpm run start:local`,
       url: `${BASE_URL}/en`,
-      reuseExistingServer: !process.env.CI,
+      /**
+       * Never reused, unlike the stub beside it.
+       *
+       * `reuseExistingServer` is the right default for a `next dev` harness and the wrong
+       * one here, because this server holds an **ISR cache**. A server left running from an
+       * earlier invocation keeps serving pages it prerendered then; if the stub it was built
+       * against has since been restarted, the five-minute revalidation regenerates them
+       * against nothing and caches the "figure unavailable" page instead.
+       *
+       * That is exactly what happened while this suite was being written: every file passed
+       * on its own and three failed when run together, because the shared server had
+       * revalidated into failure pages between them. A stale build silently under test is a
+       * worse outcome than a slow one, and refusing the port is a loud failure.
+       */
+      reuseExistingServer: false,
       timeout: 300_000,
       stdout: 'ignore',
       stderr: 'pipe',
