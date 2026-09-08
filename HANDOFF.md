@@ -9,7 +9,7 @@ Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 ## Where the build has got to
 
 The repository is organised around 30 numbered build files in `.claude/`. Progress is
-strictly sequential. **Files 03-22 are complete.** Every route both web surfaces name is
+strictly sequential. **Files 03-23 are complete.** Every route both web surfaces name is
 built and tested end to end in a browser; no route renders a "not built" screen. Closing
 file 20 needed five read endpoints the platform had data for and no way to return, and it
 turned up two finished screens that no user could reach. Closing file 21 needed six more
@@ -17,7 +17,9 @@ public endpoints, and it turned up something worse: `/api/v1/public/ledger-summa
 been returning an empty list to every anonymous caller since file 10, and nothing had
 failed. File 22 needed no new endpoints at all — the offline sync contract has been
 waiting on the server since file 10 — and it turned up two bugs in its own engine that
-only a test could find. The next work is 23.
+only a test could find. File 23 needed one endpoint and moved one rule: the citizen
+confirmation loop existed for SMS and had no door for the app, and quiet hours were about
+to be written a third time. The next work is 24.
 
 | File | Area | State |
 |---|---|---|
@@ -41,21 +43,22 @@ only a test could find. The next work is 23.
 | **20** | **Ops console** | **Done — 25 routes, 60 static pages, 96 e2e tests** |
 | **21** | **Public dashboard** | **Done — 11 routes, 34 static pages, 114 browser tests** |
 | **22** | **Mobile foundation** | **Done — offline core, sync engine, 143 tests** |
-| 23–24 | Mobile (citizen, field companion) | Shells only |
+| **23** | **Citizen app** | **Done — 16 routes, 30s emergency path, 217 tests total** |
+| 24 | Mobile (field companion) | Shell only |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-On the TypeScript side, **695 tests pass**: 66 unit and 33 axe-over-every-story in
+On the TypeScript side, **769 tests pass**: 66 unit and 33 axe-over-every-story in
 `packages/ui`, 58 in `packages/ts-shared`, in `apps/web-ops` 73 unit, 75 axe across
 **25 screens x three locales** and **96 Playwright tests in a real Chromium**, in
 `apps/web-public` 70 unit plus **114 in Chromium against a production build** — 37 PII
 sweep, 33 axe, 38 overflow and 6 with JavaScript genuinely disabled — and in `apps/mobile`
-**143 against a real SQLite engine and a fake server that follows the real sync contract**.
+**217 against a real SQLite engine and a fake server that follows the real sync contract**.
 `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of Done commands are
 clean. Of file 20's four, three pass; the fourth reports a measured LCP that the stack
 cannot meet, and says so with the evidence rather than passing quietly. **All five of file
-21's pass.** Of file 22's three, one passes; the other two need an Android device and say
-so rather than skipping — see the file 22 section.
+21's pass.** Of file 22's three and file 23's three, two pass; the other four need an
+Android device and say so rather than skipping — see the file 22 section.
 
 On the Python side:
 **1,777 collected across `tests/` and `packages/py-shared/tests`**. `ruff check`,
@@ -3423,6 +3426,203 @@ both a battery problem and a trust problem.
 
 ---
 
+## File 23 is done — the citizen app, and the one field that is allowed to be absent
+
+Two emotional states, one application: the app someone opens at 2am with water coming in,
+and the app the same person opens in March to check whether their compensation was
+approved. 74 of the mobile suite's 217 tests are this file's.
+
+### The thirty seconds are bought by what does not happen
+
+The report flow is one scroll, not a wizard. Location starts on mount and **nothing waits
+for it** - `captureLocation` has an eight-second deadline and returns null past it, which
+is a valid answer the flow already handles. There is no next-step navigation, so nobody
+loses their place. Submit is enabled as soon as there is anything at all.
+
+`isSubmittable` refuses exactly one thing: a report with no type, no text, no location and
+no media. That is an accidental tap, and sending it would put an empty row in a
+dispatcher's queue during the hour they can least afford one. Everything else goes.
+
+The order on the screen is the order of value to a dispatcher, not of effort for the
+reporter: type, voice, photo, text, then the people question. Someone who taps the first
+tile and hits Submit has filed a dispatchable report.
+
+### "I don't know" is `null`, and it is styled like an answer
+
+The field this whole surface is judged on. `toWirePayload` omits `people_at_risk` entirely
+when the reporter said they did not know, and sends a real `0` when they said nobody -
+because "the water is in the yard, nobody is in danger" and "I have no idea" are different
+reports and a dispatcher does different things with them.
+
+The control enforces the same thing visually. "I don't know" is a full-width option the
+same weight as any number, with a hint saying it is a real answer. A small link under a
+stepper is how a guess gets entered instead, and a fabricated 3 cannot be told apart from
+a counted 3 by the person deciding who gets a boat first.
+
+### The status vocabulary never reaches the screen
+
+`reportProgress` maps `incident.incident.status` onto seven sentences. Not `TRIAGED` but
+"your report has been received and prioritised". The test asserts, for all eight statuses
+at once, that the key returned never contains the status name.
+
+**Only a `RELEASED` plan says a team is on the way.** `PROPOSED`, `AWAITING_SIGNOFF` and
+`APPROVED` all render as "a response team is being assigned", because the dispatch gate is
+the point at which a response becomes real and telling somebody standing in water that help
+is coming when nobody has approved it is the single most damaging thing this screen could
+do.
+
+### `etaFor` returns a range or nothing, and usually nothing
+
+A missed ETA during a disaster destroys trust in every subsequent message, including the
+evacuation order next week. So there is a confidence floor of 0.7 - not 0.5, because a
+coin-flip estimate shown to somebody in water is worse than silence, which at least makes
+no promise - and below it the screen shows the stage instead of a number.
+
+Above it, a range: `estimate ± 40%`, floored at a five-minute half-width. A point estimate
+reads as a commitment. In this build every call returns `notYetAssigned`, because no plan
+is read back yet; it is routed through `etaFor` anyway so the floor is already applied the
+day one is.
+
+### The entitlement working is rendered, never recomputed
+
+`explain` walks `CalculationTrace` and emits one line per step with the expression **as the
+ledger wrote it** - `25000000 * 1`, not a paraphrase. The total comes from
+`result_lkr_cents`; a UI that added the steps up would be a second implementation of the
+thing the trace exists to make unnecessary, and it would be the one that disagreed.
+
+Two decisions worth keeping. **"No limit was applied" gets its own line**, because a
+household that has heard a ceiling exists will assume it bit and that the figure was
+reduced. And **a trace with no steps is not padded**: the amount is shown, the absence is
+stated, and raising a grievance about it is one tap, because "the platform cannot show you
+how it got this number" is exactly what a grievance is for.
+
+`/(citizen)/aid/schedule` is the other half - the published rates at the pinned version, so
+a household can check the figure rather than take the app's word for it.
+
+### Quiet hours moved into `@sarana/ts-shared`, rather than being written a third time
+
+The console had the rule; the app needed the same answer to decide whether a push may wake
+somebody. The pure half - `QUIET_START_HOUR`, `inQuietHours`, `releaseAt`,
+`quietHoursState` - is now `@sarana/ts-shared/domain`, and `quiet-hours.tsx` re-exports it
+so every existing console import and all 13 of its tests are unchanged.
+
+The reason it moved rather than being copied: the last mirror of this rule shipped with a
+half-hour bug. Colombo is UTC+5:30, and a release computed by zeroing UTC minutes lands on
+06:30. The way not to have that bug twice is not to have the code twice.
+
+### An evacuation order is not a notification preference
+
+`decideNotification` has one branch with no exceptions: at `impact_class >= 3` the alert
+delivers whatever the user has muted and whatever the clock says. Someone who turned off
+flood watches in June is not thereby someone who declined an evacuation order in November,
+and reading a preference as consent to not be warned is how people die in a flood they were
+told about.
+
+Below 3, both the preference and quiet hours apply. An alert with **no** class is treated
+as class 0, not as an emergency: assuming the highest class for a message whose grade
+nobody set would wake a district on the strength of a missing field.
+
+The settings screen renders the control from `HIGHEST_MUTABLE_CLASS`, so it visibly stops
+at level 2 with a sentence saying why. A slider that went to 4 and was then ignored by the
+policy would be a setting that lies.
+
+### A full shelter is listed, not hidden
+
+`nearestShelters` orders by distance and marks space; it does not promote an empty shelter
+over a nearer full one. Someone in water wants the nearest roof and needs to be told
+whether it has room - hiding the full one leaves a household walking past the building they
+were told to go to. A `CLOSED` shelter is excluded, because that is not a place to go.
+
+With no position it still answers, ordered by remaining space, with `metres: -1` rather
+than 0 - zero would render as "0m away", which is worse than no number. And the cache age
+is on screen, with a warning past six hours: a shelter list from last night can send a
+household to a building that is not open yet.
+
+### The grievance description is trilingual, and marked where it is not
+
+The server takes `{si, ta, en}` and quotes it back to the household in their language while
+a DS officer reads the same record in theirs. A household typing in Tamil cannot be asked
+to also type Sinhala, so `describe` renders the chosen reasons properly in all three - they
+came from the catalogue - and marks the free text `[untranslated] (ta)` in the two it was
+not written in.
+
+Never the same text copied three times. A Sinhala officer reading Tamil words in the
+Sinhala field has no way to tell it was never translated, and would answer as though they
+had understood it.
+
+The SLA date is on screen **before** submitting. What the platform owes is a commitment made
+in advance, not a number produced once somebody has already complained.
+
+### `POST /disbursements/{id}/confirm` is new on ledger-svc
+
+The confirmation loop existed and was reachable only by the SMS gateway. The app needed the
+same path by a tap, and posting the literal string "YES" to the gateway endpoint would have
+encoded a button label as an SMS - the day the label changed, the confirmation would
+silently stop being recognised.
+
+So it is a second door onto one path: both write through `record_citizen_confirmation`,
+both raise the same auto-grievance on a no, both notify the DS, and both stamp the channel
+so a reviewer can see which door was used. It sits on `Scope.GRIEVANCE_FILE` rather than a
+new scope, because the "no" branch raises a grievance and inventing `disbursement:confirm`
+would create a permission granting nothing new. A repeated confirmation is not an error.
+
+### The privacy screen exists because it is not required
+
+Sri Lanka's PDPA substantive provisions are not commenced (ADR-011), so none of it is a
+legal obligation today. It is there anyway, in four sections in the order a person actually
+asks them, at a level someone with no technical background can read, in three languages.
+The platform is asking frightened people for their location and earning that has to be more
+than a checkbox. One copy, shared by the onboarding screen and the settings route.
+
+### The design system reaches the app as tokens, and the six icons are drawn
+
+`@sarana/ui` is a DOM library and cannot render here, so `src/theme` imports the token
+modules and converts: React Native line heights are absolute, not multipliers, and every
+size passes through `fontScale()` so 200% enlarges rather than clips.
+
+The incident-type icons are inline SVG rather than a font. A font icon at 200% dynamic type
+either scales with the text and blurs, or does not scale and becomes a decoration next to a
+headline - and the whole point of the tile is that the icon and the label are read
+together. `shapeFor` is a `switch` with exhaustiveness, so a seventh type added without a
+shape fails the build instead of rendering an empty tile.
+
+### The e2e suite has a number in it
+
+`citizen-offline.config.ts` carries seven flows; `citizen-sos-30s.yaml` carries two markers
+and `--assert-sos-duration 30000` measures between them out of the JUnit trace, in airplane
+mode, from a cold start. Not the whole flow - signing in and a cold start are not what the
+emergency path pays for.
+
+The measurement is over the commands between the markers, and a flow named for the SOS path
+that carries no markers **fails** rather than passing a budget nothing was measured
+against. As with file 22, none of it has run: no `maestro`, no device.
+
+### Still placeholder, and honest about it
+
+- **Sign-in and the OTP flow still do not call core-api.** Same as file 22. The endpoints
+  exist, the client is wired, and both screens say so in a comment rather than pretending
+  an SMS was sent.
+- **The status tab shows `received` for anything the server has, and no more.** There is no
+  read-back of `incident.status` or a dispatch plan yet, so `reportProgress` is fed the
+  honest floor. Every richer branch is built and tested; nothing feeds them.
+- **The Aid tab reads live, over the network.** It is the one surface in the app that does,
+  and deliberately: it is the recovery path, three months later, on a working connection.
+  Nothing on the emergency path fetches.
+- **Nothing writes the alert or shelter caches.** `alert_cache` and `shelter_cache` are
+  read by the home screen and populated only by the debug bridge. The pull that fills them
+  from `/api/v1/public/alerts` is a background job that does not exist yet.
+- **There is no push registration.** `decideNotification` is the policy and is fully
+  tested; nothing calls `expo-notifications` to get a token or to schedule the deferral
+  `deliver: 'deferred'` returns.
+- **No gazetteer, so `report.locationNone` has nothing to autocomplete against.** The
+  landmark fallback the brief asks for needs the place-name lookup that file 15 also
+  wants and core-api does not have.
+- **`/(citizen)/aid` needs a linked household and there is no way to link one.** The
+  onboarding screen takes a reference and navigates on; the endpoint that resolves it does
+  not exist.
+
+---
+
 ## Things that will bite you
 
 These each cost real debugging time. They are written down so they cost you none.
@@ -3720,6 +3920,15 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
   config plugins are declared, including `useSQLCipher`. Nothing has compiled them.
 - **Mobile sign-in does not call core-api (file 22).** It seats a session locally so the
   shell and the offline core can be driven. The endpoints exist and the client is wired.
+- **Nothing fills the mobile alert or shelter caches (file 23).** `alert_cache` and
+  `shelter_cache` are read by the home screen and written only by the debug bridge. The
+  background pull from `/api/v1/public/alerts` does not exist.
+- **No push registration on mobile (file 23).** `decideNotification` is the policy, fully
+  tested, and nothing calls `expo-notifications` to get a token or to schedule the
+  deferral it returns.
+- **The mobile status tab shows the honest floor (file 23).** `reportProgress` has a
+  branch for every incident status and dispatch state; nothing reads them back yet, so a
+  synced report renders as `received` and no further.
 - **Payment rails are mocks.** Every reference starts `MOCK-`.
 - **Nothing here is delivered to a real handset.** The payment notices go out through
   `MockSmsGateway`, like every other channel in Phase 1. The message text, the language
@@ -3842,6 +4051,11 @@ pnpm --filter mobile test:e2e -- --config offline.config.ts   # 7 Maestro flows;
 pnpm --filter mobile dev                       # expo start
 eas build --profile preview --platform android --local
 npx vitest run test/vocabulary.test.ts --dir apps/mobile      # the device's copy of four Python enums
+
+# citizen app (file 23)
+pnpm --filter mobile test -- citizen             # 74 of the 217
+pnpm --filter mobile test:e2e -- --config citizen-offline.config.ts
+pnpm --filter mobile test:e2e -- --assert-sos-duration 30000   # the emergency-path budget
 
 # supervisor (file 18)
 make eval AGENT=supervisor
