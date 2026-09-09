@@ -15,8 +15,8 @@ the only supervision signal it will ever get.
 
 Free text cannot be aggregated, and the number that matters is the *distribution* — which
 kind of mistake this agent makes most. So the reason comes from
-`incident_svc.domain.dispatch_gate.RejectionReason`, the same list the API enforces, and the
-note carries whatever else the dispatcher wants to say. `OTHER` still requires a note,
+`sarana_shared.domain.rejection_reasons.RejectionReason`, the same list the API enforces,
+and the note carries whatever else the dispatcher wants to say. `OTHER` still requires a note,
 because an untyped rejection with no explanation teaches nothing.
 """
 
@@ -27,7 +27,7 @@ from typing import Any, Final
 
 import structlog
 
-from incident_svc.domain.dispatch_gate import RejectionReason
+from sarana_shared.domain.rejection_reasons import RejectionReason
 
 _log = structlog.get_logger(__name__)
 

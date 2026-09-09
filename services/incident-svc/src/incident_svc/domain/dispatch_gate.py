@@ -35,13 +35,13 @@ services to re-derive a fact core-api already established.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import Any, Protocol
 from uuid import UUID
 
 import structlog
 
 from sarana_shared.auth.principal import STEP_UP_WINDOW, Principal
+from sarana_shared.domain.rejection_reasons import RejectionReason as RejectionReason
 from sarana_shared.domain.time import utc_now
 
 _log = structlog.get_logger(__name__)
@@ -50,20 +50,10 @@ _log = structlog.get_logger(__name__)
 # were meant to be equal are two constants that eventually are not, and the one that would
 # silently win is the looser.
 
-
-class RejectionReason(StrEnum):
-    """Why a dispatcher turned a plan down.
-
-    A fixed taxonomy, because rejections are the highest-value training signal the system
-    produces and free text cannot be aggregated. `OTHER` still requires a note.
-    """
-
-    WRONG_PRIORITY = "wrong_priority"
-    DUPLICATE = "duplicate"
-    RESOURCE_UNAVAILABLE = "resource_unavailable"
-    ALREADY_HANDLED = "already_handled"
-    BAD_LOCATION = "bad_location"
-    OTHER = "other"
+# `RejectionReason` lives in `sarana_shared.domain.rejection_reasons` for the same reason:
+# the triage agent offers this exact list to a dispatcher and agent-svc cannot import this
+# service's code. Re-exported under its own name so the gate, the API model and the tests
+# below are unchanged.
 
 
 class GateRefused(Exception):

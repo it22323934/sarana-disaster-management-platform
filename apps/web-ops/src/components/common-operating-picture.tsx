@@ -134,6 +134,15 @@ export function CommonOperatingPicture() {
 
   return (
     <div className="flex h-[calc(100vh-9rem)] flex-col gap-3 p-4">
+      {/* `sr-only`, not absent. Every other console screen renders a visible `h1`; this one
+          is a three-pane operating picture sized to `100vh` where a title bar would cost a
+          row of the queue, so the heading is there for the document outline and not for the
+          layout. Without it this screen started at `h2` and a screen-reader user landing on
+          the console's home route was given no name for it at all - the one page in the
+          console with no heading. `cop.title` has been translated in all three locales
+          since file 20; it was simply never rendered. */}
+      <h1 className="sr-only">{t('title')}</h1>
+
       {/* The console's own trilingual banner rather than the server's `banner` string,
           which is English only. The ordering rule is shown beside it, because "manual
           ordering" is less useful to a dispatcher than the name of the rule doing it. */}

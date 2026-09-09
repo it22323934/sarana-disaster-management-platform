@@ -19,45 +19,33 @@ from typing import Any, Final
 
 from sarana_shared.domain.time import utc_now
 
+# The saturation points and type weights live in `sarana_shared.domain.triage_weights`,
+# because the triage agent applies the same numbers in an extended formula and agent-svc
+# cannot import this service's code. Re-exported here so the rule below, and the
+# vocabulary test that checks these keys against the database's CHECK constraint, read as
+# though this module still owns them.
+from sarana_shared.domain.triage_weights import (
+    AGE_SATURATION_MINUTES as AGE_SATURATION_MINUTES,
+)
+from sarana_shared.domain.triage_weights import (
+    INCIDENT_TYPE_WEIGHTS as INCIDENT_TYPE_WEIGHTS,
+)
+from sarana_shared.domain.triage_weights import (
+    PEOPLE_SATURATION as PEOPLE_SATURATION,
+)
+from sarana_shared.domain.triage_weights import (
+    UNKNOWN_TYPE_WEIGHT as UNKNOWN_TYPE_WEIGHT,
+)
+
 # How much each factor can contribute. They sum to 1.0 so the score is readable as a
 # fraction, and a dispatcher can see which half of the score came from which concern.
+#
+# These four stay here: they are this rule's own division of the score, and the agent's
+# extended formula deliberately uses different ones over more terms.
 WEIGHT_PEOPLE_AT_RISK: Final = 0.40
 WEIGHT_VULNERABILITY: Final = 0.20
 WEIGHT_INCIDENT_TYPE: Final = 0.25
 WEIGHT_AGE: Final = 0.15
-
-# The count at which the people-at-risk factor saturates. Beyond this the incident is
-# already the most serious kind there is, and further scaling would let one very large
-# report crowd out every other.
-PEOPLE_SATURATION: Final = 50
-
-# Minutes after which the age factor saturates. Two hours: long enough that a fresh report
-# does not outrank a serious older one, short enough that nothing waits a whole shift.
-AGE_SATURATION_MINUTES: Final = 120
-
-# Incident type weights, ordered by how quickly the situation kills someone unattended.
-#
-# The keys are exactly `incident.incident`'s CHECK vocabulary. A weight for a type the
-# database rejects would be dead code; a type with no weight would silently drop to the
-# mid-table default, which is the quieter and worse failure. A test asserts the two lists
-# match.
-INCIDENT_TYPE_WEIGHTS: Final[dict[str, float]] = {
-    "MEDICAL": 1.00,
-    "TRAPPED": 1.00,
-    "STRUCTURAL_COLLAPSE": 0.95,
-    "LANDSLIDE": 0.90,
-    "FLOOD": 0.75,
-    "MISSING_PERSON": 0.70,
-    "EVACUATION_NEEDED": 0.65,
-    "SUPPLIES_NEEDED": 0.40,
-    "INFRASTRUCTURE": 0.35,
-    "OTHER": 0.30,
-}
-
-# An unrecognised type sits mid-table rather than at either end. Bottom would bury a real
-# emergency someone described in words we did not anticipate; top would let any unknown
-# string jump the queue.
-UNKNOWN_TYPE_WEIGHT: Final = 0.50
 
 MODEL_VERSION: Final = "rule-v1"
 

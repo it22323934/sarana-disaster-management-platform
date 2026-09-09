@@ -29,6 +29,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, Final
+from urllib.parse import quote
 
 import structlog
 
@@ -122,13 +123,49 @@ def psycopg_dsn(url: str) -> str:
     return f"{scheme.split('+', 1)[0]}{separator}{rest}"
 
 
+# The schema LangGraph's tables live in, created by agent_svc_0005. It is the one schema
+# the application role may create in, and it holds no domain data - see that migration for
+# why that does not weaken the row-level security discipline.
+CHECKPOINT_SCHEMA: Final = "agent_checkpoint"
+
+
+def with_checkpoint_schema(dsn: str, *, schema: str = CHECKPOINT_SCHEMA) -> str:
+    """The same DSN, pointed at the schema the checkpointer owns.
+
+    `setup()` issues unqualified `CREATE TABLE`, so where its tables land is decided
+    entirely by `search_path`. Left at the default they would go to `public`, where the
+    application role has no CREATE and the service fails to boot with `permission denied
+    for schema public` - a message that reads like a misconfigured database rather than a
+    deliberate grant it is running into.
+
+    Set through the connection's `options` rather than by altering the role's search_path,
+    so it applies to this connection only. Everything else the service does reaches
+    Postgres through SQLAlchemy with fully-qualified schemas, and a role-level search_path
+    would silently change where an unqualified query elsewhere resolves.
+
+    `public` is kept on the path after it, because the shared helper functions the
+    checkpointer's own statements may reach for live there.
+
+    Percent-encoded with `quote`, never `quote_plus`. libpq decodes `%20` in a connection
+    URI and does *not* treat `+` as a space - that is an HTML form convention - so the
+    plus-encoded form arrives as the literal parameter name `-c+search_path` and the
+    connection fails with `unrecognized configuration parameter`, naming nothing that
+    appears anywhere in this repository.
+    """
+    option = f"-c search_path={schema},public"
+    separator = "&" if "?" in dsn else "?"
+    return f"{dsn}{separator}options={quote(option, safe='')}"
+
+
 @asynccontextmanager
 async def durable_checkpointer(dsn: str) -> AsyncIterator[Any]:
     """A Postgres checkpointer, set up and ready.
 
-    `setup()` creates LangGraph's own tables on first use. It is idempotent, so calling it
-    at every boot is right: a deployment that forgot to run a migration should still come
-    up rather than fail on the first interrupt.
+    `setup()` creates LangGraph's own tables on first use, in the `agent_checkpoint`
+    schema. It is idempotent, so calling it at every boot is right: a deployment that
+    forgot to run a migration should still come up rather than fail on the first interrupt.
+    The schema itself is not created here — `agent_svc_0005` makes it, because granting the
+    application role CREATE is a migration's decision and not a service's.
 
     Imported lazily so a test importing this module does not need the driver.
 
@@ -152,7 +189,9 @@ async def durable_checkpointer(dsn: str) -> AsyncIterator[Any]:
             "paused on a human decision is then lost on restart."
         )
 
-    async with AsyncPostgresSaver.from_conn_string(psycopg_dsn(dsn)) as saver:
+    async with AsyncPostgresSaver.from_conn_string(
+        with_checkpoint_schema(psycopg_dsn(dsn))
+    ) as saver:
         await saver.setup()
         _log.info("checkpointer_ready", kind="postgres")
         yield saver

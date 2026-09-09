@@ -50,7 +50,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Final, Protocol
 
-from incident_svc.domain.triage import (
+from sarana_shared.domain.triage_weights import (
     AGE_SATURATION_MINUTES,
     INCIDENT_TYPE_WEIGHTS,
     PEOPLE_SATURATION,
@@ -176,7 +176,8 @@ def age_factor(minutes: float, *, saturation: float = AGE_SATURATION_MINUTES) ->
     medical call - which is the opposite of the starvation this factor exists to prevent,
     and harder to notice because the queue still looks busy.
 
-    Saturation is `incident_svc.domain.triage.AGE_SATURATION_MINUTES` - two hours - so this
+    Saturation is `sarana_shared.domain.triage_weights.AGE_SATURATION_MINUTES` - two hours -
+    so this
     agent and the deterministic scorer age incidents at the same rate.
     """
     return _clamp(minutes / saturation) if saturation > 0 else 0.0
