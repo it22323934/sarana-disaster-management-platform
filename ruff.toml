@@ -48,6 +48,9 @@ ignore = [
 # Same: a generator reports what it wrote. S105 covers the demo account password, which is
 # published on purpose and only ever loaded into a local database.
 "tools/seed/**" = ["T20", "S105"]
+# The fixture generators are command-line tools; printing what they wrote is the
+# whole interface. Same reasoning as the seed generators above.
+"tools/fixtures/**" = ["T20"]
 
 [lint.isort]
 known-first-party = [

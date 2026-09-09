@@ -406,6 +406,123 @@ against a served build; `apps/web-ops/scripts/performance-budget.ts` has the pat
 the budget script says so rather than printing a number it did not measure.
 
 
+## The mobile app
+
+One Expo app, two role-gated surfaces. A citizen gets `(citizen)`; a GN officer gets
+`(field)`, the Field Companion. Underneath both is a sync engine that assumes the network is
+absent (file 22).
+
+```bash
+pnpm --filter mobile dev            # expo start
+pnpm --filter mobile test           # 423, real SQLite, no device needed
+pnpm --filter mobile verify-i18n    # 330 keys x si/ta/en, and every key the code uses
+pnpm --filter mobile typecheck
+```
+
+**The tests need no device and that is deliberate.** `test-support/node-database.ts` puts
+Node's built-in SQLite behind the same `Database` port `expo-sqlite` implements, so the
+migrations, the CHECK constraints and the SQL that ships are the ones under test. The rules
+that lose a household's assessment if they are wrong are all plain TypeScript, and a rule
+that can only be checked by booting an emulator is a rule that gets checked once.
+
+### The Field Companion
+
+The tool a GN officer uses for days at a time with no connectivity. Eleven routes:
+
+| Route | What it is |
+|---|---|
+| `/(field)` | Today: the offline permit, what is queued, what is on this device |
+| `/(field)/assessments` | Every assessment on this handset, fully offline |
+| `/(field)/assessments/new` | The core flow, target under 90 seconds |
+| `/(field)/households` | The division's register, encrypted, searchable offline |
+| `/(field)/households/new` | A household the register does not have |
+| `/(field)/paper` | Scan a paper form's QR and transcribe it |
+| `/(field)/intake` | A report taken on behalf of someone with no phone |
+| `/(field)/sync` | The queue, conflicts side by side, export and import |
+| `/(field)/division` | Boundaries, forecast, active alerts |
+
+```bash
+pnpm --filter mobile test -- field               # 84: the six-hour session, validation, register
+pnpm --filter mobile test -- entitlement-parity  # 111: the device against the server
+pnpm --filter mobile test -- log-pii-sweep       # 11: no household name reaches a log
+pnpm --filter mobile test:e2e -- --config field-offline-6h.config.ts   # 9 flows; needs a device
+```
+
+### The number two implementations have to agree on
+
+The form shows a provisional entitlement computed **on the device**, so an officer catches an
+obvious data-entry error while they are still standing in front of the house. The server
+recomputes on submission and its figure is the one that is paid.
+
+They therefore have to be identical, including the working — the officer reads it out.
+
+`data/fixtures/entitlement/cases.json` is the contract: eighteen cases across all nine damage
+categories, generated from `ledger_svc.domain.entitlement.calculate`, read by a test on each
+side.
+
+```bash
+uv run pytest tests/ledger/test_entitlement_fixtures.py    # the Python still produces it
+pnpm --filter mobile test -- entitlement-parity            # the device produces it too
+uv run python -m tools.fixtures.entitlement_cases          # regenerate, deliberately
+```
+
+Regenerate only when the calculation is *meant* to change, and read the whole diff. Every
+line that moves is a figure some household would have been told.
+
+### The register is encrypted, and the search says what it cannot do
+
+Names and contact numbers are stored as ciphertext; there is no plaintext column. Offline
+search works over `name_search`, a keyed hash of each normalised name token.
+
+**That means whole tokens only.** Typing `Per` will not find `Perera`, and the search screen
+says so rather than showing an empty list — an empty list reads as "no such household" and
+would send an officer to create a duplicate. The alternative is a plaintext index, which is
+the thing the design exists to avoid.
+
+It is not anonymity either: anyone with the device *and* the key can confirm whether a name
+is in the register. That is why the key belongs in the OS keystore and not in the database.
+
+**The cipher is not wired yet.** `unavailableCipher` throws a named error rather than storing
+plaintext, so the register is visibly empty until `expo-secure-store` plus AES-GCM lands. A
+visibly broken register is recoverable; an invisibly leaking one is not.
+
+### Six hours in airplane mode, killed twice
+
+The brief's worst case, and it runs on every commit without a device:
+
+```bash
+pnpm --filter mobile test -- field-offline
+```
+
+Forty assessments and eighty photographs across a six-hour offline session, the app killed
+twice — modelled by closing the SQLite handle and reopening it against the same file, which
+is what a process kill leaves behind. Then reconnected: all forty sync exactly once and all
+eighty photographs arrive linked to the assessment that explains them.
+
+A duplicate there is two payments against one household. A loss is none.
+
+The photographs need several sync runs and that is the design: the engine uploads a bounded
+number of media items per run so a 4MB photo cannot hold up a 200-byte assessment. The test
+loops until the queue drains and fails if it stalls.
+
+### Things worth knowing before you change any of it
+
+**A conflict is never resolved for the officer.** `mayAutoResolve()` returns `false` as a
+named function rather than as an absence, so a change that wants to auto-merge has to delete
+something and read why. There is no rule that can pick correctly — the officer was in the
+division and the server was not.
+
+**The queue export is idempotent because the officer will import it twice.** Every operation
+keeps its original `client_operation_id`, which is the server's idempotency key, so a dying
+handset that later reaches a signal cannot produce a second copy. The `seq` is reallocated by
+the receiving device: a sequence position belongs to one device.
+
+**Nothing logs a household.** `src/field/safe-log.ts` redacts by field name rather than by
+scanning strings, so a decrypted `Household` has no path through the logger that keeps its
+name. On Android, logcat is readable by any connected computer and is what a crash reporter
+uploads.
+
+
 ## Things that will confuse you otherwise
 
 **The hierarchy cache holds misses.** `/admin/resolve` caches negative answers for an hour,
@@ -530,11 +647,12 @@ goes anywhere.
 ## What is not built yet
 
 All six backend services are complete and the stack boots, the design system above them
-exists, and both web surfaces are built. What is missing is the three mobile apps and the
-platform files. Working backwards from the build files:
+exists, both web surfaces are built, and the mobile app has both of its surfaces. What is
+missing is the platform files: AWS, observability, security hardening, the seed and
+simulation work, CI, and the demo script. Working backwards from the build files:
 
-- **The design system, the ops console and the public dashboard are built. The mobile apps
-  are not started.** `packages/ui` has tokens, a three-script type scale, 34 components,
+- **The design system, both web apps and both mobile surfaces are built. Files 25 to 30 are
+  not started.** `packages/ui` has tokens, a three-script type scale, 34 components,
   four CI gates and a server-only entry point. `apps/web-public` has every route the brief
   names - the overview with its failure figures at the same size as its good news, the
   allocation funnel, the district choropleth with a table beside it, the DS drill-down with

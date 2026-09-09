@@ -9,7 +9,7 @@ Read [RUNNING.md](RUNNING.md) first if you have not booted the stack.
 ## Where the build has got to
 
 The repository is organised around 30 numbered build files in `.claude/`. Progress is
-strictly sequential. **Files 03-23 are complete.** Every route both web surfaces name is
+strictly sequential. **Files 03-24 are complete.** Every route both web surfaces name is
 built and tested end to end in a browser; no route renders a "not built" screen. Closing
 file 20 needed five read endpoints the platform had data for and no way to return, and it
 turned up two finished screens that no user could reach. Closing file 21 needed six more
@@ -19,7 +19,10 @@ failed. File 22 needed no new endpoints at all — the offline sync contract has
 waiting on the server since file 10 — and it turned up two bugs in its own engine that
 only a test could find. File 23 needed one endpoint and moved one rule: the citizen
 confirmation loop existed for SMS and had no door for the app, and quiet hours were about
-to be written a third time. The next work is 24.
+to be written a third time. File 24 needed no new endpoints either, and turned up three
+bugs in its own tests — including a test double that modelled a hash as a
+prefix-preserving encoding, which made the household register look capable of a search it
+cannot do. The next work is 25.
 
 | File | Area | State |
 |---|---|---|
@@ -44,25 +47,30 @@ to be written a third time. The next work is 24.
 | **21** | **Public dashboard** | **Done — 11 routes, 34 static pages, 114 browser tests** |
 | **22** | **Mobile foundation** | **Done — offline core, sync engine, 143 tests** |
 | **23** | **Citizen app** | **Done — 16 routes, 30s emergency path, 217 tests total** |
-| 24 | Mobile (field companion) | Shell only |
+| **24** | **Field companion** | **Done — 11 routes, on-device entitlement parity, 423 tests** |
 | 25–29 | AWS, observability, security, seed, CI | Not started |
 | 30 | Demo script | Not started |
 
-On the TypeScript side, **769 tests pass**: 66 unit and 33 axe-over-every-story in
+On the TypeScript side, **975 tests pass**: 66 unit and 33 axe-over-every-story in
 `packages/ui`, 58 in `packages/ts-shared`, in `apps/web-ops` 73 unit, 75 axe across
 **25 screens x three locales** and **96 Playwright tests in a real Chromium**, in
 `apps/web-public` 70 unit plus **114 in Chromium against a production build** — 37 PII
 sweep, 33 axe, 38 overflow and 6 with JavaScript genuinely disabled — and in `apps/mobile`
-**217 against a real SQLite engine and a fake server that follows the real sync contract**.
+**423 against a real SQLite engine and a fake server that follows the real sync contract**,
+of which 196 are file 24's: 111 of those hold the on-device entitlement to the server's,
+field for field, over a fixture both languages read.
 `pnpm lint`, `pnpm typecheck` and all seven of file 19's Definition of Done commands are
 clean. Of file 20's four, three pass; the fourth reports a measured LCP that the stack
 cannot meet, and says so with the evidence rather than passing quietly. **All five of file
-21's pass.** Of file 22's three and file 23's three, two pass; the other four need an
-Android device and say so rather than skipping — see the file 22 section.
+21's pass.** Of file 22's three, file 23's three and file 24's four, five pass; the other
+five need an Android device and say so rather than skipping — see the file 22 section.
 
 On the Python side:
-**1,777 collected across `tests/` and `packages/py-shared/tests`**. `ruff check`,
-`ruff format --check` and `mypy` (346 source files) all clean. File 21 added 37: 22 under
+**1,798 collected across `tests/` and `packages/py-shared/tests`**. `ruff check`,
+`ruff format --check` and `mypy` (346 source files) all clean. File 24 added 21 under
+`tests/ledger/test_entitlement_fixtures.py` — the Python half of the entitlement parity
+contract, over the same `data/fixtures/entitlement/cases.json` the handset reads. File 21
+added 37: 22 under
 `tests/ledger/test_public_aggregates.py`, 8 under `tests/alerting/test_public_alerts.py`
 and 7 under `tests/core_api/test_public_areas.py`. All three are deliberately
 database-free — they read the SQL text and a pure function — because a privacy property
@@ -77,9 +85,9 @@ under `tests/ledger/test_console_vocabularies.py` — the last two are cross-lan
 vocabulary gates, checking the console's scope names and enumerations against the Python
 ones it cannot import.
 
-**A note on the Python count, so nobody reads it as a regression.** 245 of those 1,777 are
+**A note on the Python count, so nobody reads it as a regression.** 245 of those 1,798 are
 database-backed and error without Docker; on the machine this was written on Docker Desktop
-was not running, so what was verified was **1,532 passed, 0 failed**. The 245 are the same
+was not running, so what was verified was **1,553 passed, 0 failed**. The 245 are the same
 tests that passed in the file 20 run and none of them was touched. Boot Docker and run the
 suite before trusting any count in this file.
 
@@ -3623,6 +3631,199 @@ against. As with file 22, none of it has run: no `maestro`, no device.
 
 ---
 
+## File 24 is done — the Field Companion, and the number two implementations have to agree on
+
+Eleven routes on the `(field)` surface, and underneath them the modules that decide whether
+a GN officer's day survives contact with a dead battery. 196 tests added, 423 in the mobile
+package, none needing a device.
+
+The brief calls offline reliability here "the highest-stakes engineering in the project",
+and the reason is arithmetic rather than sentiment: if this app fails in the field the Aid
+Ledger has no input, and the entire Sustain loop is empty. Everything below follows from
+treating that literally.
+
+### The device and the server compute the same entitlement, and a fixture holds them to it
+
+`apps/mobile/src/field/entitlement.ts` is a port of `ledger_svc.domain.entitlement.calculate`,
+step for step and string for string. It exists so an officer sees the figure while they are
+still standing in front of the house — an obvious data-entry error caught there costs thirty
+seconds, and caught three weeks later in a rejection it costs a household a month and a
+return visit that may not happen.
+
+It is not the authoritative calculation and the screen says so twice. What it has to be is
+**identical**, because a provisional figure that differs from the final one is worse than no
+figure: the officer says 185,000 and the household receives 150,000, and the officer is the
+one standing there when it happens.
+
+`data/fixtures/entitlement/cases.json` is the contract. Eighteen cases across all nine
+damage categories, generated from the Python by `tools/fixtures/entitlement_cases.py`, read
+by two tests:
+
+- `tests/ledger/test_entitlement_fixtures.py` — the Python still produces it.
+- `apps/mobile/test/entitlement-parity.test.ts` — the device produces it too, **every field
+  of the trace**, not just the total. A total that matched while the step descriptions
+  differed would still fail, and should: the working is what the officer reads out and what
+  gets hashed into the ledger entry.
+
+**The Python half is a regression guard, not an independent derivation**, and the file says
+so. It cannot catch a bug that was already in `calculate` when the fixture was written. What
+it catches is a change that silently moves every household's number, and what the TypeScript
+half catches is the device drifting from the server. Regenerate only when the calculation is
+*meant* to change, and read the whole diff.
+
+### DS division is the floor, and the brief asked for GN
+
+The brief's drill reaches GN division. The privacy floor suppresses any cell below five
+disbursements. In this seed those two requirements are irreconcilable: a GN division holds a
+few hundred households of which a handful are ever disbursed, so nearly every GN cell would
+suppress — and the survivors would be the largest divisions, which is a biased sample
+published as though it were the picture.
+
+So the register and the assessment list work at GN level, where they must, and **money is
+never grouped below DS division** — the same line the public dashboard draws, for the same
+reason.
+
+### What the ninety-second budget actually bought
+
+The brief sets "under 90 seconds per assessment, entirely offline". It is not a performance
+target; it is roughly how long an officer will spend on a form before they start filling it
+in approximately, and approximate assessments are what the Aid Ledger then pays against.
+
+Four things follow, and each one is a decision rather than an optimisation:
+
+**Nothing blocks.** `saveFieldAssessment` writes to SQLite and returns. No network call in
+the interaction path, no spinner, and the form goes straight back to blank — the brief's
+pace is 30 to 60 of these in a day, and a confirmation screen to dismiss is sixty taps
+nobody budgeted for.
+
+**The rate is on screen while the category is chosen.** An officer who has to remember what
+the schedule pays is an officer who guesses, and the guess becomes the number.
+
+**Every refusal names its bound.** "The 2026-03 schedule pays for at most 5 for CROP. You
+entered 9." A validator that cannot explain itself gets worked around, and a worked-around
+validator is worse than none because it still looks like a control.
+
+**The steps are sections, not wizard pages.** A wizard makes the officer wait for a
+transition seven times, which is most of the ninety seconds.
+
+### The register is encrypted, searchable, and honest about what it cannot do
+
+Three requirements pull against each other: it must work with no signal, names and numbers
+must not sit on a personal handset in the clear, and search must be instant.
+
+`name_cipher` and `contact_cipher` are the only columns holding them and there is no
+plaintext column to fall back to. `name_search` is a keyed hash of each normalised name
+token, so a query hashes the officer's term and matches on the hash.
+
+**What that gives up is stated on the screen, not buried.** The index supports whole-token
+matches only. An officer typing `Per` will not find `Perera`, and `matchedBy: 'none'` is what
+lets the search screen say so instead of showing an empty list — which reads as "there is no
+such household" and would send them to create a duplicate.
+
+It is also not anonymity: anyone with the device *and* the key can confirm whether a name is
+in the register. That is why the key lives in the OS keystore and not in the database — the
+attacker who has the SQLite file has the hashes, not the key.
+
+**Provisional households survive a register refresh.** A weekly Wi-Fi sync replaces the
+registry's rows; a household the officer created exists only on this device until it
+reconciles, so deleting it would throw away the record the register was missing in the first
+place. The register has gaps, and the households missing from it are disproportionately the
+ones with nothing — an officer who cannot record one will simply not record them.
+
+### Three bugs the tests found, all of them real
+
+**The test cipher was prefix-preserving, not a hash.** `hex('key::' + token).slice(0, 16)`
+truncates at exactly eight bytes, so `per` and `perera` produced the *same* search hash and
+the register appeared to support prefix search. It does not. A double that models the
+production cipher wrongly hides the one limitation the design has, so the double now uses a
+real digest and a test asserts a token and its prefix hash differently.
+
+**The queue importer applied the exporter's own corrupt-row marker.** `exportQueue` writes
+`{ unreadable: true, raw: ... }` for a payload that would not parse. That is an object, so a
+structural type check let it through — and importing one would put it in the log as though
+it were an assessment, which the server refuses as a conflict that then jams the queue **on
+the replacement handset**. The recovery path would have carried the failure across along
+with the work.
+
+**The paper-form privacy test failed on its own fixture.** `not.toMatch(/\d{12}/)` fired on
+the hazard event UUID, whose last group is twelve digits — the same false positive the
+public dashboard's PII sweep hit in file 21. A digit-run pattern cannot tell an identifier
+from a NIC. The test now asserts *which fields exist* and that the encoder has no property
+for a name, which is a structural guarantee rather than a regex over bytes.
+
+### The queue export is a recovery path, and it is idempotent because it has to be
+
+A handset with a dying battery, three weeks into a recovery, holding forty assessments that
+have never synced. The officer exports a file and sends it by whatever works; a replacement
+imports it.
+
+**Every operation keeps its original `client_operation_id`.** That id is the server's
+idempotency key, so if the dying phone ever reaches a signal after the import, the server
+stores one record rather than two. The `seq` is reallocated by the receiving device, because
+a sequence position belongs to one device and two cannot share one.
+
+The officer will import the file twice — they will not be sure the first attempt worked — so
+a second import applies nothing and says how many were already there. A row that cannot be
+read is **named**, not discarded: a file with one bad row still holds thirty-nine good ones,
+and a recovery path that gave up on the first would throw away the work it exists to save.
+
+### A conflict is never resolved for the officer, and `mayAutoResolve` exists to say so
+
+`src/field/conflicts.ts` describes a conflict and records a decision. It contains no rule
+that picks a side, and `mayAutoResolve()` returns `false` as a named function rather than as
+an absence — so a future change that wants to auto-merge has to delete something and read
+the paragraph explaining why.
+
+There is no rule that can pick correctly. The officer was in the division; the server was
+not. Merging automatically would settle a disagreement about what happened in a division in
+favour of whoever wrote the merge rule, silently, in a record that later becomes money.
+
+`accept-server` is offered only where the server actually holds a competing record. Offering
+it for `household_not_found` would mean "accept nothing", which is `discard` under a
+misleading label.
+
+### Household names never reach a log, and the defence is structural
+
+`src/field/safe-log.ts` redacts by **field name**, not by scanning strings after the fact. A
+blocklist over free text always loses; a whitelist over structure means a decrypted
+`Household` has no path through the logger that keeps its name. The message is redacted too,
+because interpolating a name into a string is the mistake a context-only redactor misses
+entirely.
+
+`test/log-pii-sweep.test.ts` drives real flows through a capturing sink — a register search,
+a raw row, an error carrying a contact number — and asserts the seeded Sinhala, Tamil and
+Latin names, the two phone formats, both NIC formats and an email appear nowhere. It also
+asserts the *sink itself* would catch a leak, because a PII sweep that passes by looking at
+nothing is the usual way one stops working.
+
+### Still placeholder, and honest about it
+
+- **The register cipher is not wired.** `unavailableCipher` throws a named error rather than
+  storing plaintext, and the household screens show it. `expo-secure-store` plus AES-GCM is
+  the real implementation. A visibly empty register is recoverable; an invisibly leaking one
+  is not, which is why the placeholder refuses rather than passing the value through.
+- **The camera and the QR scanner are not mounted.** `expo-camera` is a dependency and the
+  assessment form and `/paper` have the buttons and the state; what they do not have is the
+  capture, the EXIF strip or the perceptual hash. The typed field beside the scanner stays
+  regardless — a rained-on QR does not always scan, and an officer holding a readable form
+  is not helped by an app that insists on the camera.
+- **The offline map tiles are still not cached.** `@maplibre/maplibre-react-native` is a
+  dependency and `/division` says in words that tiles are cached for one division. Nothing
+  caches them yet. Carried from file 22.
+- **The app-level PIN is specified and not built.** The e2e flow is written and the strings
+  are in the catalogue; there is no lock screen. It is the one part of the security posture
+  that is a promise rather than a mechanism, and the handset it protects is the officer's
+  own.
+- **The nine e2e flows need a device.** `pnpm --filter mobile test:e2e -- --config
+  field-offline-6h.config.ts` names every flow and the failure each would catch, then exits
+  non-zero. It does not skip and it does not pass. Its deterministic twin — the six-hour
+  session with two process kills — runs on every commit against real SQLite in
+  `test/field-offline.test.ts`, and neither replaces the other.
+- **Remote wipe on deregistration is not implemented.** Named in the brief's security
+  posture; nothing on the device listens for it.
+
+---
+
 ## Things that will bite you
 
 These each cost real debugging time. They are written down so they cost you none.
@@ -3833,7 +4034,27 @@ Also: file 08 cites `Scope.DISPATCH_APPROVE`, which does not exist. The human ga
 - **Entitlement calculation reads one schedule line (file 10).** `POST /entitlements`
   values the assessment's single category. A household with damage in several categories
   needs several assessments today. The pure calculator underneath already handles multiple
-  items and the household cap; the endpoint does not yet pass them.
+  items and the household cap; the endpoint does not yet pass them. **File 24 records the
+  items on the device anyway** — `assessment_item` holds every line the officer entered, and
+  the synced payload carries the one that dominates the entitlement rather than the one
+  typed first. When the endpoint learns to take them the data is already there, and nobody
+  has to re-survey a division to recover it.
+- **The Field Companion's register cipher is not wired (file 24).** `unavailableCipher`
+  throws a named error rather than storing plaintext, and the household screens show it, so
+  the register is visibly empty until `expo-secure-store` plus AES-GCM is implemented. That
+  is the intended failure direction: a placeholder that passed the value through would let
+  the register work perfectly in a demo while writing every household's name to disk in the
+  clear.
+- **The camera, the QR scanner and the perceptual hash are not mounted (file 24).**
+  `expo-camera` is a dependency; the assessment form and `/paper` carry the buttons, the
+  state and the validation, and no capture, EXIF strip or hash. The typed field beside the
+  scanner is not a stopgap and stays either way — a rained-on QR does not always scan.
+- **The app-level PIN is specified and not built (file 24).** The e2e flow is written and
+  the strings are in all three catalogues; there is no lock screen. It is the one part of
+  the security posture that is a promise rather than a mechanism, on a handset that is the
+  officer's own property.
+- **Remote wipe on deregistration does not exist (file 24).** Named in the brief's security
+  posture; nothing on the device listens for it.
 - **Nothing starts the warning agent from an event (file 14).** `consumers/triggers.py`
   has no row for it. A forecast reaching class 4 does not currently draft an alert; the
   agent runs from `POST /api/v1/agents/warning/runs` only. Adding the row is deliberate
@@ -4045,17 +4266,25 @@ pnpm --filter @sarana/ui test                  # includes server.test.ts, the cl
 
 # mobile (file 22)
 pnpm --filter mobile typecheck
-pnpm --filter mobile test                      # 143, real SQLite, no device
-pnpm --filter mobile verify-i18n               # 69 keys x si/ta/en + every key the code uses
+pnpm --filter mobile test                      # 423, real SQLite, no device
+pnpm --filter mobile verify-i18n               # 330 keys x si/ta/en + every key the code uses
 pnpm --filter mobile test:e2e -- --config offline.config.ts   # 7 Maestro flows; needs a device
 pnpm --filter mobile dev                       # expo start
 eas build --profile preview --platform android --local
 npx vitest run test/vocabulary.test.ts --dir apps/mobile      # the device's copy of four Python enums
 
 # citizen app (file 23)
-pnpm --filter mobile test -- citizen             # 74 of the 217
+pnpm --filter mobile test -- citizen             # 74 of the 423
 pnpm --filter mobile test:e2e -- --config citizen-offline.config.ts
 pnpm --filter mobile test:e2e -- --assert-sos-duration 30000   # the emergency-path budget
+
+# field companion (file 24)
+pnpm --filter mobile test -- field               # 84: the 6h session, validation, register, paper
+pnpm --filter mobile test -- entitlement-parity  # 111: the device against the server, field for field
+pnpm --filter mobile test -- log-pii-sweep       # 11: no household name reaches any log line
+pnpm --filter mobile test:e2e -- --config field-offline-6h.config.ts   # 9 flows; needs a device
+uv run pytest tests/ledger/test_entitlement_fixtures.py    # the Python half of the same contract
+uv run python -m tools.fixtures.entitlement_cases          # regenerate the shared fixture
 
 # supervisor (file 18)
 make eval AGENT=supervisor

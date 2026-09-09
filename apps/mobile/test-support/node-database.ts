@@ -9,7 +9,10 @@
  * Nothing in `src/` imports this file, so Metro never bundles `node:sqlite`.
  */
 
+import { rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { DatabaseSync as DatabaseSyncType } from 'node:sqlite';
 
 import type { Database, SqlValue } from '../src/offline/db/types.js';
@@ -69,6 +72,35 @@ class NodeDatabase implements Database {
 }
 
 /** An empty in-memory database. Nothing is migrated; the caller decides. */
-export function openTestDatabase(): Database {
-  return new NodeDatabase(new DatabaseSync(':memory:'));
+/**
+ * A database for one test.
+ *
+ * In memory by default, which is what almost every test wants: fast, isolated, and gone
+ * when the test ends.
+ *
+ * **`name` opens a file instead, and that is what makes a process kill testable.** File
+ * 24's six-hour session closes the handle and reopens it against the same path twice,
+ * modelling the app being killed by Android while the camera is running. An in-memory
+ * database is discarded on close, so that test would pass by measuring nothing — every
+ * assessment would be "lost" and the assertion would be about the wrong thing. Anything
+ * the device is supposed to remember across a kill has to be in SQLite, and only a file
+ * proves it is.
+ *
+ * The file lands in the OS temp directory rather than the repository, so a killed test run
+ * leaves nothing behind that a later run would read.
+ */
+export function openTestDatabase(name?: string): Database {
+  const path = name ? join(tmpdir(), `sarana-test-${name}.sqlite`) : ':memory:';
+  return new NodeDatabase(new DatabaseSync(path));
+}
+
+/** Remove a file database created by `openTestDatabase`. Best effort; a leftover is harmless. */
+export function removeTestDatabase(name: string): void {
+  for (const suffix of ['', '-wal', '-shm']) {
+    try {
+      rmSync(join(tmpdir(), `sarana-test-${name}.sqlite${suffix}`));
+    } catch {
+      // Already gone, or held open on Windows. The next run uses a different name.
+    }
+  }
 }

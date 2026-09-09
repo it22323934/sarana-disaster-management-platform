@@ -376,9 +376,7 @@ async def confirm_receipt(
     if raised is None:  # pragma: no cover - `from_confirmation_reply` returns a NO here
         raise NotFound("The answer could not be turned into a grievance.")
 
-    stored = await queries.insert_grievance(
-        session, **raised.as_columns(grievance_id=uuid7())
-    )
+    stored = await queries.insert_grievance(session, **raised.as_columns(grievance_id=uuid7()))
 
     publish(
         session,
