@@ -18,7 +18,7 @@ import { formatLKR } from '@sarana/ts-shared/format';
 
 import { Button, Card, Heading, Screen, Text } from '../../../src/components/primitives.js';
 import { useLocale, useSession } from '../../../src/providers/index.js';
-import { SPACE, touchTarget } from '../../../src/theme/index.js';
+import { ACCENT, SPACE, touchTarget } from '../../../src/theme/index.js';
 
 interface AssessmentSummary {
   readonly id: string;
@@ -110,7 +110,7 @@ export default function AidTab() {
                 accessibilityRole="button"
                 style={{ minHeight: touchTarget('min'), justifyContent: 'center' }}
               >
-                <Text size="sm" colour="#0E7C86">
+                <Text size="sm" colour={ACCENT}>
                   {t('aid.grievanceOpen')}
                 </Text>
               </Pressable>
@@ -139,7 +139,7 @@ export default function AidTab() {
                 <Text size="sm" muted>
                   {t('aid.entitlementStatus', { status: entitlement.status })}
                 </Text>
-                <Text size="sm" colour="#0E7C86">
+                <Text size="sm" colour={ACCENT}>
                   {t('aid.explain.title')}
                 </Text>
               </Card>

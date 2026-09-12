@@ -200,7 +200,7 @@ describe('the interface palette', () => {
   });
 
   it('darkens the primary button on hover rather than lightening it', () => {
-    // The brief names --signal-400 as the hover. White on it is 3.16:1, and a hover
+    // The brief names --signal-400 as the hover. White on it is 2.69:1, and a hover
     // state is not exempt from SC 1.4.3 - the label would drop below AA at the moment
     // the pointer was on it.
     expect(contrastRatio('#FFFFFF', SIGNAL[600])).toBeGreaterThanOrEqual(AA_TEXT);

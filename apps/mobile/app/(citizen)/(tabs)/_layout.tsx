@@ -14,7 +14,7 @@ import { Tabs } from 'expo-router';
 import { useColorScheme } from 'react-native';
 
 import { useLocale } from '../../../src/providers/index.js';
-import { SURFACES, fontScale, touchTarget, type } from '../../../src/theme/index.js';
+import { ACCENT, SURFACES, fontScale, touchTarget, type } from '../../../src/theme/index.js';
 
 export default function CitizenTabs() {
   const { t, locale } = useLocale();
@@ -25,7 +25,7 @@ export default function CitizenTabs() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#0E7C86',
+        tabBarActiveTintColor: ACCENT,
         tabBarInactiveTintColor: surface.muted,
         tabBarStyle: {
           backgroundColor: surface.raised,

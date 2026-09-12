@@ -17,7 +17,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Text, useSurface } from '../../components/primitives.js';
 import { useLocale } from '../../providers/LocaleProvider.js';
-import { SPACE, fontScale, touchTarget } from '../../theme/index.js';
+import { ACCENT, SPACE, fontScale, touchTarget } from '../../theme/index.js';
 
 /**
  * The cap incident-svc enforces at presign.
@@ -98,7 +98,7 @@ export function VoiceNoteButton({ uri, onRecorded }: VoiceNoteButtonProps) {
             width: size,
             height: size,
             borderRadius: size / 2,
-            backgroundColor: recording ? '#DC2626' : uri ? '#2F6F4E' : '#0E7C86',
+            backgroundColor: recording ? '#DC2626' : uri ? '#2F6F4E' : ACCENT,
           },
         ]}
       >

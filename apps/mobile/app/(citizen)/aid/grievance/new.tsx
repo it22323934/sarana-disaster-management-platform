@@ -25,7 +25,7 @@ import {
 import { translator, LOCALES } from '../../../../src/i18n/index.js';
 import { useLocale, useOffline, useSession } from '../../../../src/providers/index.js';
 import { TextField } from '../../../../src/components/TextField.js';
-import { RADIUS, SPACE, touchTarget } from '../../../../src/theme/index.js';
+import { ACCENT, RADIUS, SPACE, touchTarget } from '../../../../src/theme/index.js';
 
 export default function NewGrievanceScreen() {
   const params = useLocalSearchParams<{ subject?: string; id?: string; reason?: string }>();
@@ -113,8 +113,8 @@ export default function NewGrievanceScreen() {
                 styles.reason,
                 {
                   minHeight: touchTarget('min'),
-                  backgroundColor: active ? '#0E7C86' : surface.card,
-                  borderColor: active ? '#0E7C86' : surface.divider,
+                  backgroundColor: active ? ACCENT : surface.card,
+                  borderColor: active ? ACCENT : surface.divider,
                 },
               ]}
             >

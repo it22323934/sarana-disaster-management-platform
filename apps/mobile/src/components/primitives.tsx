@@ -21,7 +21,7 @@ import type { StyleProp, TextStyle, ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useLocale } from '../providers/LocaleProvider.js';
-import { RADIUS, SPACE, SURFACES, touchTarget, type, type TypeSize } from '../theme/index.js';
+import { ACCENT, RADIUS, SPACE, SURFACES, touchTarget, type, type TypeSize } from '../theme/index.js';
 
 export function useSurface() {
   return SURFACES[useColorScheme() === 'dark' ? 'dark' : 'light'];
@@ -155,7 +155,7 @@ export function Button({
   const minHeight = touchTarget(size === 'sos' ? 'sos' : 'min');
 
   const background =
-    variant === 'primary' ? '#0E7C86' : variant === 'danger' ? '#DC2626' : 'transparent';
+    variant === 'primary' ? ACCENT : variant === 'danger' ? '#DC2626' : 'transparent';
   const foreground = variant === 'secondary' ? surface.text : '#FFFFFF';
 
   return (

@@ -23,11 +23,11 @@ export const saranaTokens = {
       "900": "#101720"
     },
     "signal": {
-      "100": "#D6F0F2",
-      "400": "#14A0AC",
-      "500": "#0E7C86",
-      "600": "#0A5F67",
-      "700": "#09727B"
+      "100": "#DBEAF5",
+      "400": "#52A5E0",
+      "500": "#0E69AA",
+      "600": "#0B5284",
+      "700": "#094671"
     },
     "verify": {
       "400": "#45A272",
@@ -44,12 +44,12 @@ export const saranaTokens = {
       "light": "#D9E0EA"
     },
     "focusRing": {
-      "dark": "#14A0AC",
-      "light": "#0E7C86"
+      "dark": "#52A5E0",
+      "light": "#0E69AA"
     },
     "textAccent": {
-      "dark": "#14A0AC",
-      "light": "#0A5F67"
+      "dark": "#52A5E0",
+      "light": "#0B5284"
     },
     "surfaces": {
       "dark": {

@@ -15,7 +15,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Text, useSurface } from '../../components/primitives.js';
 import { useLocale } from '../../providers/LocaleProvider.js';
-import { RADIUS, SPACE, touchTarget } from '../../theme/index.js';
+import { ACCENT, RADIUS, SPACE, touchTarget } from '../../theme/index.js';
 
 /** How high the quick buttons go before the stepper takes over. */
 const QUICK = [0, 1, 2, 3, 4, 5] as const;
@@ -52,8 +52,8 @@ export function PeopleAtRisk({ value, onChange }: PeopleAtRiskProps) {
                 {
                   minWidth: size,
                   minHeight: size,
-                  backgroundColor: active ? '#0E7C86' : surface.card,
-                  borderColor: active ? '#0E7C86' : surface.divider,
+                  backgroundColor: active ? ACCENT : surface.card,
+                  borderColor: active ? ACCENT : surface.divider,
                 },
               ]}
             >
@@ -77,8 +77,8 @@ export function PeopleAtRisk({ value, onChange }: PeopleAtRiskProps) {
             minHeight: size,
             // Same weight as a number, never a quieter escape hatch. Making it look like
             // a refusal to answer is how a guess gets entered instead.
-            backgroundColor: value === null ? '#0E7C86' : surface.card,
-            borderColor: value === null ? '#0E7C86' : surface.divider,
+            backgroundColor: value === null ? ACCENT : surface.card,
+            borderColor: value === null ? ACCENT : surface.divider,
           },
         ]}
       >

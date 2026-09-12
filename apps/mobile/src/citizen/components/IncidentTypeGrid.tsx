@@ -17,7 +17,7 @@ import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { INCIDENT_TYPES, type IncidentType } from '../report-draft.js';
 import { Text, useSurface } from '../../components/primitives.js';
 import { useLocale } from '../../providers/LocaleProvider.js';
-import { RADIUS, SPACE, fontScale, touchTarget } from '../../theme/index.js';
+import { ACCENT, ACCENT_DEEP, RADIUS, SPACE, fontScale, touchTarget } from '../../theme/index.js';
 
 /**
  * One shape per type.
@@ -114,8 +114,8 @@ export function IncidentTypeGrid({ selected, onSelect }: IncidentTypeGridProps) 
               styles.tile,
               {
                 minHeight: tile,
-                backgroundColor: active ? (scheme === 'dark' ? '#0A5F67' : '#0E7C86') : surface.card,
-                borderColor: active ? '#0E7C86' : surface.divider,
+                backgroundColor: active ? (scheme === 'dark' ? ACCENT_DEEP : ACCENT) : surface.card,
+                borderColor: active ? ACCENT : surface.divider,
               },
             ]}
           >

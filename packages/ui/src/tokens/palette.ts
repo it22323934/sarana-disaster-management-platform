@@ -40,31 +40,47 @@ export const PAPER = {
   900: '#101720',
 } as const satisfies Record<number, Hex>;
 
+/**
+ * The interface accent. Azure, at hue 205.
+ *
+ * The brief specified a teal ramp (`#0E7C86` and its neighbours). It was moved to azure
+ * because teal reads as a product colour and this is a government transparency surface;
+ * blue is the register the audience already associates with a public record. The move is
+ * along the cool axis, so the rule this file exists to enforce is untouched - azure is
+ * further from the severity ramp than the teal it replaces, not closer.
+ *
+ * Every value below was solved for rather than chosen by eye. The ramp has to satisfy
+ * nine pairings at once, and two of them pull against each other: `--signal-400` must
+ * clear 4.5:1 as accent text on all three dark surfaces, while white on `--signal-400`
+ * must stay *below* 4.5:1 so the hover rule below still means something. Hues past ~220
+ * have no solution at all - the window closes - which is why this is azure and not
+ * indigo. Worst-case headroom across the nine is +1.09.
+ */
 export const SIGNAL = {
   /**
    * derived - the primary action darkens on hover, it does not lighten.
    *
    * The brief names `--signal-400` as the hover state. White on `--signal-400` is
-   * 3.16:1 and a hover state is not exempt from SC 1.4.3, so a button that lightened
+   * 2.35:1 and a hover state is not exempt from SC 1.4.3, so a button that lightened
    * would drop its own label below AA at the moment the pointer was on it.
    * `--signal-400` keeps its other role - the accent, link and focus colour on the dark
    * base, where it is measured against `--ink-900`/`--ink-800`/`--ink-700` and passes.
    */
-  600: '#0A5F67',
-  /** brief - primary action */
-  500: '#0E7C86',
-  /** brief - accent and focus on dark; hover only where it is not carrying white text */
-  400: '#14A0AC',
+  600: '#0B5284',
+  /** primary action. White on it is 5.80:1. */
+  500: '#0E69AA',
+  /** accent and focus on dark; hover only where it is not carrying white text */
+  400: '#52A5E0',
   /**
    * derived - text on the `--signal-100` tint.
    *
-   * `--signal-500` on `--signal-100` is 4.15:1. The tint is a real surface in this
-   * system (selected rows, the active filter chip), so it needed a text colour that
-   * clears AA on it rather than one that nearly does.
+   * The tint is a real surface in this system (selected rows, the active filter chip),
+   * so it needs a text colour that clears AA on it rather than one that nearly does.
+   * This pairing measures 8.04:1.
    */
-  700: '#09727B',
-  /** brief - tint */
-  100: '#D6F0F2',
+  700: '#094671',
+  /** tint */
+  100: '#DBEAF5',
 } as const satisfies Record<number, Hex>;
 
 export const VERIFY = {
@@ -105,10 +121,14 @@ export const ON_SIGNAL: Hex = '#FFFFFF';
  * The focus ring is a token, not a colour.
  *
  * The brief specifies a 2px `--signal-400` ring. On `--paper-100`, the light base's
- * raised surface, that measures 2.86:1 - under the 3:1 floor SC 1.4.11 sets for a
+ * raised surface, that measures 2.44:1 - under the 3:1 floor SC 1.4.11 sets for a
  * non-text indicator, and a focus ring is the one indicator a keyboard-only dispatcher
  * cannot work without. Resolving it per surface keeps the brief's ring on dark, where it
  * passes comfortably, and steps down to `--signal-500` on light, where it does not.
+ *
+ * The azure ramp did not rescue this one. `--signal-400` is a lighter value than the teal
+ * it replaced, so the light-surface ring got further from the floor rather than closer,
+ * and the per-surface split is load-bearing exactly as before.
  */
 export const FOCUS_RING: Record<Surface, Hex> = {
   dark: SIGNAL[400],
@@ -118,11 +138,17 @@ export const FOCUS_RING: Record<Surface, Hex> = {
 /**
  * The accent as *text* - links, active tab labels, the selected filter.
  *
- * Not the same value as the accent as a *fill*. On light, `--signal-500` measures 4.81:1
- * on `--paper-50` but 4.48:1 on `--paper-100`, so a link inside a card missed AA by two
- * hundredths while the same link on the page background passed. Splitting the roles is
- * the fix: `--signal-500` stays the button fill (white on it is 4.95:1) and the light
- * theme reads its accent text one step darker.
+ * Not the same value as the accent as a *fill*. Under the teal ramp this split was forced:
+ * `--signal-500` measured 4.48:1 on `--paper-100`, so a link inside a card missed AA by
+ * two hundredths while the same link on the page background passed.
+ *
+ * **Azure removed that constraint and the split stays anyway.** `--signal-500` now
+ * measures 5.65:1 on `--paper-50` and 5.26:1 on `--paper-100`, so collapsing the two roles
+ * would pass the gate. It is kept because the gate is a floor, not a target: this is a
+ * dashboard read on phones in daylight and printed in offices, and a link that clears AA
+ * by a hundredth in a lab clears nothing on a sunlit screen. `--signal-500` stays the
+ * button fill (white on it is 5.80:1) and the light theme reads its accent text one step
+ * darker, at 8.00:1.
  */
 export const TEXT_ACCENT: Record<Surface, Hex> = {
   dark: SIGNAL[400],

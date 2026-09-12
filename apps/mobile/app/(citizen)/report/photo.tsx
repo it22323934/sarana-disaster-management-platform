@@ -20,7 +20,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Button, Card, Heading, Screen, Text } from '../../../src/components/primitives.js';
 import { storageVerdict } from '../../../src/offline/storage/device-storage.js';
 import { useLocale, useOffline } from '../../../src/providers/index.js';
-import { SPACE, touchTarget } from '../../../src/theme/index.js';
+import { ACCENT, SPACE, touchTarget } from '../../../src/theme/index.js';
 import type { StorageVerdict } from '../../../src/offline/storage/guard.js';
 
 /** 1600px on the long edge, quality 0.7. From file 22's battery and resilience section. */
@@ -130,6 +130,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: '#FFFFFF',
     borderWidth: 4,
-    borderColor: '#0E7C86',
+    borderColor: ACCENT,
   },
 });

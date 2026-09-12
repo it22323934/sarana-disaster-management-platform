@@ -41,6 +41,30 @@ export { RADIUS, SPACE, TOUCH_TARGET_MIN, TOUCH_TARGET_SOS, TYPE_SCALE };
 export type { SurfaceScheme, TypeSize };
 
 /**
+ * The interface accent, re-exported so a screen never writes the hex itself.
+ *
+ * Nine screens had `#0E7C86` typed into them directly. That is the teal the palette used
+ * to carry, and when the palette moved to azure every one of those screens stayed teal -
+ * a handset showing one accent and the console another, with nothing failing anywhere to
+ * say so. A hardcoded colour does not drift loudly; it drifts silently, which is the
+ * failure this module's opening line exists to prevent.
+ *
+ * `ACCENT_ON` is the label colour for text sitting on that fill, and it is white rather
+ * than `ON_FILL`: `ON_FILL` is the warm-tinted white reserved for severity fills, and
+ * using it here would put a hazard's text colour on an ordinary button.
+ */
+export const ACCENT = SIGNAL[500];
+export const ACCENT_ON = '#FFFFFF';
+
+/**
+ * The accent one step deeper, for a fill drawn on the dark scheme.
+ *
+ * `IncidentTypeGrid` selects with this on dark so the chosen tile reads as pressed rather
+ * than as something glowing above the surface behind it.
+ */
+export const ACCENT_DEEP = SIGNAL[600];
+
+/**
  * The ceiling on dynamic type.
  *
  * The brief asks for 200% and stops there. Android and iOS both allow larger settings for

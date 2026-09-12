@@ -28,7 +28,7 @@ import {
 const MUTABLE_LEVELS = Array.from({ length: HIGHEST_MUTABLE_CLASS + 1 }, (_, level) => level);
 import { LOCALE_NAMES, LOCALES } from '../../src/i18n/index.js';
 import { useLocale, useOffline, useSession } from '../../src/providers/index.js';
-import { RADIUS, SPACE, touchTarget } from '../../src/theme/index.js';
+import { ACCENT, RADIUS, SPACE, touchTarget } from '../../src/theme/index.js';
 
 export default function SettingsScreen() {
   const { t, locale, setLocale } = useLocale();
@@ -59,8 +59,8 @@ export default function SettingsScreen() {
                 styles.option,
                 {
                   minHeight: touchTarget('min'),
-                  backgroundColor: candidate === locale ? '#0E7C86' : surface.card,
-                  borderColor: candidate === locale ? '#0E7C86' : surface.divider,
+                  backgroundColor: candidate === locale ? ACCENT : surface.card,
+                  borderColor: candidate === locale ? ACCENT : surface.divider,
                 },
               ]}
             >
@@ -89,8 +89,8 @@ export default function SettingsScreen() {
                 {
                   minHeight: touchTarget('min'),
                   backgroundColor:
-                    preferences.minimumAlertClass === level ? '#0E7C86' : surface.card,
-                  borderColor: preferences.minimumAlertClass === level ? '#0E7C86' : surface.divider,
+                    preferences.minimumAlertClass === level ? ACCENT : surface.card,
+                  borderColor: preferences.minimumAlertClass === level ? ACCENT : surface.divider,
                 },
               ]}
             >
