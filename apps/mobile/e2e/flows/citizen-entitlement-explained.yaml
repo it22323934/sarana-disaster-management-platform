@@ -1,0 +1,25 @@
+# The entitlement working, in ${LOCALE}.
+#
+# Every figure on this screen comes out of the ledger's calculation trace. The assertion is
+# that the sentences render in the reader's language and the money does not.
+appId: lk.sarana.app
+name: The entitlement working renders in ${LOCALE}
+---
+- launchApp:
+    clearState: true
+- runFlow: ../subflows/pick-locale.yaml
+- runFlow: ../subflows/sign-in-citizen.yaml
+- openLink: sarana://debug?action=seed-aid
+- back
+
+- tapOn:
+    index: 3
+- tapOn:
+    text: 'LKR .*'
+
+# The working, the schedule version, and a total that is the trace's own.
+- assertVisible:
+    text: '.*2026.1.*'
+- assertVisible:
+    text: 'LKR 250,000.00'
+- takeScreenshot: entitlement-${LOCALE}

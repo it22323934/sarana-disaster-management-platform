@@ -1,23 +1,44 @@
-"""See services/core-api/tests/conftest.py for why the env var is set before import
-rather than passed around a bypassed Settings object.
-"""
+"""Test configuration for incident-svc."""
 
-import os
+from __future__ import annotations
+
 from collections.abc import AsyncIterator
 
-os.environ.setdefault(
-    "SARANA_INCIDENT_SVC_DATABASE_URL",
-    "postgresql+asyncpg://sarana_app:sarana_app@localhost:5432/sarana",
-)
-
+import pytest
 import pytest_asyncio
+from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
-from incident_svc.main import create_app
+
+from incident_svc.config import Settings
+from incident_svc.main import build_app
+
+
+@pytest.fixture
+def settings(postgres_url: str, tmp_path_factory: pytest.TempPathFactory) -> Settings:
+    """Settings pointing at the test container, with tracing off."""
+    keys = tmp_path_factory.mktemp("keys")
+    public_key = keys / "jwt-public.pem"
+    public_key.write_text("", encoding="utf-8")
+    return Settings(
+        database_url=postgres_url,
+        jwt_public_key_path=public_key,
+        tracing_enabled=False,
+    )
 
 
 @pytest_asyncio.fixture
-async def client() -> AsyncIterator[AsyncClient]:
-    app = create_app()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
+async def client(settings: Settings) -> AsyncIterator[AsyncClient]:
+    """An httpx client wired straight to the ASGI app - no live server, no port.
+
+    The lifespan is run for real. Without it the app never opens its engine or its bus
+    connection and never registers its readiness checks, so /readyz would report an
+    empty check set and pass a test that proves nothing.
+    """
+    app = build_app(settings)
+    async with (
+        LifespanManager(app),
+        AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://incident-svc"
+        ) as async_client,
+    ):
+        yield async_client

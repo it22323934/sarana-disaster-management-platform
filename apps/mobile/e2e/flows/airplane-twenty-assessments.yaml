@@ -1,0 +1,61 @@
+# Airplane mode: twenty assessments with photos, the app killed, reopened, reconnected.
+#
+# The scenario the whole offline core exists for. What is asserted is not that the app
+# did not crash - it is that the strip reports twenty queued while offline, and zero
+# after the network returns, having never shown a number in between that was wrong.
+appId: lk.sarana.app
+name: Airplane mode, twenty assessments, nothing lost
+---
+- setAirplaneMode: enabled
+- launchApp:
+    clearState: true
+- tapOn: 'English'
+- tapOn:
+    id: 'continue'
+- tapOn: 'Officer sign-in'
+- tapOn:
+    id: 'sign-in'
+
+- repeat:
+    times: 20
+    commands:
+      - tapOn: 'New assessment'
+      - tapOn:
+          id: 'household'
+      - tapOn:
+          index: 0
+      - tapOn: 'Partial house damage'
+      - inputText: '185000'
+      - tapOn: 'Take photo'
+      - tapOn:
+          id: 'shutter'
+      - tapOn: 'Save'
+      # The write must be visible immediately. A spinner here is the design failure the
+      # brief names: an officer who taps Save and waits during a flood has been failed.
+      - assertVisible: 'Saved on this device'
+
+- assertVisible:
+    text: '.*20 changes queued.*'
+
+# Killed, not backgrounded. The operation log has to survive the process, not the screen.
+- stopApp
+- launchApp
+- assertVisible:
+    text: '.*20 changes queued.*'
+
+- setAirplaneMode: disabled
+- tapOn:
+    text: '.*changes queued.*'
+- tapOn: 'Sync now'
+
+- extendedWaitUntil:
+    visible:
+      text: '.*all synced.*'
+    timeout: 120000
+
+# Twenty, not nineteen and not twenty-one. The count is read back from the server rather
+# than inferred from the strip saying "synced".
+- runScript:
+    file: ../scripts/assert-server-assessment-count.js
+    env:
+      EXPECTED: '20'

@@ -1,9 +1,13 @@
-"""ledger-svc — the Transparent Aid Ledger: assessments, entitlements, approvals,
-hash-chained disbursement, grievances.
+"""SARANA Aid Ledger Service.
 
-This is the differentiator (docs/build-prompts/10-aid-ledger-service.md) — the service
-with the highest bar for correctness in the platform. mypy runs in --strict mode against
-this package (docs/build-prompts/02-conventions.md: "85% coverage on ledger-svc and
-anything touching money"). This scaffold only provides the FastAPI app factory, config,
-and health/readiness endpoints.
+Damage assessments, entitlement calculation, the hash-chained Transparent Aid Ledger,
+and grievances. Releasing a disbursement is one of the two human gates.
 """
+
+__version__ = "0.1.0"
+
+SERVICE_DESCRIPTION = (
+    "Damage assessments, entitlement calculation, the hash-chained Transparent Aid "
+    "Ledger, and grievances. Releasing a disbursement is one of the two human "
+    "gates."
+)

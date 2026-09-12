@@ -1,3 +1,5 @@
-"""Outbound adapters: HTTP clients, event bus wiring, object storage. Empty at scaffold
-stage — wired up as each later build-prompt file needs them.
+"""Outbound adapters for core-api: HTTP clients, event bus, object storage.
+
+Everything that leaves the process goes through an adapter, so a test can substitute one
+without a network.
 """

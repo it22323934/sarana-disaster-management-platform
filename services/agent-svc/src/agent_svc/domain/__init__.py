@@ -1,5 +1,6 @@
-"""Pure business logic, no I/O. Empty at scaffold stage. The LangGraph runtime
-(docs/build-prompts/12) restructures this service with `runtime/` and `agents/`
-directories specific to its needs — this placeholder exists only so file 03's identical
-six-service skeleton holds until then.
+"""Pure business logic for agent-svc.
+
+No I/O lives here: no database session, no HTTP client, no event bus. Everything in this
+package is a function of its arguments, which is what makes it testable without a
+container and reviewable without tracing a call chain.
 """

@@ -1,4 +1,117 @@
-"""Pure business logic, no I/O. Empty at scaffold stage — populated by
-docs/build-prompts/10-aid-ledger-service.md (entitlement calculation, hash chaining,
-Merkle anchoring). This is where mypy --strict and the 85% coverage floor matter most.
+"""Domain rules for ledger-svc.
+
+The Sustain loop: valuing an assessment, gating the release, publishing the entry, and
+letting the household say the money never arrived.
 """
+
+from __future__ import annotations
+
+from ledger_svc.domain.disbursement_gate import (
+    AlreadyReleased,
+    Approval,
+    ApprovalLevel,
+    ApprovalsIncomplete,
+    GrievanceOpen,
+    ReleaseContext,
+    ReleaseDecision,
+    ReleaseRefused,
+    SegregationViolated,
+    StepUpRequired,
+    release,
+)
+from ledger_svc.domain.entitlement import (
+    AssessedItem,
+    CalculationRefused,
+    CalculationStep,
+    CalculationTrace,
+    CostSchedule,
+    ScheduleLine,
+    calculate,
+)
+from ledger_svc.domain.grievance import (
+    CONFIRMATION_WINDOW_DAYS,
+    ConfirmationOutcome,
+    ConfirmationReply,
+    GrievanceRefused,
+    NewGrievance,
+    assert_resolution_is_trilingual,
+    assert_transition,
+    blocks_release,
+    from_confirmation_reply,
+    from_failed_transfer,
+    lapse_unconfirmed,
+    parse_confirmation,
+    raise_grievance,
+    sla_due,
+)
+from ledger_svc.domain.ledger_entry import NON_PAYLOAD_FIELDS, payload_of, public_entry
+from ledger_svc.domain.reversal import (
+    MACHINE_REPORTABLE,
+    REASON_TEXT,
+    Reversal,
+    ReversalReason,
+    ReversalRefused,
+    public_reversal,
+    reverse,
+)
+from ledger_svc.domain.sync import (
+    MAX_BATCH_OPERATIONS,
+    OperationStatus,
+    SyncOperation,
+    SyncPlan,
+    SyncRefused,
+    SyncResult,
+    plan,
+)
+
+__all__ = [
+    "CONFIRMATION_WINDOW_DAYS",
+    "MACHINE_REPORTABLE",
+    "MAX_BATCH_OPERATIONS",
+    "NON_PAYLOAD_FIELDS",
+    "REASON_TEXT",
+    "AlreadyReleased",
+    "Approval",
+    "ApprovalLevel",
+    "ApprovalsIncomplete",
+    "AssessedItem",
+    "CalculationRefused",
+    "CalculationStep",
+    "CalculationTrace",
+    "ConfirmationOutcome",
+    "ConfirmationReply",
+    "CostSchedule",
+    "GrievanceOpen",
+    "GrievanceRefused",
+    "NewGrievance",
+    "OperationStatus",
+    "ReleaseContext",
+    "ReleaseDecision",
+    "ReleaseRefused",
+    "Reversal",
+    "ReversalReason",
+    "ReversalRefused",
+    "ScheduleLine",
+    "SegregationViolated",
+    "StepUpRequired",
+    "SyncOperation",
+    "SyncPlan",
+    "SyncRefused",
+    "SyncResult",
+    "assert_resolution_is_trilingual",
+    "assert_transition",
+    "blocks_release",
+    "calculate",
+    "from_confirmation_reply",
+    "from_failed_transfer",
+    "lapse_unconfirmed",
+    "parse_confirmation",
+    "payload_of",
+    "plan",
+    "public_entry",
+    "public_reversal",
+    "raise_grievance",
+    "release",
+    "reverse",
+    "sla_due",
+]

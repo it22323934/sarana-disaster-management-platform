@@ -1,131 +1,229 @@
-// Thin fetch wrapper: auth refresh + Idempotency-Key support, per
-// docs/build-prompts/03-monorepo-scaffold.md ("a thin fetch wrapper with auth refresh
-// and Idempotency-Key support"). The OpenAPI-generated typed client itself is produced
-// by `make openapi` once a service has real endpoints beyond /healthz — this file is
-// the transport layer that generated client sits on top of, built now because every
-// service depends on it existing.
+/**
+ * The SARANA API client.
+ *
+ * A thin wrapper over `fetch` that adds the four things every SARANA call needs:
+ * bearer auth with single-flight refresh, an Idempotency-Key on operations that create
+ * or move money, a correlation ID that ties the call to the server logs, and
+ * Accept-Language so the response comes back in the caller's locale.
+ *
+ * Responses are parsed through zod, so a contract break surfaces as a named field rather
+ * than as `undefined` deep inside a component.
+ */
 
-import { ApiError, problemDetailSchema } from "../schemas/errors";
+import type { z } from 'zod';
 
-export interface TokenStore {
-  getAccessToken(): string | null;
-  /** Called on a 401; returns the new access token, or null if refresh itself failed
-   * (caller should then treat this as a real auth failure, not retry again). */
-  refreshAccessToken(): Promise<string | null>;
+import type { Locale } from '../i18n/types.js';
+import { DEFAULT_LOCALE } from '../i18n/types.js';
+import {
+  SaranaApiError,
+  problemDetailSchema,
+  transportProblem,
+  type ProblemDetail,
+} from '../schemas/errors.js';
+import {
+  IDEMPOTENCY_HEADER,
+  IdempotencyKeyMissingError,
+  requiresIdempotencyKey,
+} from './idempotency.js';
+import { MemoryTokenStore, isExpired, type TokenPair, type TokenStore } from './tokens.js';
+
+export const CORRELATION_HEADER = 'X-Correlation-Id';
+
+export interface ClientOptions {
+  readonly baseUrl: string;
+  readonly tokenStore?: TokenStore;
+  readonly locale?: Locale;
+  /** Overridable for tests and for React Native's fetch. */
+  readonly fetch?: typeof globalThis.fetch;
+  /** Called when refresh fails and the session is over. */
+  readonly onAuthenticationLost?: () => void;
+  readonly defaultTimeoutMs?: number;
 }
 
-export interface ApiClientOptions {
-  baseUrl: string;
-  tokenStore: TokenStore;
-  /** Accept-Language for the request; defaults to "en" per docs/build-prompts/02-conventions.md. */
-  locale?: "si" | "ta" | "en";
+export interface RequestOptions<TSchema extends z.ZodTypeAny = z.ZodTypeAny> {
+  readonly method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+  readonly query?: Readonly<Record<string, string | number | boolean | undefined>>;
+  readonly body?: unknown;
+  /** Required on POSTs that create, move money or dispatch. Reuse it when retrying. */
+  readonly idempotencyKey?: string;
+  readonly schema?: TSchema;
+  readonly locale?: Locale;
+  readonly signal?: AbortSignal;
+  readonly timeoutMs?: number;
+  /** Skip the bearer token. Used for login and for the public read path. */
+  readonly anonymous?: boolean;
 }
 
-export interface RequestOptions {
-  /** Required on every POST that creates or moves money or dispatches
-   * (docs/build-prompts/02-conventions.md). Callers of createMutating() must pass one;
-   * plain request() does not add one automatically, since not every POST needs it. */
-  idempotencyKey?: string;
-  signal?: AbortSignal;
+/** Read a Problem Details body, tolerating a server that failed before producing one. */
+async function readProblem(response: Response): Promise<ProblemDetail> {
+  try {
+    const parsed = problemDetailSchema.safeParse(await response.json());
+    if (parsed.success) return parsed.data;
+  } catch {
+    // Fall through to the synthesised problem below.
+  }
+  return {
+    type: 'https://sarana.lk/errors/unparseable-response',
+    title: 'Unexpected response',
+    status: response.status,
+    detail: 'The server returned an error in an unrecognised format.',
+    instance: new URL(response.url || 'http://unknown').pathname,
+    correlation_id: response.headers.get(CORRELATION_HEADER) ?? 'unknown',
+    errors: [],
+  };
 }
 
-function isMutatingWithoutIdempotencyRisk(method: string): boolean {
-  return method === "GET" || method === "HEAD" || method === "OPTIONS";
-}
+export class SaranaClient {
+  readonly #baseUrl: string;
+  readonly #tokens: TokenStore;
+  readonly #fetch: typeof globalThis.fetch;
+  readonly #locale: Locale;
+  readonly #onAuthenticationLost?: () => void;
+  readonly #defaultTimeoutMs: number;
 
-export class ApiClient {
-  private readonly baseUrl: string;
-  private readonly tokenStore: TokenStore;
-  private readonly locale: "si" | "ta" | "en";
-  private refreshInFlight: Promise<string | null> | null = null;
+  /** In-flight refresh, shared so a burst of 401s triggers exactly one refresh call. */
+  #refreshInFlight: Promise<TokenPair | null> | null = null;
 
-  constructor(options: ApiClientOptions) {
-    this.baseUrl = options.baseUrl.replace(/\/$/, "");
-    this.tokenStore = options.tokenStore;
-    this.locale = options.locale ?? "en";
+  constructor(options: ClientOptions) {
+    this.#baseUrl = options.baseUrl.replace(/\/+$/, '');
+    this.#tokens = options.tokenStore ?? new MemoryTokenStore();
+    this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
+    this.#locale = options.locale ?? DEFAULT_LOCALE;
+    this.#onAuthenticationLost = options.onAuthenticationLost;
+    this.#defaultTimeoutMs = options.defaultTimeoutMs ?? 15_000;
   }
 
-  async request<T>(
-    method: string,
+  async request<TSchema extends z.ZodTypeAny>(
     path: string,
-    body?: unknown,
-    opts: RequestOptions = {},
-  ): Promise<T> {
-    if (!isMutatingWithoutIdempotencyRisk(method) && body !== undefined && !opts.idempotencyKey) {
-      // Not a hard failure — some POSTs genuinely don't move money or dispatch anything
-      // — but callers should be deliberate about this, so surface it loudly in dev.
-      console.warn(
-        `[sarana] ${method} ${path} sent without an Idempotency-Key. If this creates or ` +
-          "moves money or dispatches anything, that's required — see docs/build-prompts/02-conventions.md.",
-      );
+    options: RequestOptions<TSchema> & { schema: TSchema },
+  ): Promise<z.infer<TSchema>>;
+  async request(path: string, options?: RequestOptions): Promise<unknown>;
+  async request(path: string, options: RequestOptions = {}): Promise<unknown> {
+    const method = options.method ?? 'GET';
+
+    if (requiresIdempotencyKey(method, path) && !options.idempotencyKey) {
+      throw new IdempotencyKeyMissingError(method, path);
     }
 
-    const response = await this.doFetch(method, path, body, opts);
+    const response = await this.#send(path, method, options, { allowRefresh: true });
 
-    if (response.status === 401) {
-      const newToken = await this.getOrRefreshToken();
-      if (newToken) {
-        const retried = await this.doFetch(method, path, body, opts);
-        return this.parseResponse<T>(retried);
-      }
+    if (!response.ok) {
+      throw new SaranaApiError(await readProblem(response), response);
     }
+    if (response.status === 204) return undefined;
 
-    return this.parseResponse<T>(response);
+    const payload: unknown = await response.json();
+    return options.schema ? options.schema.parse(payload) : payload;
   }
 
-  private async doFetch(
-    method: string,
+  async #send(
     path: string,
-    body: unknown,
-    opts: RequestOptions,
+    method: string,
+    options: RequestOptions,
+    context: { allowRefresh: boolean },
   ): Promise<Response> {
-    const headers: Record<string, string> = {
-      "Accept-Language": this.locale,
-    };
-    const token = this.tokenStore.getAccessToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
-    if (opts.idempotencyKey) headers["Idempotency-Key"] = opts.idempotencyKey;
-    if (body !== undefined) headers["Content-Type"] = "application/json";
+    const url = new URL(this.#baseUrl + path);
+    for (const [key, value] of Object.entries(options.query ?? {})) {
+      if (value !== undefined) url.searchParams.set(key, String(value));
+    }
 
-    return fetch(`${this.baseUrl}${path}`, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      signal: opts.signal,
+    const headers = new Headers({
+      Accept: 'application/json, application/problem+json',
+      'Accept-Language': options.locale ?? this.#locale,
+      [CORRELATION_HEADER]: globalThis.crypto.randomUUID(),
     });
+
+    if (options.body !== undefined) headers.set('Content-Type', 'application/json');
+    if (options.idempotencyKey) headers.set(IDEMPOTENCY_HEADER, options.idempotencyKey);
+
+    if (!options.anonymous) {
+      const token = await this.#accessToken();
+      if (token) headers.set('Authorization', `Bearer ${token}`);
+    }
+
+    const timeout = AbortSignal.timeout(options.timeoutMs ?? this.#defaultTimeoutMs);
+    const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+
+    let response: Response;
+    try {
+      response = await this.#fetch(url, {
+        method,
+        headers,
+        signal,
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      });
+    } catch (cause) {
+      throw new SaranaApiError(transportProblem(cause, path), Response.error());
+    }
+
+    // One retry after a refresh. A second 401 means the refresh token is gone too.
+    if (response.status === 401 && context.allowRefresh && !options.anonymous) {
+      const refreshed = await this.#refresh();
+      if (refreshed) {
+        return this.#send(path, method, options, { allowRefresh: false });
+      }
+      this.#onAuthenticationLost?.();
+    }
+
+    return response;
+  }
+  async #accessToken(): Promise<string | null> {
+    const tokens = await this.#tokens.read();
+    if (!tokens) return null;
+    if (!isExpired(tokens)) return tokens.accessToken;
+    const refreshed = await this.#refresh();
+    return refreshed?.accessToken ?? null;
   }
 
-  private async getOrRefreshToken(): Promise<string | null> {
-    // Coalesce concurrent 401s into a single refresh call, not one per in-flight request.
-    if (!this.refreshInFlight) {
-      this.refreshInFlight = this.tokenStore
-        .refreshAccessToken()
-        .finally(() => {
-          this.refreshInFlight = null;
-        });
-    }
-    return this.refreshInFlight;
+  /** Refresh the access token. Concurrent callers share one network call. */
+  async #refresh(): Promise<TokenPair | null> {
+    this.#refreshInFlight ??= this.#performRefresh().finally(() => {
+      this.#refreshInFlight = null;
+    });
+    return this.#refreshInFlight;
   }
 
-  private async parseResponse<T>(response: Response): Promise<T> {
-    if (response.ok) {
-      if (response.status === 204) return undefined as T;
-      return (await response.json()) as T;
-    }
+  async #performRefresh(): Promise<TokenPair | null> {
+    const current = await this.#tokens.read();
+    if (!current) return null;
 
-    const raw = await response.json().catch(() => null);
-    const parsed = problemDetailSchema.safeParse(raw);
-    if (parsed.success) {
-      throw new ApiError(parsed.data);
+    try {
+      const response = await this.#fetch(`${this.#baseUrl}/api/v1/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: current.refreshToken }),
+      });
+      if (!response.ok) {
+        await this.#tokens.clear();
+        return null;
+      }
+      const payload = (await response.json()) as {
+        access_token: string;
+        refresh_token: string;
+        expires_in: number;
+      };
+      const tokens: TokenPair = {
+        accessToken: payload.access_token,
+        refreshToken: payload.refresh_token,
+        expiresAt: Date.now() + payload.expires_in * 1000,
+      };
+      await this.#tokens.write(tokens);
+      return tokens;
+    } catch {
+      await this.#tokens.clear();
+      return null;
     }
-    // Server didn't return a well-formed ProblemDetail — still fail loudly, but don't
-    // pretend we understood the shape.
-    throw new ApiError({
-      type: "https://sarana.lk/errors/unknown",
-      title: "Unknown error",
-      status: response.status,
-      detail: `Request failed with status ${response.status} and a non-conforming error body`,
-      errors: [],
-    });
+  }
+
+  get(path: string, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<unknown> {
+    return this.request(path, { ...options, method: 'GET' });
+  }
+
+  post(path: string, options: Omit<RequestOptions, 'method'> = {}): Promise<unknown> {
+    return this.request(path, { ...options, method: 'POST' });
+  }
+
+  patch(path: string, options: Omit<RequestOptions, 'method'> = {}): Promise<unknown> {
+    return this.request(path, { ...options, method: 'PATCH' });
   }
 }

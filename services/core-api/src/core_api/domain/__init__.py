@@ -1,3 +1,6 @@
-"""Pure business logic, no I/O. Empty at scaffold stage — populated by
-docs/build-prompts/07-core-api.md (hierarchy, resilience graph, audit chain domain logic).
+"""Pure business logic for core-api.
+
+No I/O lives here: no database session, no HTTP client, no event bus. Everything in this
+package is a function of its arguments, which is what makes it testable without a
+container and reviewable without tracing a call chain.
 """

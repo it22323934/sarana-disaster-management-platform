@@ -1,0 +1,24 @@
+// One division per case, labelled with whether it should produce a flag.
+//
+// The first two are the pair that proves the design works: an identical assessment profile
+// at impact class 4 and at impact class 1. If they ever come out the same, the exposure
+// normalisation has stopped working and the agent is comparing divisions with each other -
+// which is the failure ADR-009 exists to prevent, and it would be invisible in an aggregate
+// accuracy number.
+//
+// The `flagged: false` cases are what make the false-positive rate meaningful. Half this
+// set is divisions that must NOT be flagged, because a detector that flags everything
+// reaches 100% detection and the cost lands on GN officers in the divisions that were hit
+// hardest.
+{"id": "severe-division-high-values", "subject_id": "an-01", "input": {"gn_division_code": "LK-21-01-001", "impact_class": 4, "count": 40, "total_loss_share": 0.7, "approval_minutes": 90}, "label": {"flagged": false}, "expect_human_review": false}
+{"id": "low-impact-identical-profile", "subject_id": "an-02", "input": {"gn_division_code": "LK-21-01-002", "impact_class": 1, "count": 40, "total_loss_share": 0.7, "approval_minutes": 90}, "label": {"flagged": true}, "expect_human_review": false}
+{"id": "moderate-division-within-expectation", "subject_id": "an-03", "input": {"gn_division_code": "LK-21-01-003", "impact_class": 2, "count": 30, "total_loss_share": 0.1, "approval_minutes": 60}, "label": {"flagged": false}, "expect_human_review": false}
+{"id": "severe-division-fast-approvals-are-expected", "subject_id": "an-04", "input": {"gn_division_code": "LK-21-01-004", "impact_class": 4, "count": 40, "total_loss_share": 0.7, "approval_minutes": 45}, "label": {"flagged": false}, "expect_human_review": false}
+{"id": "low-impact-total-losses", "subject_id": "an-05", "input": {"gn_division_code": "LK-21-01-005", "impact_class": 1, "count": 30, "total_loss_share": 0.9, "approval_minutes": 60}, "label": {"flagged": true}, "expect_human_review": false}
+{"id": "unsurveyed-division-is-never-flagged", "subject_id": "an-06", "input": {"gn_division_code": "LK-21-01-006", "impact_class": 0, "forecast_confidence": 0.0, "count": 40, "total_loss_share": 0.9}, "label": {"flagged": false, "normalisable": false}, "expect_human_review": false}
+{"id": "too-few-assessments-to-judge", "subject_id": "an-07", "input": {"gn_division_code": "LK-21-01-007", "impact_class": 1, "count": 4, "total_loss_share": 1.0}, "label": {"flagged": false, "normalisable": false}, "expect_human_review": false}
+{"id": "low-confirmation-with-poor-coverage", "subject_id": "an-08", "input": {"gn_division_code": "LK-21-01-008", "impact_class": 2, "count": 30, "total_loss_share": 0.1, "confirmed_share": 0.3, "cell_coverage_pct": 35}, "label": {"flagged": false}, "expect_human_review": false}
+{"id": "low-confirmation-with-good-coverage", "subject_id": "an-09", "input": {"gn_division_code": "LK-21-01-009", "impact_class": 2, "count": 30, "total_loss_share": 0.1, "confirmed_share": 0.3, "cell_coverage_pct": 95}, "label": {"flagged": true}, "expect_human_review": false}
+{"id": "burst-in-a-low-impact-division", "subject_id": "an-10", "input": {"gn_division_code": "LK-21-01-010", "impact_class": 1, "count": 40, "total_loss_share": 0.05, "household_count": 100, "burst": true}, "label": {"flagged": true}, "expect_human_review": false}
+{"id": "severe-division-high-volume-is-expected", "subject_id": "an-11", "input": {"gn_division_code": "LK-21-01-011", "impact_class": 4, "count": 40, "total_loss_share": 0.6, "household_count": 400, "burst": true}, "label": {"flagged": false}, "expect_human_review": false}
+{"id": "good-confirmation-never-fires", "subject_id": "an-12", "input": {"gn_division_code": "LK-21-01-012", "impact_class": 3, "count": 30, "total_loss_share": 0.3, "confirmed_share": 0.9, "cell_coverage_pct": 95}, "label": {"flagged": false}, "expect_human_review": false}

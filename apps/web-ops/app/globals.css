@@ -1,0 +1,24 @@
+/*
+ * The SARANA design system, mounted.
+ *
+ * `@source` is required and is the thing that breaks silently if it is removed: Tailwind
+ * v4 scans the project it is invoked from, and every component in this app comes from
+ * `packages/ui`, so without it the utilities those components reference are never
+ * generated and the app renders unstyled with no error anywhere.
+ *
+ * `tokens.css` is generated from `packages/ui/src/tokens` and carries the colour ramp,
+ * the three-script type scale, the theme blocks and the Tailwind theme bridge.
+ * `pnpm --filter @sarana/ui test:tokens-sync` fails CI if it drifts from its source.
+ */
+
+@import 'tailwindcss';
+@source '../../../packages/ui/src';
+
+@import '@sarana/ui/tokens.css';
+
+body {
+  background: var(--surface-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  line-height: var(--leading-base);
+}

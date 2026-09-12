@@ -1,0 +1,12 @@
+/*
+ * Storybook's stylesheet.
+ *
+ * `@source` is required: Tailwind v4 scans the project it is invoked from, and the
+ * components live in `src`, so without it every utility in the library is absent from the
+ * build and the preview renders unstyled. The two apps need the same directive pointing
+ * at this package - see the design system section of RUNNING.md.
+ */
+@import 'tailwindcss';
+@source '../src';
+
+@import '../tokens.css';

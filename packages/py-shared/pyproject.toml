@@ -1,31 +1,50 @@
 [project]
 name = "sarana-shared"
-version = "0.0.0"
+version = "0.1.0"
+description = "Shared domain types, event bus, auth, persistence and telemetry for SARANA services"
 requires-python = ">=3.12,<3.13"
-description = "Shared domain types, event bus, auth, and telemetry used by every SARANA service."
 dependencies = [
-    "pydantic>=2.9.0",
-    "pydantic-settings>=2.6.0",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.7",
+    "fastapi>=0.115",
     "sqlalchemy[asyncio]>=2.0.36",
-    "asyncpg>=0.30.0",
-    "structlog>=24.4.0",
-    "opentelemetry-api>=1.28.0",
-    "opentelemetry-sdk>=1.28.0",
-    "opentelemetry-exporter-otlp-proto-http>=1.28.0",
-    "opentelemetry-instrumentation-fastapi>=0.49b0",
-    "opentelemetry-instrumentation-sqlalchemy>=0.49b0",
-    "pyjwt[crypto]>=2.10.0",
-    "fastapi>=0.115.0",
-    "uuid6>=2024.7.10",
+    "asyncpg>=0.30",
+    "psycopg[binary]>=3.2",
+    "alembic>=1.14",
+    "geoalchemy2>=0.16",
+    "pgvector>=0.3.6",
+    "shapely>=2.0",
+    "redis>=5.2",
+    "structlog>=24.4",
+    "pyjwt[crypto]>=2.10",
+    "argon2-cffi>=23.1",
+    "pyotp>=2.9",
+    "httpx>=0.28",
+    "prometheus-client>=0.21",
+    "opentelemetry-api>=1.29",
+    "opentelemetry-sdk>=1.29",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.29",
+    "opentelemetry-instrumentation-fastapi>=0.50b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.50b0",
+    "opentelemetry-instrumentation-asyncpg>=0.50b0",
+    "tzdata>=2024.2",
 ]
 
 [project.optional-dependencies]
-test = [
-    "pytest>=8.3.0",
-    "pytest-asyncio>=0.24.0",
-    "httpx>=0.28.0",
-    "testcontainers[postgres]>=4.9.0",
+# `sarana_shared.testing` is importable only with these installed. Services depend on
+# sarana-shared[testing] in their dev group, never in their runtime dependencies.
+testing = [
+    "pytest>=8.3",
+    "asgi-lifespan>=2.1",
+    "pytest-asyncio>=0.25",
+    "testcontainers[postgres]>=4.9",
+    "httpx>=0.28",
 ]
+
+# Registers the shared fixtures as a pytest plugin, so every service picks them up
+# without a star-import - and pytest_addoption is called exactly once per session.
+[project.entry-points.pytest11]
+sarana_shared = "sarana_shared.testing.fixtures"
 
 [build-system]
 requires = ["hatchling"]

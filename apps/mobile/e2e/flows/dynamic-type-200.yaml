@@ -1,0 +1,28 @@
+# Every screen at 200% text size, in all three languages.
+#
+# Sinhala and Tamil break first: both need more leading than Latin at the same size, so a
+# layout tuned on English overflows two steps earlier in the other two.
+appId: lk.sarana.app
+name: 200% text in si, ta and en without overflow
+---
+- openLink: sarana://debug?action=set-font-scale&scale=2
+- back
+- launchApp:
+    clearState: true
+
+- repeat:
+    times: 3
+    commands:
+      - runFlow: ../subflows/pick-locale.yaml
+      - runFlow: ../subflows/sign-in-officer.yaml
+      # Each screen is captured and checked for clipped text by the runner rather than by
+      # Maestro, which has no notion of a view that overflows its parent.
+      - takeScreenshot: sign-in
+      - tapOn: 'New assessment'
+      - takeScreenshot: assessment-form
+      - tapOn:
+          text: '.*synced.*'
+      - takeScreenshot: sync-detail
+      - back
+      - tapOn: 'Sign out'
+      - takeScreenshot: sign-out

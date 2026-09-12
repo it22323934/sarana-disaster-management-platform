@@ -1,87 +1,118 @@
-"""OpenTelemetry setup: FastAPI + SQLAlchemy instrumentation, OTLP export.
+"""OpenTelemetry setup and FastAPI / SQLAlchemy instrumentation.
 
-Sampling policy per docs/build-prompts/26-observability.md: 100% in dev, 10% in prod,
-and 100% for any trace touching a human gate or a disbursement regardless of sampling —
-`gate_or_disbursement_sampler` below is what implements that override.
+Traces go to CloudWatch on AWS through an OTLP collector, and to Jaeger locally. Spans
+carry the correlation ID so a trace and a log line join on the same key.
+
+Agent traces go to LangSmith separately (file 12) and are PII-redacted before leaving
+the process.
 """
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Final
+
+import structlog
 from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
-from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.sdk.trace.sampling import ParentBased, Sampler, SamplingResult, TraceIdRatioBased
+from opentelemetry.trace import Span
 
-GATE_EVENT_TYPES = frozenset(
-    {
-        "sarana.dispatch.signoff.requested",
-        "sarana.dispatch.signoff.granted",
-        "sarana.dispatch.signoff.rejected",
-        "sarana.dispatch.released",
-        "sarana.aid.disbursement.released",
-    }
-)
+if TYPE_CHECKING:
+    from fastapi import FastAPI
+    from sqlalchemy.ext.asyncio import AsyncEngine
 
+_log = structlog.get_logger(__name__)
 
-class GateAwareSampler(Sampler):
-    """Wraps a ratio-based sampler; always samples spans whose attributes mark them as
-    touching a human gate or a disbursement, regardless of the base sampling ratio."""
+# Probe endpoints produce a span per second per replica and tell us nothing.
+EXCLUDED_URLS: Final = "healthz,readyz,metrics"
 
-    def __init__(self, base_ratio: float) -> None:
-        self._base = ParentBased(TraceIdRatioBased(base_ratio))
-        self._always = ParentBased(TraceIdRatioBased(1.0))
-
-    def should_sample(  # type: ignore[no-untyped-def]  # matches Sampler's own untyped base signature
-        self,
-        parent_context,
-        trace_id,
-        name,
-        kind=None,
-        attributes=None,
-        links=None,
-        trace_state=None,
-    ) -> SamplingResult:
-        event_type = (attributes or {}).get("sarana.event_type")
-        touches_gate = event_type in GATE_EVENT_TYPES or bool(
-            (attributes or {}).get("sarana.is_disbursement")
-        )
-        sampler = self._always if touches_gate else self._base
-        return sampler.should_sample(
-            parent_context, trace_id, name, kind, attributes, links, trace_state
-        )
-
-    def get_description(self) -> str:
-        return "GateAwareSampler{always-samples gate/disbursement spans}"
+_configured = False
 
 
 def configure_tracing(
     *,
     service: str,
-    otlp_endpoint: str,
-    sample_ratio: float = 1.0,
-) -> TracerProvider:
-    """Call once at process startup. Returns the provider so main.py can instrument the
-    FastAPI app and the SQLAlchemy engine against it (see instrument_fastapi below)."""
-    resource = Resource.create({SERVICE_NAME: service})
-    provider = TracerProvider(resource=resource, sampler=GateAwareSampler(sample_ratio))
-    provider.add_span_processor(
-        BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{otlp_endpoint}/v1/traces"))
+    version: str,
+    environment: str,
+    otlp_endpoint: str | None,
+    enabled: bool = True,
+    extra_processor: SpanProcessor | None = None,
+) -> None:
+    """Install the global tracer provider.
+
+    When `enabled` is false, or no endpoint is configured, spans are dropped and no
+    collector connection is attempted. Tests and CI run with tracing off.
+    """
+    global _configured
+    if _configured:
+        return
+
+    if not enabled or not otlp_endpoint:
+        _log.info("tracing_disabled", service=service)
+        _configured = True
+        return
+
+    resource = Resource.create(
+        {
+            "service.name": service,
+            "service.version": version,
+            "deployment.environment": environment,
+        }
     )
+    provider = TracerProvider(resource=resource)
+    provider.add_span_processor(
+        BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True))
+    )
+    if extra_processor is not None:
+        provider.add_span_processor(extra_processor)
+
     trace.set_tracer_provider(provider)
-    return provider
+    _configured = True
+    _log.info("tracing_configured", service=service, endpoint=otlp_endpoint)
 
 
-def instrument_fastapi(app: object, engine: object | None = None) -> None:
-    """Deferred imports so a service that hasn't installed the optional instrumentation
-    packages doesn't fail at import time — every service that calls this does have them
-    (see this package's pyproject.toml), this just keeps the import graph honest."""
+def instrument_app(app: FastAPI) -> None:
+    """Instrument a FastAPI app, excluding the probe endpoints."""
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
-    FastAPIInstrumentor.instrument_app(app)  # type: ignore[arg-type]
+    FastAPIInstrumentor.instrument_app(app, excluded_urls=EXCLUDED_URLS)
 
-    if engine is not None:
-        from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
-        SQLAlchemyInstrumentor().instrument(engine=engine)
+def instrument_engine(engine: AsyncEngine) -> None:
+    """Instrument a SQLAlchemy async engine."""
+    from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+
+    SQLAlchemyInstrumentor().instrument(engine=engine.sync_engine)
+
+
+def get_tracer(name: str) -> trace.Tracer:
+    """Return a tracer for a module."""
+    return trace.get_tracer(name)
+
+
+def current_span() -> Span:
+    """The active span, or a no-op span when tracing is disabled."""
+    return trace.get_current_span()
+
+
+def annotate_span(**attributes: str | int | float | bool) -> None:
+    """Attach attributes to the active span.
+
+    Values are not redacted here: nothing that could be personal data belongs on a span
+    attribute in the first place. Pass identifiers and counts, never content.
+    """
+    span = trace.get_current_span()
+    if not span.is_recording():
+        return
+    for key, value in attributes.items():
+        span.set_attribute(f"sarana.{key}", value)
+
+
+def shutdown_tracing() -> None:
+    """Flush and shut down the provider. Called from the lifespan shutdown."""
+    provider = trace.get_tracer_provider()
+    shutdown = getattr(provider, "shutdown", None)
+    if callable(shutdown):
+        shutdown()

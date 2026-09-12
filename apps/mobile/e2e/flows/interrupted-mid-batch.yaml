@@ -1,0 +1,47 @@
+# A batch that reaches the server and whose response does not come back.
+#
+# The device retries the whole batch. The server answers `duplicate` for every operation
+# it already has, and the count must not double.
+appId: lk.sarana.app
+name: Interrupted mid-batch, resumed, no duplicates
+---
+- launchApp:
+    clearState: true
+- runFlow: ../subflows/sign-in-officer.yaml
+
+- repeat:
+    times: 10
+    commands:
+      - openLink: sarana://debug?action=save-assessment
+      - assertVisible:
+          text: 'ok: saved .*'
+      - back
+
+- assertVisible:
+    text: '.*10 .*'
+
+# Drop the link while the batch is in flight. The server has applied it; the device has
+# not been told.
+# Maestro cannot cut a link mid-request, so this cuts it the instant the batch starts.
+# Whether the server had already applied the batch is a race, which is why the
+# deterministic version of this case lives in test/sync-engine.test.ts - here the
+# assertion is only that the retry never produces a second copy either way.
+- tapOn: 'Sync now'
+- setAirplaneMode: enabled
+- extendedWaitUntil:
+    visible:
+      text: '.*10 changes queued.*'
+    timeout: 60000
+
+- setAirplaneMode: disabled
+- tapOn: 'Sync now'
+- extendedWaitUntil:
+    visible:
+      text: '.*all synced.*'
+    timeout: 120000
+
+# The assertion that matters is on the server, not the phone: ten rows, not twenty.
+- runScript:
+    file: ../scripts/assert-server-assessment-count.js
+    env:
+      EXPECTED: '10'

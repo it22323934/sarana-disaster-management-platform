@@ -1,0 +1,44 @@
+# SOS to submitted, in airplane mode, from a cold start.
+#
+# The one flow in the suite with a number attached. The runner reads the elapsed time
+# between the two markers below out of the Maestro trace and asserts it against
+# --assert-sos-duration.
+#
+# Airplane mode is not an edge case here: it is the condition the thirty seconds are
+# measured under, because a round trip on a congested cell during a flood would be most of
+# the budget on its own.
+appId: lk.sarana.app
+name: SOS to submitted in under 30 seconds, offline
+---
+- setAirplaneMode: enabled
+- launchApp:
+    clearState: true
+- tapOn: 'English'
+- tapOn:
+    id: 'continue'
+- tapOn: 'Officer sign-in'
+- tapOn:
+    id: 'sign-in'
+- tapOn: 'Citizen app'
+
+# ---- MARKER: sos-start ----
+- tapOn: 'Report an emergency'
+
+# Location is already being fetched in the background and nothing waits for it.
+- tapOn: 'Flooding'
+- tapOn: 'I don''t know'
+- tapOn: 'Send report'
+
+# The confirmation is honest about the offline state: saved, not sent.
+- assertVisible:
+    text: '.*Will send when you have signal.*'
+- assertVisible:
+    text: 'Reference LOC-.*'
+# ---- MARKER: sos-end ----
+
+# And it is really on the device, not just on the screen.
+- stopApp
+- launchApp
+- tapOn: 'My reports'
+- assertVisible:
+    text: 'Reference LOC-.*'

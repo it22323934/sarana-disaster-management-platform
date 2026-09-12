@@ -1,3 +1,4 @@
-"""v1 API routers. Empty at scaffold stage — channels, incidents, dispatch-plans, and
-the review-queue endpoints are docs/build-prompts/08-incident-service.md's job.
+"""Version 1 of the incident-svc HTTP API.
+
+REST, plural collection paths, cursor pagination, RFC 9457 Problem Details on error.
 """

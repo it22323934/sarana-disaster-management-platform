@@ -1,30 +1,64 @@
+# SARANA pre-commit hooks. Install with `make bootstrap`.
+# CI runs the same set with `pre-commit run --all-files`.
+default_language_version:
+  python: python3.12
+
 repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-merge-conflict
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-json
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.4
+    rev: v0.9.6
     hooks:
       - id: ruff
-        args: [--fix]
+        args: [--fix, --exit-non-zero-on-fix]
       - id: ruff-format
 
-  - repo: local
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.14.1
     hooks:
       - id: mypy
-        name: mypy (changed files)
-        entry: uv run mypy
-        language: system
-        types: [python]
-        pass_filenames: true
-
-      - id: verify-i18n
-        name: i18n completeness check (si/ta/en)
-        entry: node tools/i18n/verify.mjs
-        language: system
-        pass_filenames: false
-        files: '(messages/.*\.json|packages/ts-shared/src/i18n/.*)$'
+        # Changed files only - pre-commit passes them as arguments.
+        additional_dependencies:
+          - pydantic>=2.10
+          - types-python-dateutil
+        args: [--config-file=mypy.ini]
+        exclude: ^(.*/alembic/versions/|.*/tests/)
 
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.5.0
     hooks:
       - id: detect-secrets
-        args: ["--baseline", ".secrets.baseline"]
-        exclude: package-lock.json|pnpm-lock.yaml
+        args: [--baseline, .secrets.baseline]
+        exclude: ^(pnpm-lock\.yaml|uv\.lock|\.env\.example)$
+
+  - repo: local
+    hooks:
+      # Non-negotiable #2: no citizen-facing record in a single language.
+      # This is the commit-time half of that guarantee; CI runs it again.
+      - id: sarana-i18n-completeness
+        name: i18n completeness (si, ta, en)
+        entry: python tools/hooks/check_i18n.py
+        language: system
+        pass_filenames: false
+        files: ^(packages/ts-shared/src/i18n/|data/seed/|.*locales?/).*\.(json|ya?ml)$
+
+      # Event contracts outlive the code that wrote them: an envelope in the outbox
+      # during a deploy is read by the new version, and a replay reads weeks-old events.
+      - id: sarana-event-contracts
+        name: event contract compatibility
+        entry: python tools/hooks/check_event_schemas.py
+        language: system
+        pass_filenames: false
+        files: ^packages/py-shared/src/sarana_shared/events/.*\.py$

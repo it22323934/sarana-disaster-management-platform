@@ -1,80 +1,184 @@
-.PHONY: bootstrap up down reset migrate seed dev test lint openapi verify-i18n
+# SARANA - single entry point for every development task.
+# Run `make` or `make help` for the list.
 
-COMPOSE := docker compose -f infra/docker/compose.yml
+SHELL := /bin/bash
+.DEFAULT_GOAL := help
+.ONESHELL:
 
-# ---------------------------------------------------------------------------
-bootstrap: ## install uv + pnpm deps, install pre-commit hooks
-	uv sync --all-packages --all-extras --group dev
-	pnpm install
-	uv run --group dev pre-commit install
+COMPOSE := docker compose -f infra/docker/compose.yml --env-file .env
+UV := uv
 
-# ---------------------------------------------------------------------------
-up: ## docker compose up -d, wait for health, run migrations, seed
-	$(COMPOSE) up -d --build
-	@echo "Waiting for all six services to report healthy..."
-	@for port in 8001 8002 8003 8004 8005 8006; do \
-		echo -n "  :$$port "; \
-		for i in $$(seq 1 30); do \
-			if curl -fsS "http://localhost:$$port/healthz" > /dev/null 2>&1; then echo "ok"; break; fi; \
-			if [ $$i -eq 30 ]; then echo "TIMED OUT"; exit 1; fi; \
-			sleep 2; \
-		done; \
-	done
+# Every FastAPI service.
+SERVICES := core-api incident-svc alerting-svc ledger-svc agent-svc gov-mock
+# Services that own tables and therefore own an alembic tree.
+DATA_SERVICES := core-api incident-svc alerting-svc ledger-svc agent-svc
+
+DEV_KEYS := infra/docker/dev-keys
+
+.PHONY: help
+help: ## Show this help
+	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
+		| sort \
+		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
+
+.env:
+	@cp .env.example .env
+	@echo "Created .env from .env.example - review it before running make up."
+
+$(DEV_KEYS)/jwt-private.pem:
+	@mkdir -p $(DEV_KEYS)
+	@openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+		-out $(DEV_KEYS)/jwt-private.pem 2>/dev/null
+	@openssl rsa -in $(DEV_KEYS)/jwt-private.pem -pubout \
+		-out $(DEV_KEYS)/jwt-public.pem 2>/dev/null
+	@echo "Generated a development RS256 keypair in $(DEV_KEYS). Local use only."
+
+.PHONY: keys
+keys: $(DEV_KEYS)/jwt-private.pem ## Generate the local RS256 JWT keypair
+
+.PHONY: bootstrap
+bootstrap: .env keys ## Install Python + Node dependencies and git hooks
+	$(UV) sync --all-packages --all-groups
+	pnpm install --frozen-lockfile || pnpm install
+	$(UV) run pre-commit install --install-hooks
+	@echo ""
+	@echo "Bootstrap complete. Next: make up"
+
+.PHONY: up
+up: .env keys ## Start the stack, wait for health, migrate and seed
+	$(COMPOSE) up -d --build --wait
+	@echo "All containers healthy. Creating object storage buckets..."
+	$(COMPOSE) run --rm minio-init
+	@echo "Applying migrations..."
 	$(MAKE) migrate
 	$(MAKE) seed
+	@echo ""
+	@$(MAKE) --no-print-directory ports
 
-down: ## stop and remove
-	$(COMPOSE) down
+.PHONY: down
+down: ## Stop and remove containers, keep volumes
+	$(COMPOSE) down --remove-orphans
 
-reset: ## down + delete volumes + up (destructive, prompts for confirmation)
-	@echo "This deletes all local SARANA data (Postgres, MinIO). Continue? [y/N]" && read ans && [ "$$ans" = "y" ]
-	$(COMPOSE) down -v
+.PHONY: reset
+reset: ## DESTRUCTIVE - delete all volumes and rebuild from empty
+	@read -r -p "This deletes the local database, MinIO objects and Redis streams. Type 'reset' to confirm: " reply
+	@if [[ "$$reply" != "reset" ]]; then echo "Aborted."; exit 1; fi
+	$(COMPOSE) down --volumes --remove-orphans
 	$(MAKE) up
 
-# ---------------------------------------------------------------------------
-migrate: ## alembic upgrade head across all data-owning services
-	@for svc in core-api incident-svc alerting-svc ledger-svc agent-svc; do \
-		if [ -d "services/$$svc/alembic" ] && [ -n "$$(ls -A services/$$svc/alembic/versions 2>/dev/null)" ]; then \
-			echo "Migrating $$svc..."; \
-			(cd services/$$svc && uv run --project . alembic upgrade head); \
-		else \
-			echo "Skipping $$svc — no migrations yet (docs/build-prompts/04-data-model.md not built)"; \
-		fi; \
+.PHONY: migrate
+migrate: ## Run alembic upgrade head for every data-owning service
+	@set -e
+	@for svc in $(DATA_SERVICES); do \
+		echo "--> migrating $$svc"; \
+		(cd services/$$svc && $(UV) run alembic upgrade head); \
 	done
 
-seed: ## load data/seed into the database
-	@if [ -f tools/seed/load.py ]; then \
-		uv run python tools/seed/load.py; \
-	else \
-		echo "Skipping seed — tools/seed/ not built yet (docs/build-prompts/28-simulation-and-seed-data.md)"; \
-	fi
+.PHONY: downgrade
+downgrade: ## DESTRUCTIVE - roll every service back to an empty schema
+	@read -r -p "This drops every SARANA table. Type 'downgrade' to confirm: " reply
+	@if [[ "$$reply" != "downgrade" ]]; then echo "Aborted."; exit 1; fi
+	@set -e
+	@for svc in agent-svc alerting-svc ledger-svc incident-svc core-api; do \n		echo "--> rolling back $$svc"; \n		(cd services/$$svc && $(UV) run alembic downgrade base); \n	done
 
-# ---------------------------------------------------------------------------
-dev: ## turbo dev (web + mobile) alongside the compose stack
-	$(COMPOSE) up -d postgres redis minio jaeger mailpit
-	pnpm run dev
+.PHONY: revision
+revision: ## Autogenerate a migration. Usage: make revision SVC=ledger-svc M="add grievance"
+	@if [[ -z "$(SVC)" || -z "$(M)" ]]; then \
+		echo "Usage: make revision SVC=<service> M=\"<message>\""; exit 1; fi
+	cd services/$(SVC) && $(UV) run alembic revision --autogenerate -m "$(M)"
 
-# ---------------------------------------------------------------------------
-test: ## pytest across services + vitest across packages
-	uv run --group dev pytest packages services
-	pnpm run test
+.PHONY: seed-generate
+seed-generate: ## Regenerate data/seed from tools/seed/generate.py
+	$(UV) run python tools/seed/generate.py
 
-lint: ## ruff + eslint + tsc --noEmit
-	uv run --group dev ruff check .
-	uv run --group dev ruff format --check .
+.PHONY: seed
+seed: ## Load data/seed reference and scenario data
+	$(UV) run python -m sarana_shared.seed.load --path data/seed
+	@# core-api caches the hierarchy for an hour and caches misses too, so a coordinate
+	@# looked up before the seed landed would keep returning 404 for the rest of that hour.
+	@# Restarting is the honest flush: the cache is in-process by design.
+	@echo "Restarting core-api to flush the hierarchy cache..."
+	@$(COMPOSE) restart core-api >/dev/null 2>&1 || true
+
+service-clients: ## Provision the machine credentials services authenticate with
+	@# Owner DSN: these rows are administrative and sarana_app cannot write them. The
+	@# secrets print once; put them in .env and restart the stack.
+	$(UV) run python tools/seed/service_clients.py 		--database-url "$${SARANA_OWNER_DATABASE_URL:-postgresql+asyncpg://sarana:sarana@localhost:5432/sarana}"
+
+.PHONY: service-clients
+
+FIXTURES ?= data/fixtures/smoke
+SCENARIO ?= ditwah
+LEAD_TIME ?= 24
+
+.PHONY: dev
+dev: ## Run web and mobile in watch mode alongside the compose stack
+	pnpm turbo run dev
+
+.PHONY: test
+test: ## Run pytest across services and vitest across TS packages
+	$(UV) run pytest
+	pnpm turbo run test
+
+.PHONY: lint
+lint: ## ruff check + ruff format --check + mypy + eslint + tsc --noEmit
+	$(UV) run ruff check .
+	$(UV) run ruff format --check .
+	$(UV) run mypy packages/py-shared/src $(wildcard services/*/src)
+	$(UV) run python tools/hooks/check_event_schemas.py
 	pnpm run lint
-	pnpm run typecheck
+	pnpm turbo run typecheck
 
-test-invariants: ## the dedicated non-negotiable-proving suite (docs/build-prompts/29-testing-and-cicd.md)
-	@if [ -d tests/invariants ]; then \
-		uv run --group dev pytest tests/invariants -v; \
-	else \
-		echo "Skipping — tests/invariants/ not built yet (docs/build-prompts/29-testing-and-cicd.md)"; \
-	fi
+.PHONY: fmt
+fmt: ## Auto-fix formatting and import order
+	$(UV) run ruff check --fix .
+	$(UV) run ruff format .
+	pnpm run format
 
-# ---------------------------------------------------------------------------
-openapi: ## regenerate the merged OpenAPI spec and the TS client
-	@echo "Not built yet — needs real endpoints beyond /healthz first (docs/build-prompts/07 onward)."
+.PHONY: openapi
+openapi: ## Regenerate the merged OpenAPI spec and the TypeScript client
+	$(UV) run python -m sarana_shared.openapi.merge --out packages/ts-shared/openapi.json
+	pnpm --filter @sarana/ts-shared run generate:api
 
-verify-i18n: ## fail if any locale key is missing in si, ta, or en
-	node tools/i18n/verify.mjs
+.PHONY: eval
+eval: ## Score an agent against labelled fixtures. Usage: make eval AGENT=noop [FIXTURES=data/fixtures/smoke]
+	@test -n "$(AGENT)" || (echo "Usage: make eval AGENT=noop" && exit 1)
+	$(UV) run python -m agent_svc.runtime.eval --agent $(AGENT) --fixtures $(FIXTURES)
+
+.PHONY: sms-check
+sms-check: ## Check every seeded alert template fits in two SMS segments, worst-case (file 14)
+	$(UV) run python -m tools.sms_segment_check
+
+.PHONY: replay
+replay: ## Replay a scenario through the forecast agent and check its lead time
+	$(UV) run python -m agent_svc.agents.forecast.replay 		--scenario $(SCENARIO) --assert-lead-time $(LEAD_TIME)
+
+.PHONY: verify-events
+verify-events: ## Fail if an event contract change would break a running consumer
+	$(UV) run python tools/hooks/check_event_schemas.py
+
+.PHONY: verify-i18n
+verify-i18n: ## Fail if any locale key is missing in si, ta or en
+	pnpm --filter @sarana/ts-shared run verify-i18n
+	$(UV) run python -m sarana_shared.domain.i18n_check
+
+.PHONY: logs
+logs: ## Tail logs for the whole stack, or one service: make logs SVC=core-api
+	$(COMPOSE) logs -f --tail=100 $(SVC)
+
+.PHONY: ports
+ports: ## Print the local port map
+	@echo "  core-api      http://localhost:8001   incident-svc  http://localhost:8002"
+	@echo "  alerting-svc  http://localhost:8003   ledger-svc    http://localhost:8004"
+	@echo "  agent-svc     http://localhost:8005   gov-mock      http://localhost:8006"
+	@echo "  web-ops       http://localhost:3000   web-public    http://localhost:3001"
+	@echo "  postgres      localhost:$${SARANA_HOST_PORT_POSTGRES:-5432}          redis         localhost:6379"
+	@echo "  minio api     http://localhost:9000   minio console http://localhost:9001"
+	@echo "  jaeger        http://localhost:16686  mailpit       http://localhost:8025"
+
+.PHONY: health
+health: ## Curl /healthz on all six services
+	@set -e
+	@for port in 8001 8002 8003 8004 8005 8006; do \
+		printf "  :%s " $$port; curl -fsS localhost:$$port/healthz && echo; \
+	done

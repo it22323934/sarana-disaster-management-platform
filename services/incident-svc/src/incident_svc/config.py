@@ -1,22 +1,82 @@
-"""pydantic-settings config, prefixed SARANA_INCIDENT_SVC_ per
-docs/build-prompts/02-conventions.md.
+"""Settings for incident-svc.
+
+Shared infrastructure values live in the SARANA_ namespace and are inherited. Anything
+specific to this service is read from its own SARANA_INCIDENT_ block, declared field by field
+so the variable name in the environment is visible here rather than assembled by magic.
+
+Missing or malformed values stop the process at boot naming the variable - never a
+KeyError at request time, three hours into a cyclone.
 """
 
 from __future__ import annotations
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
+from pydantic_settings import SettingsConfigDict
+
+from sarana_shared.config import SharedSettings, load_settings_or_exit
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="SARANA_INCIDENT_SVC_", extra="ignore")
+class Settings(SharedSettings):
+    """Configuration for incident-svc."""
 
-    port: int = 8002
-    database_url: str
-    event_bus: str = "redis_streams"
-    redis_url: str = "redis://localhost:6379/0"
-    log_level: str = "INFO"
-    otel_exporter_otlp_endpoint: str = "http://localhost:4318"
+    model_config = SettingsConfigDict(
+        env_prefix="SARANA_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        frozen=True,
+        populate_by_name=True,
+    )
+
+    host: str = Field(
+        default="0.0.0.0",  # noqa: S104 - bound inside a container network, not the host
+        validation_alias="SARANA_INCIDENT_HOST",
+    )
+    port: int = Field(default=8002, ge=1, le=65535, validation_alias="SARANA_INCIDENT_PORT")
+    cors_origins: list[str] = Field(
+        default_factory=list, validation_alias="SARANA_INCIDENT_CORS_ORIGINS"
+    )
+
+    # Resolving a coordinate to a GN division is the one core-api call on the intake path.
+    # Named here rather than assembled, so a missing value is a configuration error at boot
+    # instead of a failure the first time a citizen reports something.
+    core_api_url: str = Field(
+        default="http://core-api:8001", validation_alias="SARANA_INCIDENT_CORE_API_URL"
+    )
+
+    # This service calls core-api as a machine, not on behalf of the reporter. A citizen
+    # holds `incident:write` and deliberately not `admin:read`, so forwarding their token
+    # would fail for exactly the people who report the most.
+    #
+    # In a deployment this comes from the secret store. Locally `make service-token`
+    # mints one. Absent, reports are still accepted and simply arrive unplaced, which is
+    # the documented degraded behaviour rather than a new failure mode.
+    # The client-credentials grant this service authenticates with. Provisioned by
+    # `tools/seed/service_clients.py`; holds `admin:read` and nothing else.
+    client_id: str = Field(default="incident-svc", validation_alias="SARANA_INCIDENT_CLIENT_ID")
+    client_secret: str | None = Field(
+        default=None, validation_alias="SARANA_INCIDENT_CLIENT_SECRET"
+    )
+
+    # Where the agent runtime lives, for resuming a dispatch plan's reasoning thread when
+    # a dispatcher decides. No credential goes with it: agent-svc refuses machine
+    # principals on `agent:review`, so the resume forwards the approving dispatcher's own
+    # token. See `adapters/agent_runtime.py`.
+    agent_svc_url: str = Field(
+        default="http://localhost:8005", validation_alias="SARANA_AGENT_SVC_URL"
+    )
+
+    # Off by default, and that is deliberate rather than cautious. A deployment running
+    # without the agents has dispatch plans with no `langgraph_thread_id` at all, and the
+    # gate skips the resume for those anyway - but a deployment that has *some* agent
+    # plans and an unreachable agent-svc would fail every approval on those, which is a
+    # worse failure than reporting `graph_resumed: false`. Turn it on when agent-svc is
+    # reachable and the triage agent is wired.
+    resume_agent_threads: bool = Field(
+        default=False, validation_alias="SARANA_INCIDENT_RESUME_AGENT_THREADS"
+    )
 
 
 def get_settings() -> Settings:
-    return Settings()
+    """Load settings, exiting 78 (EX_CONFIG) if the environment is incomplete."""
+    return load_settings_or_exit(Settings)

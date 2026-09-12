@@ -1,3 +1,4 @@
-"""v1 API routers. Empty at scaffold stage — alert drafting, signoff, dispatch, and
-delivery-proof endpoints are docs/build-prompts/09-alerting-service.md's job.
+"""Version 1 of the alerting-svc HTTP API.
+
+REST, plural collection paths, cursor pagination, RFC 9457 Problem Details on error.
 """

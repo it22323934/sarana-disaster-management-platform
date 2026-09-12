@@ -1,3 +1,4 @@
-"""v1 API routers. Empty at scaffold stage — assessments, entitlements, disbursements,
-the ledger read endpoints, and grievances are docs/build-prompts/10-aid-ledger-service.md's job.
+"""Version 1 of the ledger-svc HTTP API.
+
+REST, plural collection paths, cursor pagination, RFC 9457 Problem Details on error.
 """

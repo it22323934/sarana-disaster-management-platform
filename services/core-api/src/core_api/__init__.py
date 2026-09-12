@@ -1,5 +1,12 @@
-"""core-api — gateway, admin hierarchy, Resilience Graph, append-only audit log.
+"""SARANA Core API.
 
-See docs/build-prompts/07-core-api.md for the full service spec; this scaffold only
-provides the FastAPI app factory, config, and health/readiness endpoints.
+Gateway, authentication, administrative reference data and the Resilience Graph. The
+only service that holds the JWT signing key.
 """
+
+__version__ = "0.1.0"
+
+SERVICE_DESCRIPTION = (
+    "Gateway, authentication, administrative reference data and the Resilience "
+    "Graph. The only service that holds the JWT signing key."
+)

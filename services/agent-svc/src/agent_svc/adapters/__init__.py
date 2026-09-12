@@ -1,3 +1,5 @@
-"""Outbound adapters: gov-mock HTTP clients, event bus wiring. Empty at scaffold stage —
-wired up starting with docs/build-prompts/12-langgraph-runtime.md.
+"""Outbound adapters for agent-svc: HTTP clients, event bus, object storage.
+
+Everything that leaves the process goes through an adapter, so a test can substitute one
+without a network.
 """

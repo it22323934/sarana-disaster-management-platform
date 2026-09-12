@@ -1,51 +1,53 @@
-# syntax=docker/dockerfile:1
-# Build with: docker build -f services/gov-mock/Dockerfile -t sarana/gov-mock .
-# (context = repo root, so this can pull in packages/py-shared as a workspace member)
+# SARANA Government and Telco Mocks
+# Multi-stage, non-root, no build toolchain in the runtime layer.
+# Builds on linux/amd64 and linux/arm64: the team is on Macs, Fargate is amd64.
 
-FROM python:3.12-slim AS builder
+FROM --platform=$BUILDPLATFORM ghcr.io/astral-sh/uv:0.5-python3.12-bookworm-slim AS builder
 
-RUN pip install --no-cache-dir uv==0.12.6
+# UV_HTTP_TIMEOUT: six service images build against one uplink, and the 30s default
+# times out on the larger wheels (cryptography, shapely) when builds overlap.
+#
+# UV_PROJECT_ENVIRONMENT: build the virtualenv at the path it will finally live at.
+# Console scripts bake an absolute shebang, so a venv built elsewhere and copied into
+# place fails at container start with "exec .../uvicorn: no such file or directory".
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_HTTP_TIMEOUT=180 \
+    UV_PROJECT_ENVIRONMENT=/app/.venv
 
 WORKDIR /build
-COPY pyproject.toml uv.lock* ./
-COPY packages/py-shared packages/py-shared
-COPY services/gov-mock services/gov-mock
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv build --package sarana-shared --wheel -o /build/dist packages/py-shared && \
-    uv build --package gov-mock --wheel -o /build/dist services/gov-mock
+# Copy only what the resolver needs first, so a source edit does not invalidate the
+# dependency layer.
+COPY pyproject.toml uv.lock ./
+COPY packages/py-shared/pyproject.toml packages/py-shared/
+COPY services/gov-mock/pyproject.toml services/gov-mock/
 
-FROM python:3.12-slim AS dev
-# Used by infra/docker/compose.yml (target: dev) for local hot-reload. Editable-installs
-# both packages against the mounted source, so a change on the host is live immediately —
-# the `runtime` stage below (wheel-installed, non-root) is what actually ships.
+RUN --mount=type=cache,target=/root/.cache/uv     uv sync --frozen --no-install-workspace --package sarana-gov-mock
 
-RUN pip install --no-cache-dir uv==0.12.6
+COPY packages/py-shared/ packages/py-shared/
+COPY services/gov-mock/ services/gov-mock/
 
-WORKDIR /app
-COPY pyproject.toml uv.lock* ./
-COPY packages/py-shared packages/py-shared
-COPY services/gov-mock services/gov-mock
+RUN --mount=type=cache,target=/root/.cache/uv     uv sync --frozen --no-editable --package sarana-gov-mock
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system -e packages/py-shared -e "services/gov-mock[test]"
 
-EXPOSE 8006
-CMD ["uvicorn", "gov_mock.main:app", "--host", "0.0.0.0", "--port", "8006", \
-     "--reload", "--reload-dir", "/app/services/gov-mock/src"]
+FROM python:3.12-slim-bookworm AS runtime
 
-FROM python:3.12-slim AS runtime
+# curl is the container healthcheck; nothing else is added to the runtime image.
+RUN apt-get update     && apt-get install --no-install-recommends -y curl     && rm -rf /var/lib/apt/lists/*     && groupadd --system --gid 1001 sarana     && useradd --system --uid 1001 --gid sarana --create-home sarana
 
-RUN groupadd --system sarana && useradd --system --gid sarana --no-create-home sarana
+ENV PATH="/app/.venv/bin:$PATH"     PYTHONUNBUFFERED=1     PYTHONDONTWRITEBYTECODE=1
 
 WORKDIR /app
-COPY --from=builder /build/dist/*.whl /tmp/wheels/
-RUN pip install --no-cache-dir /tmp/wheels/*.whl && rm -rf /tmp/wheels
+
+COPY --from=builder --chown=sarana:sarana /app/.venv /app/.venv
+COPY --from=builder --chown=sarana:sarana /build/services/gov-mock /app/services/gov-mock
 
 USER sarana
+
 EXPOSE 8006
 
-HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8006/healthz')" || exit 1
+HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=5     CMD curl -fsS http://localhost:8006/healthz || exit 1
 
-CMD ["uvicorn", "gov_mock.main:app", "--host", "0.0.0.0", "--port", "8006"]
+CMD ["uvicorn", "--factory", "gov_mock.main:build_app", "--host", "0.0.0.0", "--port", "8006"]

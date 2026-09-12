@@ -1,3 +1,5 @@
-"""Outbound adapters: channel senders (SMS/USSD/push/LoRa/radio), event bus wiring.
-Empty at scaffold stage — wired up by docs/build-prompts/09-alerting-service.md.
+"""Outbound adapters for alerting-svc: HTTP clients, event bus, object storage.
+
+Everything that leaves the process goes through an adapter, so a test can substitute one
+without a network.
 """

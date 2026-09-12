@@ -1,0 +1,132 @@
+/*
+ * The SARANA design system, mounted, plus the one thing only this app needs: a print
+ * stylesheet.
+ *
+ * `@source` is required and is the thing that breaks silently if it is removed: Tailwind
+ * v4 scans the project it is invoked from, and every component in this app comes from
+ * `packages/ui`, so without it the utilities those components reference are never
+ * generated and the app renders unstyled with no error anywhere.
+ *
+ * `tokens.css` is generated from `packages/ui/src/tokens` and carries the colour ramp,
+ * the three-script type scale, the theme blocks and the Tailwind theme bridge.
+ * `pnpm --filter @sarana/ui test:tokens-sync` fails CI if it drifts from its source.
+ */
+
+@import 'tailwindcss';
+@source '../../../packages/ui/src';
+
+@import '@sarana/ui/tokens.css';
+
+body {
+  background: var(--surface-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  line-height: var(--leading-base);
+}
+
+/*
+ * Tabular figures on every number.
+ *
+ * A column of amounts where `1` is narrower than `8` does not line up, and a reader
+ * comparing two districts down a column is doing exactly the comparison the misalignment
+ * breaks. `data-sarana-datum` is already on every figure the design system renders, so
+ * this is one rule rather than a class on every cell.
+ */
+[data-sarana-datum],
+.sarana-figure,
+table td,
+table th {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The print stylesheet, required by the brief.
+ *
+ * A journalist prints this page or exports it to PDF and files it with a story. What has
+ * to survive is the tables and the numbers; what must not is the navigation, the map and
+ * the language switcher, none of which mean anything on paper.
+ *
+ * Three decisions inside it:
+ *
+ * **Colours are forced to ink on white.** A choropleth's fills and the dark severity
+ * chips print as heavy grey blocks that cost toner and hide the text on top of them. The
+ * severity *labels* stay, because the word "Severe" is the information and the colour was
+ * only ever a second channel for it.
+ *
+ * **Link targets are printed after the link text.** A printed page whose references are
+ * invisible is a page a reader cannot follow up, and the whole point of this site is that
+ * the reader can go and check.
+ *
+ * **Tables are not allowed to break across a page mid-row**, and headers repeat. A row
+ * split across a page break puts a district's name on one sheet and its money on the next.
+ */
+@media print {
+  :root {
+    --surface-base: #ffffff;
+    --surface-raised: #ffffff;
+    --surface-card: #ffffff;
+    --text-primary: #000000;
+    --text-muted: #333333;
+    --divider: #999999;
+  }
+
+  body {
+    background: #ffffff;
+    color: #000000;
+    font-size: 11pt;
+  }
+
+  [data-print-hide],
+  nav[data-site-nav],
+  [data-sarana-map] {
+    display: none !important;
+  }
+
+  a[href^='http']::after,
+  a[data-print-url]::after {
+    content: ' (' attr(href) ')';
+    font-size: 9pt;
+    word-break: break-all;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr,
+  img,
+  figure {
+    break-inside: avoid;
+  }
+
+  th,
+  td {
+    border: 1px solid #999999;
+    padding: 2pt 4pt;
+  }
+
+  h1,
+  h2,
+  h3 {
+    break-after: avoid;
+  }
+
+  /*
+   * The simulated-data badge prints, and it prints first.
+   *
+   * It is the one piece of chrome that must survive onto paper: a printout of this page
+   * that does not say the figures are synthetic is exactly the artefact that ends up in a
+   * slide deck as though it were real.
+   */
+  [data-sarana-simulated] {
+    display: inline-flex !important;
+    border: 1pt solid #000000 !important;
+    color: #000000 !important;
+    background: #ffffff !important;
+  }
+}

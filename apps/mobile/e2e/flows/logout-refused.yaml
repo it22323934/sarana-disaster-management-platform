@@ -1,0 +1,31 @@
+# Sign-out with unsynced work on the device.
+#
+# The refusal is not a warning that can be dismissed. It names the count and offers the
+# two things that actually resolve it.
+appId: lk.sarana.app
+name: Sign-out is refused while work is unsynced
+---
+- launchApp:
+    clearState: true
+- setAirplaneMode: enabled
+- runFlow: ../subflows/sign-in-officer.yaml
+- repeat:
+    times: 4
+    commands:
+      - openLink: sarana://debug?action=save-assessment
+      - assertVisible:
+          text: 'ok: saved .*'
+      - back
+
+- tapOn: 'Sign out'
+- assertVisible:
+    text: '.*4 changes have not reached the server.*'
+- assertVisible: 'Sync now'
+- assertVisible: 'Export queue'
+# No plain dismiss. Every route off this dialog either moves the work or writes it out.
+- assertNotVisible: 'Dismiss'
+- assertNotVisible: 'OK'
+
+- tapOn: 'Export queue'
+- assertVisible:
+    text: '.*sarana-queue-.*json.*'

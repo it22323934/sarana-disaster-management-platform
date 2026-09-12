@@ -1,53 +1,142 @@
-"""EventBus protocol — publish, subscribe, replay.
+"""The EventBus port.
 
-This is the interface only, as scoped by docs/build-prompts/03-monorepo-scaffold.md. The
-concrete implementations (RedisStreamsEventBus, EventBridgeEventBus, InMemoryEventBus),
-the transactional outbox, idempotency tracking, replay, and dead-lettering are
-docs/build-prompts/06-event-bus.md's job — deliberately not built here. No service should
-import a concrete bus implementation directly; depend on this Protocol and inject one.
+ADR-003: the Postgres transactional outbox is the source of truth. This is the transport
+that carries a committed outbox row onward - Redis Streams locally, EventBridge on AWS,
+in-memory in tests. Everything publishes through this port, so an `MSKEventBus` can be
+dropped in for Phase 2 without touching a single caller.
+
+No agent calls another agent directly. That is what makes the platform recoverable: an
+agent that dies mid-run leaves no half-finished conversation, only events that were either
+published or not.
 """
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Protocol, runtime_checkable
+from uuid import UUID
 
 from sarana_shared.events.envelope import EventEnvelope
 
-Handler = Callable[[EventEnvelope], Awaitable[None]]
+EventHandler = Callable[[EventEnvelope], Awaitable[None]]
 
 
-@runtime_checkable
-class ReplayHandle(Protocol):
-    """Returned by `replay()` — lets a caller check on or cancel an in-flight replay."""
+class BusKind(StrEnum):
+    """Which implementation `SARANA_EVENT_BUS` selects."""
 
-    async def status(self) -> str: ...  # "running" | "completed" | "failed"
-    async def cancel(self) -> None: ...
+    REDIS = "redis"
+    EVENTBRIDGE = "eventbridge"
+    MEMORY = "memory"
+
+
+@dataclass(frozen=True, slots=True)
+class Subscription:
+    """A durable subscription: one consumer group reading one or more event types.
+
+    Two processes sharing a `group` split the stream between them; two different groups
+    each receive every event.
+
+    `side_effect_free` is the important field. A consumer that sends an SMS, moves money
+    or dispatches a crew declares False, and the bus then refuses to hand it a replayed
+    envelope. Getting this wrong on a consumer means a replay re-sends real messages to
+    real people, so it has no default - every subscription states it.
+    """
+
+    group: str
+    consumer: str
+    event_types: tuple[str, ...]
+    side_effect_free: bool
+    from_beginning: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ReplayHandle:
+    """A running or finished replay.
+
+    Returned rather than a bare count so an operator can see what a replay is doing while
+    it runs, and so the admin endpoint can refuse to start a second one.
+    """
+
+    replay_id: UUID
+    target_group: str
+    event_types: tuple[str, ...]
+    since: datetime
+    until: datetime | None
+    requested_by: str
+    started_at: datetime
+    delivered: int = 0
+    refused: int = 0
+    finished_at: datetime | None = None
+
+    @property
+    def is_running(self) -> bool:
+        """Whether this replay is still delivering."""
+        return self.finished_at is None
 
 
 @runtime_checkable
 class EventBus(Protocol):
+    """The port. Implementations must be safe to share across asyncio tasks."""
+
     async def publish(self, envelope: EventEnvelope) -> None:
-        """Publish one event. Callers are expected to have already written it to their
-        own transactional outbox (docs/build-prompts/06) — this call is the outbox
-        publisher's job, not a general-purpose "fire an event" call from business logic."""
+        """Deliver one event. Must be idempotent on `event_id`."""
         ...
 
-    async def subscribe(self, event_types: list[str], group: str, handler: Handler) -> None:
-        """Register a durable, idempotent consumer. `group` is the consumer group —
-        ordering is guaranteed per correlation_id only, never globally."""
+    async def publish_many(self, envelopes: list[EventEnvelope]) -> None:
+        """Deliver a batch, preserving order within it."""
+        ...
+
+    async def subscribe(self, subscription: Subscription, handler: EventHandler) -> None:
+        """Consume until cancelled, invoking `handler` once per event.
+
+        The handler raising means the event is not acknowledged and will be redelivered.
+        Implementations must not swallow handler exceptions silently.
+        """
         ...
 
     async def replay(
         self,
         *,
         since: datetime,
-        until: datetime | None,
-        event_types: list[str] | None,
+        until: datetime | None = None,
+        event_types: tuple[str, ...] | None = None,
         target_group: str,
+        requested_by: str,
     ) -> ReplayHandle:
-        """Re-deliver a time-windowed slice of history to one consumer group. A
-        side-effect-having consumer (SMS send, payment release) must refuse a replayed
-        envelope — see EventEnvelope.is_replay()."""
+        """Re-deliver a window of history to one consumer group.
+
+        Scoped by time, type and target group. There is deliberately no call that replays
+        everything to everyone: the blast radius of that mistake, on a platform that sends
+        SMS and moves money, is not recoverable.
+        """
         ...
+
+    async def close(self) -> None:
+        """Release connections."""
+        ...
+
+
+def matches(event_type: str, patterns: tuple[str, ...]) -> bool:
+    """Whether an event type matches any subscription pattern.
+
+    A pattern is either an exact type or a dotted prefix ending in `*`.
+    """
+    for pattern in patterns:
+        if pattern in ("*", event_type):
+            return True
+        if pattern.endswith("*") and event_type.startswith(pattern[:-1]):
+            return True
+    return False
+
+
+def refuses_replay(subscription: Subscription, envelope: EventEnvelope) -> bool:
+    """Whether this subscription must refuse this envelope.
+
+    A replayed envelope reaching a side-effecting consumer means an SMS is re-sent to a
+    citizen about a cyclone that passed three weeks ago, or money is released twice. Both
+    are worse than the problem the replay was run to fix.
+    """
+    return envelope.is_replay and not subscription.side_effect_free

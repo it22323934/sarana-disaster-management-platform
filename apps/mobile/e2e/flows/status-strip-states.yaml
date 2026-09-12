@@ -1,0 +1,43 @@
+# The four states of the status strip, in one run.
+#
+# The strip is the component a field officer reads to answer "is my work safe". This flow
+# drives the device into each state and reads the strip back.
+appId: lk.sarana.app
+name: The status strip reads correctly in all four states
+---
+- launchApp:
+    clearState: true
+- runFlow: ../subflows/sign-in-officer.yaml
+
+# 1. Online, nothing queued.
+- assertVisible:
+    text: '.*all synced.*'
+
+# 2. Offline with a queue, and the age of the last sync.
+- setAirplaneMode: enabled
+- openLink: sarana://debug?action=save-assessment
+- assertVisible:
+    text: 'ok: saved .*'
+- back
+- assertVisible:
+    text: '.*1 changes queued.*'
+
+# 3. Online with a queue. The strip says how many are waiting rather than showing a
+#    spinner. The "syncing N of M" fraction needs a slow link, which Maestro cannot
+#    produce; it is asserted in src/offline/status/model.test.ts instead.
+- setAirplaneMode: disabled
+- assertVisible:
+    text: '.*waiting.*'
+
+# 4. Attention, which outranks everything including being offline.
+- openLink: sarana://debug?action=force-conflict
+- back
+- setAirplaneMode: enabled
+- assertVisible:
+    text: '.*need attention.*'
+
+# And it cannot be dismissed. Swiping it does not remove it.
+- swipe:
+    direction: RIGHT
+- assertVisible:
+    text: '.*need attention.*'

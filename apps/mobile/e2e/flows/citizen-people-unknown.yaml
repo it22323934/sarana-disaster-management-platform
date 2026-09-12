@@ -1,0 +1,23 @@
+# "I don't know" must reach the server as an absent field, never as zero.
+#
+# Read back from the device operation log rather than from the screen: what matters is the
+# payload that will be sent, not the button that was highlighted.
+appId: lk.sarana.app
+name: I don't know sends null, never zero
+---
+- setAirplaneMode: enabled
+- launchApp:
+    clearState: true
+- runFlow: ../subflows/sign-in-citizen.yaml
+
+- tapOn: 'Report an emergency'
+- tapOn: 'Flooding'
+- tapOn: 'I don''t know'
+- tapOn: 'Send report'
+- assertVisible:
+    text: 'Reference LOC-.*'
+
+# The debug bridge prints the queued payload. `people_at_risk` must not appear at all.
+- openLink: sarana://debug?action=show-last-report-payload
+- assertNotVisible:
+    text: '.*people_at_risk.*'

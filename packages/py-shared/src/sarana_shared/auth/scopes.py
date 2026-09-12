@@ -1,113 +1,292 @@
-"""The RBAC scope model shared by every service, per docs/build-prompts/05-auth-rbac.md.
+"""Scopes and RBAC over the Sri Lanka administrative hierarchy.
 
-A scope is `{resource}:{action}:{scope_type}:{scope_id}`, e.g.
-`assessment:create:GN:0f2a...`, `ledger:read:NATIONAL:*`.
+Authorisation in SARANA is two independent questions, and both must pass:
 
-This module is pure matching logic — no database access. Resolving "which DS/District
-does this GN belong to" (needed to check a DISTRICT-scoped grant against a GN-scoped
-request) is core-api's job at token-mint time (file 05), cached, not looked up here per
-request. Callers pass in the already-resolved ancestor chain.
+  1. Permission - does this principal hold the scope for this action?
+  2. Area       - does this principal's area cover the record being touched?
+
+Keeping them separate is what stops a DS officer in Batticaloa from approving an
+entitlement in Kandy just because their role is right. Area containment is a
+segment-aware code prefix test (see `sarana_shared.domain.admin.contains`).
 """
 
 from __future__ import annotations
 
-from typing import Literal
-
-from pydantic import BaseModel
-
-ScopeType = Literal["GN", "DS", "DISTRICT", "NATIONAL"]
-
-# Narrowest first — index is used to decide whether `a` is broader-or-equal to `b`.
-_SCOPE_TYPE_ORDER: tuple[ScopeType, ...] = ("GN", "DS", "DISTRICT", "NATIONAL")
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import Final
 
 
-class Scope(BaseModel):
-    """A single granted permission, as minted into a JWT's `scopes` claim."""
+class Scope(StrEnum):
+    """A permission. Format is `{resource}:{action}`, lowercase, singular resource."""
 
-    resource: str  # e.g. "assessment", "entitlement", "ledger", "dispatch_plan"
-    action: str  # e.g. "create", "read", "approve", "release"
-    scope_type: ScopeType
-    scope_id: str | None = None  # None only when scope_type == "NATIONAL"
+    # Reference and common operating picture
+    ADMIN_READ = "admin:read"
+    # Reading one household's contact hash, so a message can be addressed to them.
+    #
+    # Separate from ADMIN_READ on purpose. `/admin/households` deliberately selects no
+    # column that identifies a person - "nothing to redact is a stronger guarantee than
+    # redacting" - and folding contact lookup into the same scope would quietly widen
+    # every credential that only ever needed the hierarchy. This is the one permission
+    # that reaches a stable per-person identifier, so it is the one that gets named.
+    HOUSEHOLD_CONTACT_READ = "household:contact_read"
+    RESILIENCE_READ = "resilience:read"
+    RESILIENCE_WRITE = "resilience:write"
 
-    def __str__(self) -> str:
-        sid = self.scope_id if self.scope_id is not None else "*"
-        return f"{self.resource}:{self.action}:{self.scope_type}:{sid}"
+    # Anticipate
+    FORECAST_READ = "forecast:read"
+    FORECAST_WRITE = "forecast:write"
 
-    @classmethod
-    def parse(cls, raw: str) -> Scope:
-        try:
-            resource, action, scope_type, scope_id = raw.split(":")
-        except ValueError as exc:
-            raise ValueError(f"Malformed scope string: {raw!r}") from exc
-        if scope_type not in _SCOPE_TYPE_ORDER:
-            raise ValueError(f"Unknown scope_type in {raw!r}: {scope_type!r}")
-        return cls(
-            resource=resource,
-            action=action,
-            scope_type=scope_type,
-            scope_id=None if scope_id == "*" else scope_id,
-        )
+    # Warn
+    ALERT_READ = "alert:read"
+    ALERT_DRAFT = "alert:draft"
+    ALERT_APPROVE = "alert:approve"
+    ALERT_DISPATCH = "alert:dispatch"
+
+    # Respond
+    INCIDENT_READ = "incident:read"
+    INCIDENT_WRITE = "incident:write"
+    INCIDENT_VERIFY = "incident:verify"
+    DISPATCH_PROPOSE = "dispatch:propose"
+    DISPATCH_COMMIT = "dispatch:commit"
+
+    # Sustain
+    ASSESSMENT_READ = "assessment:read"
+    ASSESSMENT_WRITE = "assessment:write"
+    ENTITLEMENT_READ = "entitlement:read"
+    ENTITLEMENT_CALCULATE = "entitlement:calculate"
+    ENTITLEMENT_APPROVE_DS = "entitlement:approve_ds"
+    ENTITLEMENT_APPROVE_DISTRICT = "entitlement:approve_district"
+    DISBURSEMENT_READ = "disbursement:read"
+    DISBURSEMENT_RELEASE = "disbursement:release"
+    LEDGER_READ = "ledger:read"
+
+    # Accountability
+    GRIEVANCE_FILE = "grievance:file"
+    GRIEVANCE_READ = "grievance:read"
+    GRIEVANCE_RESOLVE = "grievance:resolve"
+    ANOMALY_READ = "anomaly:read"
+    ANOMALY_DISPOSE = "anomaly:dispose"
+    AUDIT_READ = "audit:read"
+
+    # Platform
+    AGENT_INVOKE = "agent:invoke"
+    # Seeing and answering an agent's human-in-the-loop interrupts.
+    #
+    # Separate from AGENT_INVOKE, which is about *starting* an agent and is held by
+    # machines. This is the opposite: it is held only by people, because the whole point of
+    # an interrupt is that a person decides. Without it as its own scope the approval inbox
+    # is readable only by ADMIN, and the human gates become a queue the humans who operate
+    # them cannot open.
+    AGENT_REVIEW = "agent:review"
+    SYSTEM_ADMIN = "system:admin"
 
 
-def _is_broader_or_equal(a: ScopeType, b: ScopeType) -> bool:
-    return _SCOPE_TYPE_ORDER.index(a) >= _SCOPE_TYPE_ORDER.index(b)
+# The two mandatory human gates. Nothing may hold these implicitly, no service principal
+# may be granted them, and there is no bypass flag anywhere in the codebase.
+HUMAN_GATE_SCOPES: Final[frozenset[Scope]] = frozenset(
+    {Scope.DISPATCH_COMMIT, Scope.DISBURSEMENT_RELEASE}
+)
 
 
-def scope_satisfies(
-    granted: Scope,
-    *,
-    resource: str,
-    action: str,
-    target_scope_type: ScopeType,
-    target_scope_id: str,
-    target_ancestor_ids: frozenset[str] = frozenset(),
-) -> bool:
-    """Does `granted` authorise `action` on `resource` for the given target?
+class Role(StrEnum):
+    """A named bundle of scopes. A principal may hold several.
 
-    `target_ancestor_ids` is the target's own resolved ancestor chain (e.g. for a GN
-    target: {ds_division_id, district_id}) — pass an empty set if the target IS a
-    NATIONAL-scope operation with no narrower id.
-
-    Rules (docs/build-prompts/05-auth-rbac.md):
-    - A NATIONAL grant satisfies any narrower scope for the same resource+action.
-    - A DISTRICT grant satisfies its DS and GN descendants.
-    - No scope is ever inherited upward — a GN-scoped grant never satisfies a DS or
-      broader target, regardless of ids.
+    The values match the `code` CHECK on `admin.role` exactly. A role the database will
+    not store is a role the platform cannot grant, so the two lists are the same list.
     """
-    if granted.resource != resource or granted.action != action:
-        return False
 
-    if granted.scope_type == "NATIONAL":
-        return True
-
-    if not _is_broader_or_equal(granted.scope_type, target_scope_type):
-        return False  # e.g. a GN grant can never satisfy a DISTRICT-scope request
-
-    if granted.scope_type == target_scope_type:
-        return granted.scope_id == target_scope_id
-
-    # granted is broader than the target (e.g. DISTRICT grant, GN target) — the target
-    # must have the granted scope's id somewhere in its resolved ancestor chain.
-    return granted.scope_id in target_ancestor_ids
+    CITIZEN = "CITIZEN"
+    GN_OFFICER = "GN_OFFICER"
+    DS_APPROVER = "DS_APPROVER"
+    DISTRICT_APPROVER = "DISTRICT_APPROVER"
+    DMC_OPERATOR = "DMC_OPERATOR"
+    DISPATCHER = "DISPATCHER"
+    AUDITOR = "AUDITOR"
+    ADMIN = "ADMIN"
+    # Machine principals. Agents run unattended and are deliberately denied both gates.
+    AGENT = "AGENT"
+    SERVICE = "SERVICE"
 
 
-def any_scope_satisfies(
-    granted_scopes: list[Scope],
-    *,
-    resource: str,
-    action: str,
-    target_scope_type: ScopeType,
-    target_scope_id: str,
-    target_ancestor_ids: frozenset[str] = frozenset(),
-) -> bool:
-    return any(
-        scope_satisfies(
-            g,
-            resource=resource,
-            action=action,
-            target_scope_type=target_scope_type,
-            target_scope_id=target_scope_id,
-            target_ancestor_ids=target_ancestor_ids,
-        )
-        for g in granted_scopes
-    )
+# Role to scope mapping. Deliberately explicit and flat: a government IT reviewer must
+# be able to read exactly what each role can do without following inheritance.
+ROLE_SCOPES: Final[dict[Role, frozenset[Scope]]] = {
+    Role.CITIZEN: frozenset(
+        {
+            Scope.ALERT_READ,
+            Scope.INCIDENT_WRITE,
+            Scope.GRIEVANCE_FILE,
+        }
+    ),
+    Role.GN_OFFICER: frozenset(
+        {
+            Scope.ADMIN_READ,
+            Scope.ALERT_READ,
+            Scope.FORECAST_READ,
+            Scope.INCIDENT_READ,
+            Scope.INCIDENT_WRITE,
+            Scope.INCIDENT_VERIFY,
+            Scope.ASSESSMENT_READ,
+            Scope.ASSESSMENT_WRITE,
+            Scope.ENTITLEMENT_READ,
+            Scope.GRIEVANCE_FILE,
+            Scope.GRIEVANCE_READ,
+            Scope.RESILIENCE_READ,
+        }
+    ),
+    Role.DS_APPROVER: frozenset(
+        {
+            Scope.ADMIN_READ,
+            Scope.AGENT_REVIEW,
+            Scope.ALERT_READ,
+            Scope.FORECAST_READ,
+            Scope.INCIDENT_READ,
+            Scope.INCIDENT_VERIFY,
+            Scope.ASSESSMENT_READ,
+            Scope.ENTITLEMENT_READ,
+            Scope.ENTITLEMENT_CALCULATE,
+            Scope.ENTITLEMENT_APPROVE_DS,
+            Scope.DISBURSEMENT_READ,
+            Scope.LEDGER_READ,
+            Scope.GRIEVANCE_READ,
+            Scope.GRIEVANCE_RESOLVE,
+            Scope.ANOMALY_READ,
+            Scope.RESILIENCE_READ,
+        }
+    ),
+    Role.DISTRICT_APPROVER: frozenset(
+        {
+            Scope.ADMIN_READ,
+            Scope.AGENT_REVIEW,
+            Scope.ALERT_READ,
+            Scope.ALERT_DRAFT,
+            Scope.ALERT_APPROVE,
+            Scope.FORECAST_READ,
+            Scope.INCIDENT_READ,
+            Scope.INCIDENT_VERIFY,
+            Scope.DISPATCH_PROPOSE,
+            Scope.DISPATCH_COMMIT,
+            Scope.ASSESSMENT_READ,
+            Scope.ENTITLEMENT_READ,
+            Scope.ENTITLEMENT_APPROVE_DS,
+            Scope.ENTITLEMENT_APPROVE_DISTRICT,
+            Scope.DISBURSEMENT_READ,
+            Scope.DISBURSEMENT_RELEASE,
+            Scope.LEDGER_READ,
+            Scope.GRIEVANCE_READ,
+            Scope.GRIEVANCE_RESOLVE,
+            Scope.ANOMALY_READ,
+            Scope.ANOMALY_DISPOSE,
+            Scope.RESILIENCE_READ,
+        }
+    ),
+    Role.DMC_OPERATOR: frozenset(
+        {
+            Scope.ADMIN_READ,
+            Scope.AGENT_REVIEW,
+            Scope.ALERT_READ,
+            Scope.ALERT_DRAFT,
+            Scope.ALERT_APPROVE,
+            Scope.ALERT_DISPATCH,
+            Scope.FORECAST_READ,
+            Scope.FORECAST_WRITE,
+            Scope.INCIDENT_READ,
+            Scope.INCIDENT_VERIFY,
+            Scope.DISPATCH_PROPOSE,
+            Scope.DISPATCH_COMMIT,
+            Scope.ASSESSMENT_READ,
+            Scope.LEDGER_READ,
+            Scope.GRIEVANCE_READ,
+            Scope.ANOMALY_READ,
+            Scope.RESILIENCE_READ,
+        }
+    ),
+    Role.DISPATCHER: frozenset(
+        {
+            Scope.ADMIN_READ,
+            Scope.AGENT_REVIEW,
+            Scope.ALERT_READ,
+            Scope.INCIDENT_READ,
+            Scope.INCIDENT_WRITE,
+            Scope.RESILIENCE_READ,
+        }
+    ),
+    Role.AUDITOR: frozenset(
+        {
+            Scope.ADMIN_READ,
+            Scope.LEDGER_READ,
+            Scope.DISBURSEMENT_READ,
+            Scope.ENTITLEMENT_READ,
+            Scope.ASSESSMENT_READ,
+            Scope.GRIEVANCE_READ,
+            Scope.ANOMALY_READ,
+            Scope.AUDIT_READ,
+        }
+    ),
+    Role.ADMIN: frozenset(Scope) - HUMAN_GATE_SCOPES,
+    # Agents do everything except the two gates. That exclusion is the autonomy model
+    # expressed in code rather than in a document.
+    Role.AGENT: frozenset(
+        {
+            Scope.ADMIN_READ,
+            Scope.RESILIENCE_READ,
+            Scope.RESILIENCE_WRITE,
+            Scope.FORECAST_READ,
+            Scope.FORECAST_WRITE,
+            Scope.ALERT_READ,
+            Scope.ALERT_DRAFT,
+            Scope.ALERT_DISPATCH,
+            Scope.INCIDENT_READ,
+            Scope.INCIDENT_WRITE,
+            Scope.INCIDENT_VERIFY,
+            Scope.DISPATCH_PROPOSE,
+            Scope.ASSESSMENT_READ,
+            Scope.ENTITLEMENT_READ,
+            Scope.ENTITLEMENT_CALCULATE,
+            Scope.DISBURSEMENT_READ,
+            Scope.LEDGER_READ,
+            Scope.GRIEVANCE_READ,
+            Scope.ANOMALY_READ,
+            Scope.AGENT_INVOKE,
+        }
+    ),
+    Role.SERVICE: frozenset(
+        {
+            Scope.ADMIN_READ,
+            Scope.RESILIENCE_READ,
+            Scope.RESILIENCE_WRITE,
+            Scope.AGENT_INVOKE,
+            # The ceiling, not the grant. An individual credential holds the subset it
+            # needs; `admin.service_client.allowed_scopes` is what narrows it, and
+            # alerting-svc is the only service that should be configured with this one.
+            Scope.HOUSEHOLD_CONTACT_READ,
+            # A telco gateway submitting a citizen's SMS as a report. The sender is
+            # identified by an HMAC of their number, not by a credential, so the gateway
+            # writes on their behalf - and only the gateway credential is configured with
+            # this scope.
+            Scope.INCIDENT_WRITE,
+        }
+    ),
+}
+
+
+def scopes_for_roles(roles: frozenset[Role] | set[Role] | list[Role]) -> frozenset[Scope]:
+    """Union of the scopes granted by a set of roles."""
+    granted: set[Scope] = set()
+    for role in roles:
+        granted |= ROLE_SCOPES[role]
+    return frozenset(granted)
+
+
+@dataclass(frozen=True, slots=True)
+class RoleAssignment:
+    """A role held at one administrative scope, as stored in `admin.user_role`.
+
+    The unit the token minter reads. Expanding it into scope grants is
+    `sarana_shared.auth.grants.grants_for_assignments`.
+    """
+
+    role: Role
+    scope_type: str
+    scope_code: str

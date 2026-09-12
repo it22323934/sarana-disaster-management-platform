@@ -1,0 +1,37 @@
+# A hole in the device's own operation log.
+#
+# Manufactured by deleting one row through the debug hook, which is the only way to
+# produce the state a corrupted page or a partial restore produces. The device must stop
+# at the hole and name the sequence number.
+appId: lk.sarana.app
+name: A gap pauses the device and reports the missing seq
+---
+- launchApp:
+    clearState: true
+- runFlow: ../subflows/sign-in-officer.yaml
+- repeat:
+    times: 3
+    commands:
+      - openLink: sarana://debug?action=save-assessment
+      - assertVisible:
+          text: 'ok: saved .*'
+      - back
+
+- openLink: sarana://debug?action=delete-operation&seq=2
+- assertVisible: 'ok: removed seq 2'
+- back
+
+- tapOn: 'Sync now'
+- extendedWaitUntil:
+    visible: 'Sync paused'
+    timeout: 60000
+
+# The sequence number is on screen. A support call that starts with a number is a much
+# shorter call than one that starts with "it stopped working".
+- assertVisible:
+    text: '.*missing change 2.*'
+# And nothing after the hole was sent: one row on the server, not three.
+- runScript:
+    file: ../scripts/assert-server-assessment-count.js
+    env:
+      EXPECTED: '1'

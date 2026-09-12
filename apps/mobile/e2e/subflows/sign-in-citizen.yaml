@@ -1,0 +1,8 @@
+# Sign in as a citizen and land on the home tab.
+appId: lk.sarana.app
+---
+- tapOn:
+    id: 'sign-in'
+- extendedWaitUntil:
+    visible: 'Report an emergency'
+    timeout: 30000

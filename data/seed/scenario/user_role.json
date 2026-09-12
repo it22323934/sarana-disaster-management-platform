@@ -1,0 +1,51 @@
+[
+  {
+    "id": "96ef7c33-a751-7319-9470-400c635a22b6",
+    "user_id": "4c5d089e-fef7-7d1c-b4ae-f1d6fc2f4b94",
+    "role_id": "1f129f93-1db4-75da-9db0-159d965e185c",
+    "scope_type": "NATIONAL",
+    "scope_code": "LK"
+  },
+  {
+    "id": "2207fcbb-7933-7b7e-8b08-fa2f35e64972",
+    "user_id": "c995ef8e-9121-78ca-b9b6-e3149184eda6",
+    "role_id": "05ae8dcc-33de-7e5c-8a7b-0e0cebda7021",
+    "scope_type": "NATIONAL",
+    "scope_code": "LK"
+  },
+  {
+    "id": "9a32574e-3f05-70af-a337-3ad4b98fb1ac",
+    "user_id": "190bbcd7-571d-7808-b007-f2f966f0af52",
+    "role_id": "52b7b5a9-04f3-7d4e-a9c7-7d3831ac3d4f",
+    "scope_type": "GN",
+    "scope_code": "LK-21-01-001"
+  },
+  {
+    "id": "fe2cb3f9-4a5e-7668-bb4f-9f9e6fa04c21",
+    "user_id": "02e2d717-d055-7b76-b96a-bc1034f0136e",
+    "role_id": "61f05169-1ada-7d1e-a3a8-37928ca8185d",
+    "scope_type": "DS",
+    "scope_code": "LK-21-01"
+  },
+  {
+    "id": "4c906c44-81dd-7531-95e7-8e97f3091f55",
+    "user_id": "95b434df-da10-7bbf-a919-68f1e6baa08f",
+    "role_id": "2589078f-3de7-7f1b-8ebb-73a37a502d60",
+    "scope_type": "DISTRICT",
+    "scope_code": "LK-21"
+  },
+  {
+    "id": "c7e274d0-bcca-74a3-aae2-570737cc00ea",
+    "user_id": "73b1414c-ac9e-72f1-986b-9bf823894c7f",
+    "role_id": "dd4eaecd-5901-72ca-981e-cdf3aa31b7fd",
+    "scope_type": "NATIONAL",
+    "scope_code": "LK"
+  },
+  {
+    "id": "dd9d5e28-0c66-794f-b29d-9d620ab230dd",
+    "user_id": "12c21a94-2dc4-720e-b0c3-65d561840f10",
+    "role_id": "8a2cfb86-4f6a-7065-8d6c-0cbc72a905ce",
+    "scope_type": "NATIONAL",
+    "scope_code": "LK"
+  }
+]

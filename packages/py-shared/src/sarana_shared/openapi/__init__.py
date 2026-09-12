@@ -1,0 +1,1 @@
+"""OpenAPI aggregation across services."""

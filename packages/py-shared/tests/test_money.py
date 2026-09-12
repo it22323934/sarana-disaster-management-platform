@@ -1,45 +1,70 @@
-from sarana_shared.domain.money import add, apply_cap, apply_rate, format_lkr, to_lkr_cents
+"""LKR arithmetic. Integer minor units, schedule-versioned, never a float."""
+
+from __future__ import annotations
+
+from decimal import Decimal
+
+import pytest
+from pydantic import ValidationError
+
+from sarana_shared.domain.money import Money, cents_to_rupees, format_lkr, rupees_to_cents
+
+SCHEDULE = "2025.11"
 
 
-def test_to_lkr_cents_parses_string_exactly() -> None:
-    assert to_lkr_cents("1250.50") == 125050
-    assert to_lkr_cents("1,250.50") == 125050
-    assert to_lkr_cents("0") == 0
-    assert to_lkr_cents("-100.25") == -10025
+def test_rupees_convert_exactly() -> None:
+    assert rupees_to_cents(Decimal("1250000.00")) == 125_000_000
+    assert rupees_to_cents("0.01") == 1
+    assert cents_to_rupees(125_000_075) == Decimal("1250000.75")
 
 
-def test_to_lkr_cents_pads_missing_fraction() -> None:
-    assert to_lkr_cents("100") == 10000
-    assert to_lkr_cents("100.5") == 10050
+def test_float_is_refused_at_the_boundary() -> None:
+    """0.1 has no exact binary representation, and this value ends up in a payment."""
+    with pytest.raises(TypeError, match="float is not accepted"):
+        rupees_to_cents(1250.10)  # type: ignore[arg-type]  # the point of the test
 
 
-def test_format_lkr() -> None:
-    assert format_lkr(to_lkr_cents("1250.50")) == "Rs. 1,250.50"
-    assert format_lkr(to_lkr_cents("-1250.50")) == "-Rs. 1,250.50"
-    assert format_lkr(to_lkr_cents("0")) == "Rs. 0.00"
+def test_format_matches_the_convention_example() -> None:
+    assert format_lkr(125_000_000) == "LKR 1,250,000.00"
 
 
-def test_add() -> None:
-    total = add(to_lkr_cents("100"), to_lkr_cents("50.50"), to_lkr_cents("0.50"))
-    assert total == to_lkr_cents("151")
+def test_amounts_from_different_schedules_do_not_combine() -> None:
+    """A schedule revision must never silently rewrite an existing entitlement basis."""
+    november = Money(cents=100_000, cost_schedule_version="2025.11")
+    december = Money(cents=100_000, cost_schedule_version="2025.12")
+
+    with pytest.raises(ValueError, match="different cost schedules"):
+        _ = november + december
 
 
-def test_apply_rate_rounds_half_up() -> None:
-    base = to_lkr_cents("100")
-    assert apply_rate(base, 0.6) == to_lkr_cents("60")
+def test_amounts_from_one_schedule_do_combine() -> None:
+    total = Money(cents=100_000, cost_schedule_version=SCHEDULE) + Money(
+        cents=50_000, cost_schedule_version=SCHEDULE
+    )
+
+    assert total.cents == 150_000
+    assert total.cost_schedule_version == SCHEDULE
 
 
-def test_apply_cap() -> None:
-    amount = to_lkr_cents("1250000")
-    cap = to_lkr_cents("1000000")
-    capped, was_capped = apply_cap(amount, cap)
-    assert was_capped is True
-    assert capped == cap
+def test_proportional_entitlement_stays_in_integer_arithmetic() -> None:
+    full = Money(cents=1_000_000, cost_schedule_version=SCHEDULE)
 
-    under_cap, was_capped = apply_cap(to_lkr_cents("500"), cap)
-    assert was_capped is False
-    assert under_cap == to_lkr_cents("500")
+    assert full.scaled(1, 3).cents == 333_333
 
-    no_cap, was_capped = apply_cap(amount, None)
-    assert was_capped is False
-    assert no_cap == amount
+
+def test_cap_is_applied_without_reformatting() -> None:
+    calculated = Money(cents=125_000_000, cost_schedule_version=SCHEDULE)
+    cap = Money(cents=100_000_000, cost_schedule_version=SCHEDULE)
+
+    assert calculated.capped_at(cap).cents == cap.cents
+
+
+def test_an_implausible_amount_is_rejected_as_a_units_mistake() -> None:
+    """Guards the classic bug: rupees passed where minor units were expected."""
+    with pytest.raises(ValidationError):
+        Money(cents=99_999_999_999_999_999, cost_schedule_version=SCHEDULE)
+
+
+def test_schedule_version_shape_is_enforced() -> None:
+    with pytest.raises(ValidationError):
+        Money(cents=1, cost_schedule_version="November 2025")

@@ -1,40 +1,46 @@
 [project]
 name = "sarana"
-version = "0.0.0"
+version = "0.1.0"
+description = "SARANA - AI-enabled, offline-first, multi-hazard disaster response platform for Sri Lanka"
 requires-python = ">=3.12,<3.13"
-description = "SARANA — AI-enabled, offline-first, multi-hazard disaster response and resilience platform for Sri Lanka."
-
-[tool.uv.workspace]
-members = [
-    "packages/py-shared",
-    "services/core-api",
-    "services/incident-svc",
-    "services/alerting-svc",
-    "services/ledger-svc",
-    "services/agent-svc",
-    "services/gov-mock",
-]
-
-[tool.uv]
-package = false  # this root project is a workspace coordinator only, not an installable package
+dependencies = []
 
 [dependency-groups]
 dev = [
-    "ruff>=0.8.0",
-    "mypy>=1.13.0",
-    "pytest>=8.3.0",
-    "pytest-asyncio>=0.24.0",
-    "pytest-cov>=6.0.0",
-    "testcontainers[postgres]>=4.9.0",
-    "pre-commit>=4.0.0",
-    "detect-secrets>=1.5.0",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "pytest-cov>=6.0",
+    "httpx>=0.28",
+    "testcontainers[postgres]>=4.9",
+    "ruff>=0.9",
+    "mypy>=1.14",
+    "pre-commit>=4.0",
 ]
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["packages", "services"]
-# Every service has an identically-named tests/test_health.py etc. — importlib mode
-# identifies modules by file path, not by basename, so those don't collide when the
-# whole workspace is tested together (`make test`).
-addopts = "--import-mode=importlib"
+[tool.uv]
+package = false
 
+[tool.uv.workspace]
+members = ["packages/py-shared", "services/*"]
+
+[tool.uv.sources]
+sarana-shared = { workspace = true }
+
+[tool.pytest.ini_options]
+consider_namespace_packages = true
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["packages/py-shared/tests", "services", "tests"]
+# importlib mode derives a unique module name from each test file's path. Without it,
+# six services each holding a `tests/test_health.py` collide on module name and pytest
+# refuses to collect them in one run.
+addopts = "-q --strict-markers --import-mode=importlib"
+# importlib mode does not put the rootdir on sys.path, so `from tools.seed...` in a test
+# fails to import and takes the whole collection down with it. The seed generators are
+# genuinely test inputs - `tests/alerting/test_seeded_templates.py` asserts the shipped
+# templates against them - so the root belongs on the path rather than the import being
+# worked around.
+pythonpath = ["."]
+markers = [
+    "live_llm: hits the real OpenAI API; skipped unless --live-llm is passed",
+]

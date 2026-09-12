@@ -1,0 +1,74 @@
+[
+  {
+    "id": "a2e9f64c-1cab-7316-a223-59c825e3ccb9",
+    "code": "CITIZEN",
+    "name": {
+      "si": "පුරවැසි",
+      "ta": "குடிமகன்",
+      "en": "Citizen"
+    }
+  },
+  {
+    "id": "52b7b5a9-04f3-7d4e-a9c7-7d3831ac3d4f",
+    "code": "GN_OFFICER",
+    "name": {
+      "si": "ග්‍රාම නිලධාරී",
+      "ta": "கிராம சேவகர்",
+      "en": "GN Officer"
+    }
+  },
+  {
+    "id": "61f05169-1ada-7d1e-a3a8-37928ca8185d",
+    "code": "DS_APPROVER",
+    "name": {
+      "si": "ප්‍රාදේශීය ලේකම්",
+      "ta": "பிரதேச செயலர்",
+      "en": "DS Approver"
+    }
+  },
+  {
+    "id": "2589078f-3de7-7f1b-8ebb-73a37a502d60",
+    "code": "DISTRICT_APPROVER",
+    "name": {
+      "si": "දිස්ත්‍රික් ලේකම්",
+      "ta": "மாவட்ட செயலர்",
+      "en": "District Approver"
+    }
+  },
+  {
+    "id": "1f129f93-1db4-75da-9db0-159d965e185c",
+    "code": "DMC_OPERATOR",
+    "name": {
+      "si": "ආපදා කළමනාකරණ operator",
+      "ta": "பேரிடர் முகாமைத்துவ operator",
+      "en": "DMC Operator"
+    }
+  },
+  {
+    "id": "05ae8dcc-33de-7e5c-8a7b-0e0cebda7021",
+    "code": "DISPATCHER",
+    "name": {
+      "si": "යවන්නා",
+      "ta": "அனுப்புநர்",
+      "en": "Dispatcher"
+    }
+  },
+  {
+    "id": "dd4eaecd-5901-72ca-981e-cdf3aa31b7fd",
+    "code": "AUDITOR",
+    "name": {
+      "si": "විගණක",
+      "ta": "தணிக்கையாளர்",
+      "en": "Auditor"
+    }
+  },
+  {
+    "id": "8a2cfb86-4f6a-7065-8d6c-0cbc72a905ce",
+    "code": "ADMIN",
+    "name": {
+      "si": "පරිපාලක",
+      "ta": "நிர்வாகி",
+      "en": "Administrator"
+    }
+  }
+]

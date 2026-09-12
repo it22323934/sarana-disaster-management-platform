@@ -1,0 +1,80 @@
+{
+  "expo": {
+    "name": "SARANA",
+    "slug": "sarana",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "sarana",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-localization",
+      "expo-task-manager",
+      "expo-background-task",
+      [
+        "expo-sqlite",
+        {
+          "useSQLCipher": true
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "SARANA uses your location to place your report in the right GN division so responders can reach you. It is never tracked in the background."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "SARANA attaches a photo to your report so responders can assess the situation before they arrive."
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "SARANA records a short voice note so you can report in Sinhala or Tamil without typing."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0E7C86"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "lk.sarana.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "SARANA uses your location to place your report in the right GN division so responders can reach you.",
+        "NSMicrophoneUsageDescription": "SARANA records a short voice note so you can report in Sinhala or Tamil without typing.",
+        "NSCameraUsageDescription": "SARANA attaches a photo to your report so responders can assess the situation before they arrive.",
+        "NSPhotoLibraryAddUsageDescription": "SARANA saves a copy of the photo you attach so it survives a failed upload."
+      }
+    },
+    "android": {
+      "package": "lk.sarana.app",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "RECORD_AUDIO",
+        "CAMERA",
+        "ACCESS_NETWORK_STATE",
+        "POST_NOTIFICATIONS",
+        "RECEIVE_BOOT_COMPLETED"
+      ],
+      "blockedPermissions": [
+        "ACCESS_BACKGROUND_LOCATION"
+      ]
+    },
+    "extra": {
+      "saranaApiUrl": "http://localhost:8001",
+      "saranaObjectStoreUrl": null
+    }
+  }
+}
